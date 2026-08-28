@@ -233,17 +233,25 @@ local function update_team_mate(record, player)
   end
 
   if #manual_destinations > 0 then
-    local destination = manual_destinations[1]
     if character.surface_index == record.manual_surface_index then
-      if distance_squared(character.position, destination) <= 1 then
+      local route_changed = false
+      while #manual_destinations > 0
+        and distance_squared(character.position, manual_destinations[1]) <= 1 do
         table.remove(manual_destinations, 1)
-        if #manual_destinations == 0 then
-          record.manual_surface_index = nil
-          stop_team_mate(record)
-        end
+        route_changed = true
+      end
+
+      if route_changed then
+        record.command_kind = nil
+        record.command_destination = nil
         refresh_route_renderings(record, player.index)
+      end
+
+      if #manual_destinations == 0 then
+        record.manual_surface_index = nil
+        stop_team_mate(record)
       else
-        move_team_mate_toward_destination(record, destination)
+        move_team_mate_toward_destination(record, manual_destinations[1])
       end
     else
       record.manual_destinations = {}

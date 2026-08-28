@@ -13,3 +13,4 @@ Date: 2026-08-28
   Changes:
     - Removed formation, automatic follow, and teleport behavior.
     - Limited free wandering to team mates with no active or queued destination.
+    - Made queued routes start the next leg immediately when an intermediate waypoint is reached.
