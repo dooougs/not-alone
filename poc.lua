@@ -13,7 +13,8 @@ local IRON_MINER_TECHNOLOGY_NAME = "not-alone-iron-miner"
 local IRON_ORE_SEARCH_RADIUS = 128
 local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
-local IRON_MINING_INTERVAL = 30
+local IRON_ORE_MINING_TIME = 1
+local NORMAL_CHARACTER_MINING_SPEED = 0.5
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
@@ -99,6 +100,12 @@ local function find_nearest_iron_consumer(record)
   )
 end
 
+local function get_iron_mining_interval(player)
+  local mining_speed_modifier = player.character_mining_speed_modifier
+  local effective_mining_speed = NORMAL_CHARACTER_MINING_SPEED * (1 + mining_speed_modifier)
+  return math.max(1, math.ceil(IRON_ORE_MINING_TIME * 60 / effective_mining_speed))
+end
+
 local function update_iron_miner(record, player)
   update_mining_animation(record, record.role_state == "mine")
 
@@ -139,7 +146,7 @@ local function update_iron_miner(record, player)
           resource.deplete()
         end
         record.carried_ore = (record.carried_ore or 0) + mined
-        record.next_mining_tick = game.tick + IRON_MINING_INTERVAL
+        record.next_mining_tick = game.tick + get_iron_mining_interval(player)
         if record.carried_ore >= IRON_MINER_CAPACITY or remaining_amount <= 0 then
           record.role_state = "find-consumer"
           record.role_target = nil
@@ -198,6 +205,7 @@ update_mining_animation = function(record, should_show)
     record.mining_animation_id = rendering.draw_animation({
       animation = "not-alone-team-mate-mining",
       target = record.entity,
+      surface = record.entity.surface,
       orientation_target = record.entity,
       use_target_orientation = true,
       render_layer = "object"
@@ -263,6 +271,12 @@ local function ensure_role_gui(player)
     type = "label",
     name = "not_alone_role_selection_status",
     caption = {"not-alone.role-selection-status", 0}
+  })
+  frame.add({
+    type = "button",
+    name = "not_alone_add_team_mate",
+    caption = {"not-alone.add-team-mate"},
+    tooltip = {"not-alone.add-team-mate-tooltip"}
   })
   frame.add({
     type = "button",
@@ -398,13 +412,56 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
-local function spawn_team_mates(player)
+local function create_team_mate(player, index)
+  local spawn_position = player.surface.find_non_colliding_position(
+    TEAM_MATE_NAME,
+    player.position,
+    8,
+    0.5
+  )
+  if not spawn_position then
+    return nil
+  end
+
+  local character = player.surface.create_entity({
+    name = TEAM_MATE_NAME,
+    position = spawn_position,
+    force = player.force,
+    create_build_effect_smoke = false
+  })
+  if not character then
+    return nil
+  end
+
+  character.color = player.color
+  character.name_tag = "Team mate " .. index
+  return {entity = character}
+end
+
+local function add_team_mate(player)
   if not player.valid or not player.character or not player.character.valid then
-    return false
+    return nil
   end
 
   if player.get_item_count(COMMAND_TOOL_NAME) == 0 then
     player.insert({name = COMMAND_TOOL_NAME, count = 1})
+  end
+
+  storage.not_alone_team_mates = storage.not_alone_team_mates or {}
+  local team_mates = storage.not_alone_team_mates[player.index] or {}
+  local record = create_team_mate(player, #team_mates + 1)
+  if not record then
+    return nil
+  end
+
+  team_mates[#team_mates + 1] = record
+  storage.not_alone_team_mates[player.index] = team_mates
+  return record
+end
+
+local function spawn_team_mates(player)
+  if not player.valid or not player.character or not player.character.valid then
+    return false
   end
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
@@ -413,34 +470,14 @@ local function spawn_team_mates(player)
     return true
   end
 
-  local team_mates = {}
-  for index = 1, TEAM_MATE_COUNT do
-    local spawn_position = player.surface.find_non_colliding_position(
-      TEAM_MATE_NAME,
-      player.position,
-      8,
-      0.5
-    )
-
-    if spawn_position then
-      local character = player.surface.create_entity({
-        name = TEAM_MATE_NAME,
-        position = spawn_position,
-        force = player.force,
-        create_build_effect_smoke = false
-      })
-
-      if character then
-        character.color = player.color
-        character.name_tag = "Team mate " .. index
-        team_mates[#team_mates + 1] = {entity = character}
-      end
+  local spawned_count = 0
+  for _ = 1, TEAM_MATE_COUNT do
+    if add_team_mate(player) then
+      spawned_count = spawned_count + 1
     end
   end
-
-  storage.not_alone_team_mates[player.index] = team_mates
-  player.print({"not-alone.team-mates-arrived", #team_mates})
-  return true
+  player.print({"not-alone.team-mates-arrived", spawned_count})
+  return spawned_count > 0
 end
 
 local function update_team_mate(record, player)
@@ -545,12 +582,22 @@ end
 
 function poc.on_gui_click(event)
   if not event.element or not event.element.valid
-    or event.element.name ~= "not_alone_assign_iron_miner" then
+    or (event.element.name ~= "not_alone_add_team_mate"
+      and event.element.name ~= "not_alone_assign_iron_miner") then
     return
   end
 
   local player = game.get_player(event.player_index)
   if not player or not player.valid then
+    return
+  end
+
+  if event.element.name == "not_alone_add_team_mate" then
+    if add_team_mate(player) then
+      player.print({"not-alone.team-mate-added"})
+    else
+      player.print({"not-alone.team-mate-could-not-be-added"})
+    end
     return
   end
 

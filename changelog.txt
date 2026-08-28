@@ -21,3 +21,4 @@ Date: 2026-08-28
     - Fixed Iron Miner crashes when a resource patch was fully depleted.
     - Fixed Iron Miner furnace inventory access for Factorio 2.1.
     - Added the native player mining animation while Iron Miner teammates are mining.
+    - Added a role-panel control to spawn additional teammates.
