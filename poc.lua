@@ -15,7 +15,6 @@ local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
-local MINING_SOUND_VARIATION_COUNT = 7
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
@@ -137,6 +136,7 @@ local function update_iron_miner(record, player)
         record.role_target = nil
       else
         local mined = 1
+        local mining_position = resource.position
         local remaining_amount = resource.amount - mined
         if remaining_amount > 0 then
           resource.amount = remaining_amount
@@ -145,9 +145,8 @@ local function update_iron_miner(record, player)
         end
         record.carried_ore = (record.carried_ore or 0) + mined
         record.entity.surface.play_sound({
-          path = "__core__/sound/axe-mining-stone-"
-            .. math.random(MINING_SOUND_VARIATION_COUNT) .. ".ogg",
-          position = resource.position,
+          path = "not-alone-team-mate-mining-sound",
+          position = mining_position,
           volume_modifier = 0.8
         })
         record.next_mining_tick = game.tick + get_iron_mining_interval(player)
@@ -202,6 +201,11 @@ update_mining_animation = function(record, should_show)
   local render_object = record.mining_animation_id
     and rendering.get_object_by_id(record.mining_animation_id)
   if should_show then
+    if not record.mining_hidden then
+      record.mining_color = record.entity.color or {r = 1, g = 1, b = 1, a = 1}
+      record.entity.color = {r = 1, g = 1, b = 1, a = 0}
+      record.mining_hidden = true
+    end
     if render_object then
       return
     end
@@ -210,13 +214,22 @@ update_mining_animation = function(record, should_show)
       animation = "not-alone-team-mate-mining",
       target = record.entity,
       surface = record.entity.surface,
-      orientation_target = record.entity,
-      use_target_orientation = true,
+      orientation = record.entity.orientation,
+      tint = record.mining_color,
       render_layer = "object"
     }).id
   elseif render_object then
     render_object.destroy()
     record.mining_animation_id = nil
+    if record.mining_hidden then
+      record.entity.color = record.mining_color
+      record.mining_hidden = nil
+      record.mining_color = nil
+    end
+  elseif record.mining_hidden then
+    record.entity.color = record.mining_color
+    record.mining_hidden = nil
+    record.mining_color = nil
   end
 end
 

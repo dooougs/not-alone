@@ -73,6 +73,20 @@ local mining_animation = {
 	repeat_count = 255
 }
 
+local mining_sound = {
+	type = "sound",
+	name = "not-alone-team-mate-mining-sound",
+	variations = {
+		{filename = "__core__/sound/axe-mining-stone-1.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-2.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-3.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-4.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-5.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-6.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-stone-7.ogg", volume = 0.4}
+	}
+}
+
 local command_tool = {
 	type = "selection-tool",
 	name = "not-alone-command-tool",
@@ -142,4 +156,4 @@ local iron_miner_technology = {
 	}
 }
 
-data:extend({team_mate, mining_animation, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
+data:extend({team_mate, mining_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
