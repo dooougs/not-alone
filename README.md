@@ -21,10 +21,16 @@ Factorio units do not have character gun or ammunition inventories. The unit con
 replaces copied starter equipment and ammunition depletion with a built-in attack.
 
 Each player receives a **Team mate command tool**. Drag with the tool to select a group of your own
-team mates, then right-drag over a destination to send that group there. A destination order ends
-when a team mate arrives; team mates are never teleported or automatically returned to the player.
-As team mates travel, each map chunk they enter is revealed for their force, allowing commanded
-groups to explore previously uncharted areas.
+team mates, then right-drag over any destination, including fogged or uncharted terrain, to send that
+group there. Shift-right-drag adds further destinations to the end of the route. Each team mate's
+route is shown with connected ground lines and waypoint markers visible to its owner. A normal
+right-drag replaces the existing route.
+
+Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
+destination in advance. A route ends when a team mate reaches its final waypoint; team mates are
+never teleported or automatically returned to the player. As team mates travel, they reveal a 5×5
+chunk area centered on their current chunk for their force, matching the default player exploration
+radius.
 
 ## Install for development
 

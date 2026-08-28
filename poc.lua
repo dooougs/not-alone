@@ -5,6 +5,10 @@ local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
 local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
+local PLAYER_CHART_RADIUS = 2
+local SCOUT_WAYPOINT_DISTANCE = 64
+local SCOUT_GENERATION_RADIUS = 2
+local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 
@@ -12,6 +16,66 @@ local function distance_squared(first, second)
   local delta_x = first.x - second.x
   local delta_y = first.y - second.y
   return delta_x * delta_x + delta_y * delta_y
+end
+
+local function destroy_route_renderings(record)
+  for _, render_id in pairs(record.route_render_ids or {}) do
+    local render_object = rendering.get_object_by_id(render_id)
+    if render_object then
+      render_object.destroy()
+    end
+  end
+  record.route_render_ids = {}
+end
+
+local function get_manual_destinations(record)
+  if not record.manual_destinations then
+    record.manual_destinations = {}
+    if record.manual_destination then
+      record.manual_destinations[1] = {
+        x = record.manual_destination.x,
+        y = record.manual_destination.y
+      }
+    end
+    record.manual_destination = nil
+  end
+  return record.manual_destinations
+end
+
+local function refresh_route_renderings(record, player_index)
+  destroy_route_renderings(record)
+
+  local destinations = get_manual_destinations(record)
+  if #destinations == 0 or not record.entity.valid then
+    return
+  end
+
+  local surface = record.entity.surface
+  local previous_target = record.entity
+  for _, destination in ipairs(destinations) do
+    local line = rendering.draw_line({
+      color = ROUTE_COLOR,
+      width = 3,
+      from = previous_target,
+      to = destination,
+      surface = surface,
+      players = {player_index},
+      draw_on_ground = true
+    })
+    local marker = rendering.draw_circle({
+      color = ROUTE_COLOR,
+      radius = 0.45,
+      width = 3,
+      filled = false,
+      target = destination,
+      surface = surface,
+      players = {player_index},
+      draw_on_ground = true
+    })
+    record.route_render_ids[#record.route_render_ids + 1] = line.id
+    record.route_render_ids[#record.route_render_ids + 1] = marker.id
+    previous_target = destination
+  end
 end
 
 local function stop_team_mate(record)
@@ -48,6 +112,35 @@ local function move_team_mate(record, destination, stopping_distance)
   record.command_target = nil
 end
 
+local function move_team_mate_toward_destination(record, destination)
+  local position = record.entity.position
+  local delta_x = destination.x - position.x
+  local delta_y = destination.y - position.y
+  local distance = math.sqrt(delta_x * delta_x + delta_y * delta_y)
+  local waypoint = destination
+
+  if distance > SCOUT_WAYPOINT_DISTANCE then
+    local scale = SCOUT_WAYPOINT_DISTANCE / distance
+    waypoint = {
+      x = position.x + delta_x * scale,
+      y = position.y + delta_y * scale
+    }
+  end
+
+  local surface = record.entity.surface
+  local waypoint_chunk = {
+    x = math.floor(waypoint.x / CHUNK_SIZE),
+    y = math.floor(waypoint.y / CHUNK_SIZE)
+  }
+  surface.request_to_generate_chunks(waypoint, SCOUT_GENERATION_RADIUS)
+  if not surface.is_chunk_generated(waypoint_chunk) then
+    stop_team_mate(record)
+    return
+  end
+
+  move_team_mate(record, waypoint, 1)
+end
+
 local function attack_with_team_mate(record, enemy)
   if record.command_kind == "attack"
     and record.command_target
@@ -67,7 +160,7 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
-local function reveal_team_mate_chunk(record)
+local function reveal_team_mate_area(record)
   local character = record.entity
   local chunk_x = math.floor(character.position.x / CHUNK_SIZE)
   local chunk_y = math.floor(character.position.y / CHUNK_SIZE)
@@ -79,8 +172,14 @@ local function reveal_team_mate_chunk(record)
   end
 
   character.force.chart(character.surface, {
-    {x = chunk_x * CHUNK_SIZE, y = chunk_y * CHUNK_SIZE},
-    {x = (chunk_x + 1) * CHUNK_SIZE, y = (chunk_y + 1) * CHUNK_SIZE}
+    {
+      x = (chunk_x - PLAYER_CHART_RADIUS) * CHUNK_SIZE,
+      y = (chunk_y - PLAYER_CHART_RADIUS) * CHUNK_SIZE
+    },
+    {
+      x = (chunk_x + PLAYER_CHART_RADIUS + 1) * CHUNK_SIZE,
+      y = (chunk_y + PLAYER_CHART_RADIUS + 1) * CHUNK_SIZE
+    }
   })
   record.chart_surface_index = character.surface_index
   record.chart_chunk_x = chunk_x
@@ -135,24 +234,35 @@ end
 local function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
+    destroy_route_renderings(record)
     return false
   end
 
-  reveal_team_mate_chunk(record)
+  reveal_team_mate_area(record)
 
-  if record.manual_destination then
+  local manual_destinations = get_manual_destinations(record)
+  if record.route_render_ids == nil and #manual_destinations > 0 then
+    refresh_route_renderings(record, player.index)
+  end
+
+  if #manual_destinations > 0 then
+    local destination = manual_destinations[1]
     if character.surface_index == record.manual_surface_index then
-      if distance_squared(character.position, record.manual_destination) <= 1 then
-        record.manual_destination = nil
-        record.manual_surface_index = nil
-        stop_team_mate(record)
+      if distance_squared(character.position, destination) <= 1 then
+        table.remove(manual_destinations, 1)
+        if #manual_destinations == 0 then
+          record.manual_surface_index = nil
+          stop_team_mate(record)
+        end
+        refresh_route_renderings(record, player.index)
       else
-        move_team_mate(record, record.manual_destination, 1)
+        move_team_mate_toward_destination(record, destination)
       end
     else
-      record.manual_destination = nil
+      record.manual_destinations = {}
       record.manual_surface_index = nil
       stop_team_mate(record)
+      refresh_route_renderings(record, player.index)
     end
     return true
   end
@@ -182,6 +292,7 @@ function poc.on_init()
 end
 
 function poc.on_configuration_changed()
+  rendering.clear("not-alone")
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       if record.entity and record.entity.valid then
@@ -208,6 +319,7 @@ function poc.on_player_removed(event)
     and storage.not_alone_team_mates[event.player_index]
   if team_mates then
     for _, record in pairs(team_mates) do
+      destroy_route_renderings(record)
       if record.entity.valid then
         record.entity.destroy()
       end
@@ -245,7 +357,7 @@ function poc.on_selected_area(event)
   game.get_player(event.player_index).print({"not-alone.team-mates-selected", selected_count})
 end
 
-function poc.on_reverse_selected_area(event)
+local function order_selected_team_mates(event, append)
   if event.item ~= COMMAND_TOOL_NAME then
     return
   end
@@ -268,14 +380,37 @@ function poc.on_reverse_selected_area(event)
     if entity.valid
       and selected[entity.unit_number]
       and entity.surface_index == event.surface.index then
-      record.manual_destination = destination
+      local manual_destinations = get_manual_destinations(record)
+      if not append then
+        manual_destinations = {}
+        record.manual_destinations = manual_destinations
+      end
+      manual_destinations[#manual_destinations + 1] = {
+        x = destination.x,
+        y = destination.y
+      }
       record.manual_surface_index = event.surface.index
-      move_team_mate(record, destination, 1)
+      if #manual_destinations == 1 then
+        move_team_mate_toward_destination(record, destination)
+      end
+      refresh_route_renderings(record, event.player_index)
       ordered_count = ordered_count + 1
     end
   end
 
-  player.print({"not-alone.team-mates-ordered", ordered_count})
+  if append then
+    player.print({"not-alone.team-mates-waypoint-added", ordered_count})
+  else
+    player.print({"not-alone.team-mates-ordered", ordered_count})
+  end
+end
+
+function poc.on_reverse_selected_area(event)
+  order_selected_team_mates(event, false)
+end
+
+function poc.on_alt_reverse_selected_area(event)
+  order_selected_team_mates(event, true)
 end
 
 function poc.on_update(event)
@@ -310,6 +445,10 @@ function poc.register()
   script.on_event(defines.events.on_player_removed, poc.on_player_removed)
   script.on_event(defines.events.on_player_selected_area, poc.on_selected_area)
   script.on_event(defines.events.on_player_reverse_selected_area, poc.on_reverse_selected_area)
+  script.on_event(
+    defines.events.on_player_alt_reverse_selected_area,
+    poc.on_alt_reverse_selected_area
+  )
   script.on_nth_tick(UPDATE_INTERVAL, poc.on_update)
 end
 

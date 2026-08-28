@@ -84,6 +84,11 @@ local command_tool = {
 		border_color = {1, 0.8, 0.1},
 		mode = {"any-tile"},
 		cursor_box_type = "pair"
+	},
+	alt_reverse_select = {
+		border_color = {0.2, 0.7, 1},
+		mode = {"any-tile"},
+		cursor_box_type = "pair"
 	}
 }
 

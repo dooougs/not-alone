@@ -6,6 +6,8 @@ Date: 2026-08-28
     - Added the autonomous team mate proof of concept.
     - Converted team mates to player-shaped units with native pathfinding and combat commands.
     - Added a command tool for selecting team mates and assigning movement destinations.
-    - Added map exploration as team mates enter new chunks.
+    - Added Shift-right-click waypoint queues with visible route lines and destination markers.
+    - Added map exploration with the default player's 5x5 chunk reveal area as team mates travel.
+    - Allowed scout orders into fogged and uncharted terrain with progressive hidden chunk generation.
   Changes:
     - Removed formation, automatic follow, and teleport behavior.
