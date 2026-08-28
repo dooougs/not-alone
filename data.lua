@@ -11,7 +11,7 @@ team_mate.collision_box = {{-0.2, -0.2}, {0.2, 0.2}}
 team_mate.selection_box = {{-0.4, -1.4}, {0.4, 0.2}}
 team_mate.subgroup = "creatures"
 team_mate.order = "a[character]-b[team-mate]"
-team_mate.movement_speed = 0.15
+team_mate.movement_speed = data.raw.character.character.running_speed
 team_mate.distance_per_frame = 0.13
 team_mate.vision_distance = 30
 team_mate.radar_range = 2
@@ -94,4 +94,41 @@ local command_tool = {
 	}
 }
 
-data:extend({team_mate, command_tool})
+local iron_miner_token = {
+	type = "item",
+	name = "not-alone-iron-miner-token",
+	icon = "__base__/graphics/icons/iron-plate.png",
+	flags = {"not-stackable"},
+	subgroup = "tool",
+	order = "z[not-alone]-a[iron-miner]",
+	stack_size = 1
+}
+
+local iron_miner_recipe = {
+	type = "recipe",
+	name = "not-alone-iron-miner-token",
+	enabled = false,
+	ingredients = {
+		{type = "item", name = "iron-plate", amount = 5}
+	},
+	results = {
+		{type = "item", name = "not-alone-iron-miner-token", amount = 1}
+	}
+}
+
+local iron_miner_technology = {
+	type = "technology",
+	name = "not-alone-iron-miner",
+	icon = "__base__/graphics/technology/steel-processing.png",
+	icon_size = 256,
+	effects = {
+		{type = "unlock-recipe", recipe = "not-alone-iron-miner-token"}
+	},
+	unit = {
+		count = 50,
+		ingredients = {{"automation-science-pack", 1}},
+		time = 15
+	}
+}
+
+data:extend({team_mate, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
