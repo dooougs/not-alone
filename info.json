@@ -1,0 +1,9 @@
+{
+  "name": "not-alone",
+  "version": "0.1.0",
+  "title": "Not Alone",
+  "author": "dougs",
+  "factorio_version": "2.0",
+  "dependencies": ["base >= 2.0.0"],
+  "description": "A starting point for the Not Alone mod."
+}

@@ -1,0 +1,1 @@
+-- Define prototypes here with data:extend({...}).
