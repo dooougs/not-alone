@@ -15,6 +15,7 @@ local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
+local MINING_SOUND_VARIATION_COUNT = 7
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
@@ -135,10 +136,7 @@ local function update_iron_miner(record, player)
         record.role_state = "find-ore"
         record.role_target = nil
       else
-        local mined = math.min(
-          IRON_MINER_CAPACITY - (record.carried_ore or 0),
-          resource.amount
-        )
+        local mined = 1
         local remaining_amount = resource.amount - mined
         if remaining_amount > 0 then
           resource.amount = remaining_amount
@@ -146,6 +144,12 @@ local function update_iron_miner(record, player)
           resource.deplete()
         end
         record.carried_ore = (record.carried_ore or 0) + mined
+        record.entity.surface.play_sound({
+          path = "__core__/sound/axe-mining-stone-"
+            .. math.random(MINING_SOUND_VARIATION_COUNT) .. ".ogg",
+          position = resource.position,
+          volume_modifier = 0.8
+        })
         record.next_mining_tick = game.tick + get_iron_mining_interval(player)
         if record.carried_ore >= IRON_MINER_CAPACITY or remaining_amount <= 0 then
           record.role_state = "find-consumer"
