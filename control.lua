@@ -1,1 +1,3 @@
--- Register runtime event handlers here with script.on_event(...).
+local poc = require("poc")
+
+poc.register()

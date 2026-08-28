@@ -3,3 +3,9 @@ Version: 0.1.0
 Date: 2026-08-28
   Features:
     - Created the initial mod skeleton.
+    - Added the autonomous team mate proof of concept.
+    - Converted team mates to player-shaped units with native pathfinding and combat commands.
+    - Added a command tool for selecting team mates and assigning movement destinations.
+    - Added map exploration as team mates enter new chunks.
+  Changes:
+    - Removed formation, automatic follow, and teleport behavior.
