@@ -17,3 +17,7 @@ Date: 2026-08-28
     - Added a research-gated Iron Miner role with a role assignment panel and furnace delivery loop.
     - Made the Iron Miner technology available from the default research tree.
     - Removed the token crafting requirement and added a selected-teammate count to the role panel.
+    - Automatically researched the Iron Miner technology for player forces.
+    - Fixed Iron Miner crashes when a resource patch was fully depleted.
+    - Fixed Iron Miner furnace inventory access for Factorio 2.1.
+    - Added the native player mining animation while Iron Miner teammates are mining.

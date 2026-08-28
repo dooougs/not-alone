@@ -20,6 +20,7 @@ local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local wander_with_team_mate
 local stop_team_mate
 local move_team_mate
+local update_mining_animation
 
 local function distance_squared(first, second)
   local delta_x = first.x - second.x
@@ -82,7 +83,7 @@ local function find_nearest_iron_ore(record)
 end
 
 local function furnace_accepts_iron_ore(furnace)
-  local inventory = furnace.get_inventory(defines.inventory.furnace_source)
+  local inventory = furnace.get_inventory(defines.inventory.crafter_input)
   return inventory and inventory.can_insert({name = "iron-ore", count = 1})
 end
 
@@ -99,6 +100,8 @@ local function find_nearest_iron_consumer(record)
 end
 
 local function update_iron_miner(record, player)
+  update_mining_animation(record, record.role_state == "mine")
+
   if record.role_state == "find-ore" then
     local resource = find_nearest_iron_ore(record)
     if resource then
@@ -129,10 +132,15 @@ local function update_iron_miner(record, player)
           IRON_MINER_CAPACITY - (record.carried_ore or 0),
           resource.amount
         )
-        resource.amount = resource.amount - mined
+        local remaining_amount = resource.amount - mined
+        if remaining_amount > 0 then
+          resource.amount = remaining_amount
+        else
+          resource.deplete()
+        end
         record.carried_ore = (record.carried_ore or 0) + mined
         record.next_mining_tick = game.tick + IRON_MINING_INTERVAL
-        if record.carried_ore >= IRON_MINER_CAPACITY or resource.amount <= 0 then
+        if record.carried_ore >= IRON_MINER_CAPACITY or remaining_amount <= 0 then
           record.role_state = "find-consumer"
           record.role_target = nil
         end
@@ -160,7 +168,7 @@ local function update_iron_miner(record, player)
     if not furnace or not furnace.valid then
       record.role_state = "find-consumer"
     else
-      local inventory = furnace.get_inventory(defines.inventory.furnace_source)
+      local inventory = furnace.get_inventory(defines.inventory.crafter_input)
       local inserted = inventory and inventory.insert({
         name = "iron-ore",
         count = record.carried_ore or 0
@@ -177,6 +185,27 @@ local function update_iron_miner(record, player)
   end
 
   return true
+end
+
+update_mining_animation = function(record, should_show)
+  local render_object = record.mining_animation_id
+    and rendering.get_object_by_id(record.mining_animation_id)
+  if should_show then
+    if render_object then
+      return
+    end
+
+    record.mining_animation_id = rendering.draw_animation({
+      animation = "not-alone-team-mate-mining",
+      target = record.entity,
+      orientation_target = record.entity,
+      use_target_orientation = true,
+      render_layer = "object"
+    }).id
+  elseif render_object then
+    render_object.destroy()
+    record.mining_animation_id = nil
+  end
 end
 
 local function refresh_route_renderings(record, player_index)
@@ -241,6 +270,13 @@ local function ensure_role_gui(player)
     caption = {"not-alone.assign-iron-miner"},
     tooltip = {"not-alone.assign-iron-miner-tooltip"}
   })
+end
+
+local function ensure_iron_miner_technology(force)
+  local technology = force.technologies[IRON_MINER_TECHNOLOGY_NAME]
+  if technology then
+    technology.researched = true
+  end
 end
 
 local function update_role_selection_status(player)
@@ -473,6 +509,7 @@ function poc.on_init()
   storage.not_alone_pending_spawns = {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
+    ensure_iron_miner_technology(player.force)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
@@ -492,15 +529,18 @@ function poc.on_configuration_changed()
   storage.not_alone_pending_spawns = {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
+    ensure_iron_miner_technology(player.force)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
 end
 
 function poc.on_player_created(event)
+  local player = game.get_player(event.player_index)
+  ensure_iron_miner_technology(player.force)
   storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
   storage.not_alone_pending_spawns[event.player_index] = game.tick + 1
-  ensure_role_gui(game.get_player(event.player_index))
+  ensure_role_gui(player)
 end
 
 function poc.on_gui_click(event)

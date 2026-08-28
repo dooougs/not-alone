@@ -62,6 +62,17 @@ team_mate.ai_settings = {
 	allow_try_return_to_spawner = false
 }
 
+local mining_animation = {
+	type = "animation",
+	name = "not-alone-team-mate-mining",
+	layers = {
+		character_animations.level1.mining_tool,
+		character_animations.level1.mining_tool_mask,
+		character_animations.level1.mining_tool_shadow
+	},
+	repeat_count = 255
+}
+
 local command_tool = {
 	type = "selection-tool",
 	name = "not-alone-command-tool",
@@ -131,4 +142,4 @@ local iron_miner_technology = {
 	}
 }
 
-data:extend({team_mate, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
+data:extend({team_mate, mining_animation, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
