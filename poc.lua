@@ -15,6 +15,7 @@ local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
+local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
@@ -203,7 +204,22 @@ update_mining_animation = function(record, should_show)
   if should_show then
     if not record.mining_hidden then
       record.mining_color = record.entity.color or {r = 1, g = 1, b = 1, a = 1}
-      record.entity.color = {r = 1, g = 1, b = 1, a = 0}
+      local visible_entity = record.entity
+      local hidden_entity = visible_entity.surface.create_entity({
+        name = HIDDEN_TEAM_MATE_NAME,
+        position = visible_entity.position,
+        force = visible_entity.force,
+        orientation = visible_entity.orientation,
+        create_build_effect_smoke = false
+      })
+      if not hidden_entity then
+        return
+      end
+      hidden_entity.color = record.mining_color
+      hidden_entity.name_tag = visible_entity.name_tag
+      hidden_entity.health = visible_entity.health
+      visible_entity.destroy()
+      record.entity = hidden_entity
       record.mining_hidden = true
     end
     if render_object then
@@ -221,15 +237,25 @@ update_mining_animation = function(record, should_show)
   elseif render_object then
     render_object.destroy()
     record.mining_animation_id = nil
-    if record.mining_hidden then
-      record.entity.color = record.mining_color
+  end
+  if not should_show and record.mining_hidden then
+    local hidden_entity = record.entity
+    local visible_entity = hidden_entity.surface.create_entity({
+      name = TEAM_MATE_NAME,
+      position = hidden_entity.position,
+      force = hidden_entity.force,
+      orientation = hidden_entity.orientation,
+      create_build_effect_smoke = false
+    })
+    if visible_entity then
+      visible_entity.color = record.mining_color
+      visible_entity.name_tag = hidden_entity.name_tag
+      visible_entity.health = hidden_entity.health
+      hidden_entity.destroy()
+      record.entity = visible_entity
       record.mining_hidden = nil
       record.mining_color = nil
     end
-  elseif record.mining_hidden then
-    record.entity.color = record.mining_color
-    record.mining_hidden = nil
-    record.mining_color = nil
   end
 end
 

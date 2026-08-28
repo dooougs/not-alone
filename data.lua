@@ -62,6 +62,11 @@ team_mate.ai_settings = {
 	allow_try_return_to_spawner = false
 }
 
+local hidden_team_mate = table.deepcopy(team_mate)
+hidden_team_mate.name = "not-alone-team-mate-hidden"
+hidden_team_mate.run_animation = {layers = {}}
+hidden_team_mate.attack_parameters.animation = {layers = {}}
+
 local mining_animation = {
 	type = "animation",
 	name = "not-alone-team-mate-mining",
@@ -156,4 +161,4 @@ local iron_miner_technology = {
 	}
 }
 
-data:extend({team_mate, mining_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
+data:extend({team_mate, hidden_team_mate, mining_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
