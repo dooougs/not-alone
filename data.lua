@@ -64,8 +64,15 @@ team_mate.ai_settings = {
 
 local hidden_team_mate = table.deepcopy(team_mate)
 hidden_team_mate.name = "not-alone-team-mate-hidden"
-hidden_team_mate.run_animation = {layers = {}}
-hidden_team_mate.attack_parameters.animation = {layers = {}}
+local hidden_animation_layer = {
+	filename = "__core__/graphics/empty.png",
+	width = 1,
+	height = 1,
+	frame_count = 1,
+	direction_count = 1
+}
+hidden_team_mate.run_animation = {layers = {hidden_animation_layer}}
+hidden_team_mate.attack_parameters.animation = {layers = {hidden_animation_layer}}
 
 local mining_animation = {
 	type = "animation",

@@ -220,6 +220,10 @@ update_mining_animation = function(record, should_show)
       hidden_entity.health = visible_entity.health
       visible_entity.destroy()
       record.entity = hidden_entity
+      hidden_entity.commandable.set_command({type = defines.command.stop})
+      record.command_kind = "stop"
+      record.command_destination = nil
+      record.command_target = nil
       record.mining_hidden = true
     end
     if render_object then
@@ -253,6 +257,9 @@ update_mining_animation = function(record, should_show)
       visible_entity.health = hidden_entity.health
       hidden_entity.destroy()
       record.entity = visible_entity
+      record.command_kind = nil
+      record.command_destination = nil
+      record.command_target = nil
       record.mining_hidden = nil
       record.mining_color = nil
     end
