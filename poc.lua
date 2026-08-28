@@ -218,7 +218,9 @@ update_mining_animation = function(record, should_show)
         return
       end
       hidden_entity.color = record.mining_color
-      hidden_entity.name_tag = visible_entity.name_tag
+      if visible_entity.name_tag then
+        hidden_entity.name_tag = visible_entity.name_tag
+      end
       hidden_entity.health = visible_entity.health
       visible_entity.destroy()
       record.entity = hidden_entity
@@ -261,7 +263,9 @@ update_mining_animation = function(record, should_show)
     })
     if visible_entity then
       visible_entity.color = record.mining_color
-      visible_entity.name_tag = hidden_entity.name_tag
+      if hidden_entity.name_tag then
+        visible_entity.name_tag = hidden_entity.name_tag
+      end
       visible_entity.health = hidden_entity.health
       hidden_entity.destroy()
       record.entity = visible_entity
