@@ -3,9 +3,9 @@ local poc = {}
 local TEAM_MATE_COUNT = 10
 local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
+local WANDER_RADIUS = 10
 local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
-local PLAYER_CHART_RADIUS = 2
 local SCOUT_WAYPOINT_DISTANCE = 64
 local SCOUT_GENERATION_RADIUS = 2
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
@@ -87,6 +87,21 @@ local function stop_team_mate(record)
   end
 end
 
+local function wander_with_team_mate(record)
+  if record.command_kind == "wander" and record.entity.commandable.has_command then
+    return
+  end
+
+  record.entity.commandable.set_command({
+    type = defines.command.wander,
+    radius = WANDER_RADIUS,
+    distraction = defines.distraction.by_enemy
+  })
+  record.command_kind = "wander"
+  record.command_destination = nil
+  record.command_target = nil
+end
+
 local function move_team_mate(record, destination, stopping_distance)
   if distance_squared(record.entity.position, destination) <= stopping_distance * stopping_distance then
     stop_team_mate(record)
@@ -160,32 +175,6 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
-local function reveal_team_mate_area(record)
-  local character = record.entity
-  local chunk_x = math.floor(character.position.x / CHUNK_SIZE)
-  local chunk_y = math.floor(character.position.y / CHUNK_SIZE)
-
-  if record.chart_surface_index == character.surface_index
-    and record.chart_chunk_x == chunk_x
-    and record.chart_chunk_y == chunk_y then
-    return
-  end
-
-  character.force.chart(character.surface, {
-    {
-      x = (chunk_x - PLAYER_CHART_RADIUS) * CHUNK_SIZE,
-      y = (chunk_y - PLAYER_CHART_RADIUS) * CHUNK_SIZE
-    },
-    {
-      x = (chunk_x + PLAYER_CHART_RADIUS + 1) * CHUNK_SIZE,
-      y = (chunk_y + PLAYER_CHART_RADIUS + 1) * CHUNK_SIZE
-    }
-  })
-  record.chart_surface_index = character.surface_index
-  record.chart_chunk_x = chunk_x
-  record.chart_chunk_y = chunk_y
-end
-
 local function spawn_team_mates(player)
   if not player.valid or not player.character or not player.character.valid then
     return false
@@ -238,8 +227,6 @@ local function update_team_mate(record, player)
     return false
   end
 
-  reveal_team_mate_area(record)
-
   local manual_destinations = get_manual_destinations(record)
   if record.route_render_ids == nil and #manual_destinations > 0 then
     refresh_route_renderings(record, player.index)
@@ -276,7 +263,7 @@ local function update_team_mate(record, player)
   if enemy and enemy.valid then
     attack_with_team_mate(record, enemy)
   else
-    stop_team_mate(record)
+    wander_with_team_mate(record)
   end
 
   return true

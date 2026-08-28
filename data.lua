@@ -14,6 +14,8 @@ team_mate.order = "a[character]-b[team-mate]"
 team_mate.movement_speed = 0.15
 team_mate.distance_per_frame = 0.13
 team_mate.vision_distance = 30
+team_mate.radar_range = 2
+team_mate.friendly_map_color = {r = 0.2, g = 1, b = 0.2, a = 1}
 team_mate.corpse = nil
 team_mate.dying_explosion = nil
 team_mate.dying_sound = nil

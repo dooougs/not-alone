@@ -9,5 +9,7 @@ Date: 2026-08-28
     - Added Shift-right-click waypoint queues with visible route lines and destination markers.
     - Added map exploration with the default player's 5x5 chunk reveal area as team mates travel.
     - Allowed scout orders into fogged and uncharted terrain with progressive hidden chunk generation.
+    - Gave every team mate native live radar coverage and a consistent friendly map marker.
   Changes:
     - Removed formation, automatic follow, and teleport behavior.
+    - Limited free wandering to team mates with no active or queued destination.

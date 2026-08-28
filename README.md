@@ -13,9 +13,10 @@ A basic mod skeleton for Factorio 2.1.
 ## Current proof of concept
 
 When a player is created, ten player-shaped **team mates** spawn nearby. They are native Factorio
-units, so they use the engine's pathfinder to navigate around obstacles. Team mates hold their
-position and engage nearby enemies until ordered elsewhere. Their built-in ranged attack uses
-pistol-like physical damage.
+units, so they use the engine's pathfinder to navigate around obstacles. When team mates have no
+destination or queued waypoint remaining, they wander freely and engage nearby enemies. While a
+route is active, they follow its destinations in order without wandering. Their built-in ranged
+attack uses pistol-like physical damage.
 
 Factorio units do not have character gun or ammunition inventories. The unit conversion therefore
 replaces copied starter equipment and ammunition depletion with a built-in attack.
@@ -28,9 +29,9 @@ right-drag replaces the existing route.
 
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are
-never teleported or automatically returned to the player. As team mates travel, they reveal a 5×5
-chunk area centered on their current chunk for their force, matching the default player exploration
-radius.
+never teleported or automatically returned to the player. Each team mate has native radar coverage
+that keeps a 5×5 chunk area centered on its current chunk visible to its force and gives it a
+consistent friendly map marker.
 
 ## Install for development
 
