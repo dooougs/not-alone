@@ -15,6 +15,8 @@ local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
+local MINING_ANIMATION_FRAMES = 50
+local MINING_ANIMATION_SPEED = 50 / 30
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
@@ -123,7 +125,7 @@ local function update_iron_miner(record, player)
       record.role_state = "find-ore"
     elseif distance_squared(record.entity.position, record.role_target.position) <= 4 then
       record.role_state = "mine"
-      record.next_mining_tick = game.tick
+      record.next_mining_tick = game.tick + math.random(get_iron_mining_interval(player))
       stop_team_mate(record)
     else
       move_team_mate(record, record.role_target.position, 2)
@@ -150,7 +152,7 @@ local function update_iron_miner(record, player)
           position = mining_position,
           volume_modifier = 0.8
         })
-        record.next_mining_tick = game.tick + get_iron_mining_interval(player)
+        record.next_mining_tick = record.next_mining_tick + get_iron_mining_interval(player)
         if record.carried_ore >= IRON_MINER_CAPACITY or remaining_amount <= 0 then
           record.role_state = "find-consumer"
           record.role_target = nil
@@ -230,11 +232,17 @@ update_mining_animation = function(record, should_show)
       return
     end
 
+    -- Script animations run on the global tick clock; anchor frame zero to this
+    -- miner's own strike schedule so miners desync and redraws never jump frames.
+    local anchor_tick = record.next_mining_tick or game.tick
+    local animation_offset = (MINING_ANIMATION_FRAMES
+      - ((anchor_tick * MINING_ANIMATION_SPEED) % MINING_ANIMATION_FRAMES)) % MINING_ANIMATION_FRAMES
     record.mining_animation_id = rendering.draw_animation({
       animation = "not-alone-team-mate-mining",
       target = record.entity,
       surface = record.entity.surface,
       orientation = record.entity.orientation,
+      animation_offset = animation_offset,
       tint = record.mining_color,
       render_layer = "object"
     }).id

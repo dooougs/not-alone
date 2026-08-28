@@ -33,6 +33,17 @@ team_mate.attack_parameters = {
 	ammo_category = "bullet",
 	cooldown = 15,
 	range = 15,
+	sound = {
+		variations = {
+			{filename = "__base__/sound/fight/light-gunshot-1.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-2.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-3.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-4.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-5.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-6.ogg", volume = 0.6},
+			{filename = "__base__/sound/fight/light-gunshot-7.ogg", volume = 0.6}
+		}
+	},
 	ammo_type = {
 		category = "bullet",
 		target_type = "entity",
@@ -74,28 +85,47 @@ local hidden_animation_layer = {
 hidden_team_mate.run_animation = {layers = {hidden_animation_layer}}
 hidden_team_mate.attack_parameters.animation = {layers = {hidden_animation_layer}}
 
+local mining_tool = table.deepcopy(character_animations.level1.mining_tool)
+local mining_tool_mask = table.deepcopy(character_animations.level1.mining_tool_mask)
+local mining_tool_shadow = table.deepcopy(character_animations.level1.mining_tool_shadow)
+-- Bounce: play forward then backward for a 50-step cycle completing in 30 ticks
+-- (divides the 120-tick strike interval exactly).
+local mining_bounce_sequence = {}
+for frame = 1, 26 do
+	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
+end
+for frame = 25, 2, -1 do
+	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
+end
+mining_tool.frame_sequence = mining_bounce_sequence
+mining_tool_mask.frame_sequence = mining_bounce_sequence
+mining_tool_shadow.frame_sequence = mining_bounce_sequence
+mining_tool.animation_speed = 50 / 30
+
 local mining_animation = {
 	type = "animation",
 	name = "not-alone-team-mate-mining",
 	layers = {
-		character_animations.level1.mining_tool,
-		character_animations.level1.mining_tool_mask,
-		character_animations.level1.mining_tool_shadow
-	},
-	repeat_count = 255
+		mining_tool,
+		mining_tool_mask,
+		mining_tool_shadow
+	}
 }
 
 local mining_sound = {
 	type = "sound",
 	name = "not-alone-team-mate-mining-sound",
 	variations = {
-		{filename = "__core__/sound/axe-mining-stone-1.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-2.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-3.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-4.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-5.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-6.ogg", volume = 0.4},
-		{filename = "__core__/sound/axe-mining-stone-7.ogg", volume = 0.4}
+		{filename = "__core__/sound/axe-mining-ore-1.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-2.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-3.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-4.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-5.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-6.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-7.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-8.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-9.ogg", volume = 0.4},
+		{filename = "__core__/sound/axe-mining-ore-10.ogg", volume = 0.4}
 	}
 }
 
