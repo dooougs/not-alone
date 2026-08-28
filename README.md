@@ -27,9 +27,10 @@ group there. Shift-right-drag adds further destinations to the end of the route.
 route is shown with connected ground lines and waypoint markers visible to its owner. A normal
 right-drag replaces the existing route.
 
-Research the Iron Miner technology and craft an **Iron Miner token** to unlock the Iron Miner role.
-Keep the token in your inventory, select team mates with the command tool, and use the role panel to
-assign it. Assigned workers find the nearest iron ore within 128 tiles, simulate mining a 50-ore load,
+Research the Iron Miner technology to unlock the Iron Miner role. Select team mates by putting the
+**Team mate command tool** in your cursor, dragging over the units, and releasing. The role panel
+shows the selected count; click **Assign Iron Miner** to assign the role. No token needs to be crafted.
+Assigned workers find the nearest iron ore within 128 tiles, simulate mining a 50-ore load,
 walk to the nearest furnace that accepts iron ore, deliver it, and repeat. Manual routes take priority
 over role work while they are active.
 

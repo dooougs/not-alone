@@ -9,7 +9,7 @@ local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
 local SCOUT_GENERATION_RADIUS = 2
 local IRON_MINER_ROLE = "iron-miner"
-local IRON_MINER_TOKEN_NAME = "not-alone-iron-miner-token"
+local IRON_MINER_TECHNOLOGY_NAME = "not-alone-iron-miner"
 local IRON_ORE_SEARCH_RADIUS = 128
 local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
@@ -231,11 +231,36 @@ local function ensure_role_gui(player)
     caption = {"not-alone.role-frame-title"}
   })
   frame.add({
+    type = "label",
+    name = "not_alone_role_selection_status",
+    caption = {"not-alone.role-selection-status", 0}
+  })
+  frame.add({
     type = "button",
     name = "not_alone_assign_iron_miner",
     caption = {"not-alone.assign-iron-miner"},
     tooltip = {"not-alone.assign-iron-miner-tooltip"}
   })
+end
+
+local function update_role_selection_status(player)
+  local frame = player.gui.left.not_alone_role_frame
+  if not frame or not frame.valid then
+    return
+  end
+
+  local status = frame.not_alone_role_selection_status
+  if not status or not status.valid then
+    return
+  end
+
+  local selected = storage.not_alone_selected_team_mates
+    and storage.not_alone_selected_team_mates[player.index]
+  local selected_count = 0
+  for _ in pairs(selected or {}) do
+    selected_count = selected_count + 1
+  end
+  status.caption = {"not-alone.role-selection-status", selected_count}
 end
 
 stop_team_mate = function(record)
@@ -489,8 +514,9 @@ function poc.on_gui_click(event)
     return
   end
 
-  if player.get_item_count(IRON_MINER_TOKEN_NAME) == 0 then
-    player.print({"not-alone.iron-miner-token-required"})
+  local technology = player.force.technologies[IRON_MINER_TECHNOLOGY_NAME]
+  if not technology or not technology.researched then
+    player.print({"not-alone.iron-miner-technology-required"})
     return
   end
 
@@ -516,6 +542,7 @@ function poc.on_gui_click(event)
   end
 
   player.print({"not-alone.iron-miners-assigned", assigned_count})
+  update_role_selection_status(player)
 end
 
 function poc.on_player_removed(event)
@@ -558,7 +585,9 @@ function poc.on_selected_area(event)
 
   storage.not_alone_selected_team_mates = storage.not_alone_selected_team_mates or {}
   storage.not_alone_selected_team_mates[event.player_index] = selected
-  game.get_player(event.player_index).print({"not-alone.team-mates-selected", selected_count})
+  local player = game.get_player(event.player_index)
+  player.print({"not-alone.team-mates-selected", selected_count})
+  update_role_selection_status(player)
 end
 
 local function order_selected_team_mates(event, append)
