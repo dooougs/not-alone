@@ -104,8 +104,10 @@ end
 mining_tool.frame_sequence = mining_bounce_sequence
 mining_tool_mask.frame_sequence = mining_bounce_sequence
 mining_tool_shadow.frame_sequence = mining_bounce_sequence
-mining_tool.animation_speed = 52 / 30
-mining_tool_mask.animation_speed = 52 / 30
+-- Under 1 frame per tick so no sequence steps are skipped and the apex hold
+-- always renders; the 60-tick cycle still divides the 120-tick strike interval.
+mining_tool.animation_speed = 52 / 60
+mining_tool_mask.animation_speed = 52 / 60
 -- Runtime rendering tints the whole object, so the mask is a separate prototype
 -- tinted independently of the untinted body.
 mining_tool_mask.apply_runtime_tint = nil

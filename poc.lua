@@ -16,7 +16,7 @@ local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
 local MINING_ANIMATION_FRAMES = 52
-local MINING_ANIMATION_SPEED = 52 / 30
+local MINING_ANIMATION_SPEED = 52 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
