@@ -27,3 +27,5 @@ Date: 2026-08-28
     - Added resource-specific furnace delivery, including fuel-inventory delivery for coal.
     - Moved logistic chest recipe unlocks to Electronics and changed their ingredient to one iron chest.
     - Allowed the command tool to select team mates while they are mining.
+    - Added autonomous logistic-network hauling for unassigned team mates.
+    - Added automatic item-ingredient and compatible-fuel requests for covered buildings.

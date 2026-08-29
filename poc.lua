@@ -14,6 +14,9 @@ local CONSUMER_SEARCH_RADIUS = 128
 local MINER_CAPACITY = 50
 local RESOURCE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
+local LOGISTICS_SEARCH_RADIUS = 128
+local LOGISTICS_CAPACITY = 50
+local FUEL_REQUEST_COUNT = 5
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
@@ -68,6 +71,26 @@ for _, mining_role in pairs(MINING_ROLES) do
   MINING_ROLE_BY_NAME[mining_role.name] = mining_role
   MINING_ROLE_BY_BUTTON[mining_role.button_name] = mining_role
 end
+local LOGISTICS_SOURCE_MODES = {
+  ["active-provider"] = true,
+  ["passive-provider"] = true,
+  ["storage"] = true,
+  ["buffer"] = true
+}
+local LOGISTICS_DESTINATION_TYPES = {
+  "assembling-machine",
+  "boiler",
+  "burner-generator",
+  "furnace",
+  "inserter",
+  "mining-drill",
+  "rocket-silo"
+}
+local RECIPE_ENTITY_TYPES = {
+  ["assembling-machine"] = true,
+  ["furnace"] = true,
+  ["rocket-silo"] = true
+}
 local wander_with_team_mate
 local stop_team_mate
 local move_team_mate
@@ -156,6 +179,299 @@ local function get_mining_interval(player)
   local mining_speed_modifier = player.character_mining_speed_modifier
   local effective_mining_speed = NORMAL_CHARACTER_MINING_SPEED * (1 + mining_speed_modifier)
   return math.max(1, math.ceil(RESOURCE_MINING_TIME * 60 / effective_mining_speed))
+end
+
+local function get_logistics_source_inventory(source)
+  if not source or not source.valid
+    or not LOGISTICS_SOURCE_MODES[source.prototype.logistic_mode] then
+    return nil
+  end
+  return source.get_inventory(defines.inventory.chest)
+end
+
+local function find_logistics_source(record, network, item_name)
+  local nearest_source
+  local nearest_distance
+  for _, source in pairs(network.storages) do
+    local inventory = get_logistics_source_inventory(source)
+    if inventory and inventory.get_item_count(item_name) > 0 then
+      local current_distance = distance_squared(record.entity.position, source.position)
+      if not nearest_distance or current_distance < nearest_distance then
+        nearest_source = source
+        nearest_distance = current_distance
+      end
+    end
+  end
+  return nearest_source
+end
+
+local function get_logistics_target_inventory(target, inventory_kind)
+  if not target or not target.valid then
+    return nil
+  end
+  if inventory_kind == "fuel" then
+    return target.burner and target.burner.inventory
+  end
+  return target.get_inventory(defines.inventory.crafter_input)
+end
+
+local function get_recipe_job(record, target, network)
+  if not RECIPE_ENTITY_TYPES[target.type] then
+    return nil
+  end
+  local recipe = target.get_recipe()
+  local inventory = target.get_inventory(defines.inventory.crafter_input)
+  if not recipe or not inventory then
+    return nil
+  end
+
+  for _, ingredient in pairs(recipe.ingredients) do
+    if ingredient.type == "item" then
+      local desired_count = math.ceil(ingredient.amount)
+      local missing_count = desired_count - inventory.get_item_count(ingredient.name)
+      if missing_count > 0 and inventory.get_insertable_count(ingredient.name) > 0 then
+        local source = find_logistics_source(record, network, ingredient.name)
+        if source then
+          return ingredient.name, missing_count, "input", source
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function get_fuel_request(target, network, record)
+  local burner = target.burner
+  if not burner or not burner.inventory then
+    return nil
+  end
+
+  for _, source in pairs(network.storages) do
+    local inventory = get_logistics_source_inventory(source)
+    if inventory then
+      for _, item in pairs(inventory.get_contents()) do
+        local item_prototype = prototypes.item[item.name]
+        if item_prototype and burner.fuel_categories[item_prototype.fuel_category]
+          and burner.inventory.get_item_count(item.name) < FUEL_REQUEST_COUNT
+          and burner.inventory.get_insertable_count(item.name) > 0 then
+          return item.name,
+            FUEL_REQUEST_COUNT - burner.inventory.get_item_count(item.name),
+            "fuel",
+            find_logistics_source(record, network, item.name)
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function find_logistics_job(record)
+  local surface = record.entity.surface
+  local network = surface.find_logistic_network_by_position(
+    record.entity.force,
+    record.entity.position
+  )
+  if not network then
+    return nil
+  end
+
+  local destinations = surface.find_entities_filtered({
+    type = LOGISTICS_DESTINATION_TYPES,
+    force = record.entity.force,
+    position = record.entity.position,
+    radius = LOGISTICS_SEARCH_RADIUS
+  })
+  table.sort(destinations, function(first, second)
+    return distance_squared(record.entity.position, first.position)
+      < distance_squared(record.entity.position, second.position)
+  end)
+
+  for _, target in pairs(destinations) do
+    local target_network = surface.find_logistic_network_by_position(
+      record.entity.force,
+      target.position
+    )
+    if target_network == network then
+      local item_name, count, inventory_kind, source = get_recipe_job(
+        record,
+        target,
+        network
+      )
+      if not source then
+        item_name, count, inventory_kind, source = get_fuel_request(target, network, record)
+      end
+      if source then
+        return {
+          source = source,
+          target = target,
+          item_name = item_name,
+          count = math.min(count, LOGISTICS_CAPACITY),
+          inventory_kind = inventory_kind
+        }
+      end
+    end
+  end
+  return nil
+end
+
+local function clear_logistics_job(record)
+  record.logistics_state = nil
+  record.logistics_source = nil
+  record.logistics_target = nil
+  record.logistics_item_name = nil
+  record.logistics_requested_count = nil
+  record.logistics_inventory_kind = nil
+end
+
+local function find_logistics_return_source(record)
+  local network = record.entity.surface.find_logistic_network_by_position(
+    record.entity.force,
+    record.entity.position
+  )
+  if not network then
+    return nil
+  end
+
+  local nearest_source
+  local nearest_distance
+  for _, source in pairs(network.storages) do
+    local inventory = get_logistics_source_inventory(source)
+    if inventory and inventory.get_insertable_count(record.logistics_item_name) > 0 then
+      local current_distance = distance_squared(record.entity.position, source.position)
+      if not nearest_distance or current_distance < nearest_distance then
+        nearest_source = source
+        nearest_distance = current_distance
+      end
+    end
+  end
+  return nearest_source
+end
+
+local function return_logistics_cargo_immediately(record)
+  local remaining_count = record.logistics_carried_count or 0
+  if remaining_count <= 0 then
+    record.logistics_carried_count = 0
+    clear_logistics_job(record)
+    return true
+  end
+
+  local source = record.logistics_source
+  local inventory = get_logistics_source_inventory(source)
+  if not inventory or inventory.get_insertable_count(record.logistics_item_name) <= 0 then
+    source = find_logistics_return_source(record)
+    inventory = get_logistics_source_inventory(source)
+  end
+  if not inventory then
+    record.logistics_state = "return-cargo"
+    return false
+  end
+
+  local inserted = inventory.insert({
+    name = record.logistics_item_name,
+    count = remaining_count
+  })
+  record.logistics_carried_count = remaining_count - inserted
+  if record.logistics_carried_count <= 0 then
+    record.logistics_carried_count = 0
+    clear_logistics_job(record)
+    return true
+  end
+  record.logistics_source = source
+  record.logistics_state = "return-cargo"
+  return false
+end
+
+local function update_logistics(record)
+  if not record.logistics_state then
+    local job = find_logistics_job(record)
+    if not job then
+      return false
+    end
+    record.logistics_source = job.source
+    record.logistics_target = job.target
+    record.logistics_item_name = job.item_name
+    record.logistics_requested_count = job.count
+    record.logistics_inventory_kind = job.inventory_kind
+    record.logistics_state = "move-to-source"
+  end
+
+  if record.logistics_state == "move-to-source" then
+    local source_inventory = get_logistics_source_inventory(record.logistics_source)
+    local target_inventory = get_logistics_target_inventory(
+      record.logistics_target,
+      record.logistics_inventory_kind
+    )
+    if not source_inventory or not target_inventory
+      or source_inventory.get_item_count(record.logistics_item_name) <= 0
+      or target_inventory.get_insertable_count(record.logistics_item_name) <= 0 then
+      clear_logistics_job(record)
+      return false
+    elseif distance_squared(record.entity.position, record.logistics_source.position) <= 4 then
+      local pickup_count = math.min(
+        record.logistics_requested_count,
+        source_inventory.get_item_count(record.logistics_item_name),
+        target_inventory.get_insertable_count(record.logistics_item_name)
+      )
+      record.logistics_carried_count = source_inventory.remove({
+        name = record.logistics_item_name,
+        count = pickup_count
+      })
+      if record.logistics_carried_count > 0 then
+        record.logistics_state = "move-to-target"
+      else
+        clear_logistics_job(record)
+        return false
+      end
+    else
+      move_team_mate(record, record.logistics_source.position, 2)
+    end
+  elseif record.logistics_state == "move-to-target" then
+    local target_inventory = get_logistics_target_inventory(
+      record.logistics_target,
+      record.logistics_inventory_kind
+    )
+    if not target_inventory
+      or target_inventory.get_insertable_count(record.logistics_item_name) <= 0 then
+      record.logistics_state = "return-cargo"
+    elseif distance_squared(record.entity.position, record.logistics_target.position) <= 4 then
+      local inserted = target_inventory.insert({
+        name = record.logistics_item_name,
+        count = record.logistics_carried_count
+      })
+      record.logistics_carried_count = record.logistics_carried_count - inserted
+      if record.logistics_carried_count > 0 then
+        record.logistics_state = "return-cargo"
+      else
+        clear_logistics_job(record)
+      end
+    else
+      move_team_mate(record, record.logistics_target.position, 2)
+    end
+  elseif record.logistics_state == "return-cargo" then
+    local source_inventory = get_logistics_source_inventory(record.logistics_source)
+    if not source_inventory
+      or source_inventory.get_insertable_count(record.logistics_item_name) <= 0 then
+      record.logistics_source = find_logistics_return_source(record)
+      source_inventory = get_logistics_source_inventory(record.logistics_source)
+    end
+    if not source_inventory then
+      stop_team_mate(record)
+      return true
+    elseif distance_squared(record.entity.position, record.logistics_source.position) <= 4 then
+      local inserted = source_inventory.insert({
+        name = record.logistics_item_name,
+        count = record.logistics_carried_count
+      })
+      record.logistics_carried_count = record.logistics_carried_count - inserted
+      if record.logistics_carried_count <= 0 then
+        record.logistics_carried_count = 0
+        clear_logistics_job(record)
+      end
+    else
+      move_team_mate(record, record.logistics_source.position, 2)
+    end
+  end
+  return true
 end
 
 local function update_miner(record, player, mining_role)
@@ -697,6 +1013,8 @@ local function update_team_mate(record, player)
 
   if enemy and enemy.valid then
     attack_with_team_mate(record, enemy)
+  elseif update_logistics(record) then
+    return true
   else
     wander_with_team_mate(record)
   end
@@ -778,7 +1096,8 @@ function poc.on_gui_click(event)
   local assigned_count = 0
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
-    if entity.valid and selected and selected[entity.unit_number] then
+    if entity.valid and selected and selected[entity.unit_number]
+      and return_logistics_cargo_immediately(record) then
       record.role = mining_role.name
       record.role_state = "find-ore"
       record.role_target = nil

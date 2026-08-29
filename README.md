@@ -42,6 +42,13 @@ deposit whatever will fit and find another furnace for any remainder. Manual rou
 over role work while they are active. While mining, team mates display the native player mining
 animation and play the vanilla mining strike sound for each item.
 
+Unassigned team mates also work as ground-based logistic bots while inside a logistic network.
+They collect requested items from active or passive provider, storage, and buffer chests, then walk
+them to covered buildings. Assemblers, furnaces, and rocket silos automatically request missing
+item ingredients for their current recipe. Burner-powered buildings automatically request
+compatible fuel. If a destination changes or fills while a delivery is in progress, the team mate
+returns the cargo to logistic storage. Fluid ingredients are not carried.
+
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are
 never teleported or automatically returned to the player. Each team mate has native radar coverage
