@@ -1,5 +1,21 @@
 require("__base__.prototypes.entity.character-animations")
 
+local logistic_chest_recipe_names = {
+	"passive-provider-chest",
+	"active-provider-chest",
+	"storage-chest",
+	"buffer-chest",
+	"requester-chest"
+}
+for _, recipe_name in pairs(logistic_chest_recipe_names) do
+	local recipe = data.raw.recipe[recipe_name]
+	recipe.enabled = true
+	recipe.ingredients = {
+		{type = "item", name = "steel-chest", amount = 1},
+		{type = "item", name = "electronic-circuit", amount = 3}
+	}
+end
+
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
 team_mate.localised_name = {"entity-name.not-alone-team-mate"}
@@ -85,49 +101,62 @@ local hidden_animation_layer = {
 hidden_team_mate.run_animation = {layers = {hidden_animation_layer}}
 hidden_team_mate.attack_parameters.animation = {layers = {hidden_animation_layer}}
 
-local mining_tool = table.deepcopy(character_animations.level1.mining_tool)
-local mining_tool_mask = table.deepcopy(character_animations.level1.mining_tool_mask)
-local mining_tool_shadow = table.deepcopy(character_animations.level1.mining_tool_shadow)
--- Bounce (forward then backward) with a 2-frame hold at the top of the swing
+-- Bounce (forward then backward) with a 1-frame hold at the top of the swing
 -- before it comes back down, approximating the native player's brief pause.
--- Vanilla exposes no frame_sequence/hold data for this, so the exact native
--- frame count could not be verified; 2 frames matches the reported effect.
 local mining_bounce_sequence = {}
 for frame = 1, 26 do
 	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
 end
 mining_bounce_sequence[#mining_bounce_sequence + 1] = 26
-mining_bounce_sequence[#mining_bounce_sequence + 1] = 26
 for frame = 25, 2, -1 do
 	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
 end
-mining_tool.frame_sequence = mining_bounce_sequence
-mining_tool_mask.frame_sequence = mining_bounce_sequence
-mining_tool_shadow.frame_sequence = mining_bounce_sequence
--- Under 1 frame per tick so no sequence steps are skipped and the apex hold
--- always renders; the 60-tick cycle still divides the 120-tick strike interval.
-mining_tool.animation_speed = 52 / 60
-mining_tool_mask.animation_speed = 52 / 60
--- Runtime rendering tints the whole object, so the mask is a separate prototype
--- tinted independently of the untinted body.
-mining_tool_mask.apply_runtime_tint = nil
 
-local mining_animation = {
-	type = "animation",
-	name = "not-alone-team-mate-mining",
-	layers = {
-		mining_tool,
-		mining_tool_shadow
+-- AnimationPrototype has no direction support, so the character sheets' 8
+-- direction rows each become their own body/mask prototype pair; the runtime
+-- picks the pair matching the unit's facing. Sampling the sheets as flat
+-- grids mixed rows between the striped body and single-file mask, which is
+-- what made the overlay desync from the body.
+local mining_prototypes = {}
+for direction = 0, 7 do
+	local mining_tool = table.deepcopy(character_animations.level1.mining_tool)
+	local mining_tool_mask = table.deepcopy(character_animations.level1.mining_tool_mask)
+	local mining_tool_shadow = table.deepcopy(character_animations.level1.mining_tool_shadow)
+	for _, layer in pairs({mining_tool, mining_tool_mask, mining_tool_shadow}) do
+		layer.direction_count = nil
+		layer.frame_sequence = mining_bounce_sequence
+	end
+	-- Under 1 frame per tick so no sequence steps are skipped and the apex hold
+	-- always renders; the 60-tick cycle still divides the 120-tick strike interval.
+	mining_tool.animation_speed = 51 / 60
+	mining_tool_mask.animation_speed = 51 / 60
+	mining_tool_mask.apply_runtime_tint = nil
+	for _, stripe in pairs(mining_tool.stripes) do
+		stripe.height_in_frames = 1
+		stripe.y = direction * 194
+	end
+	for _, stripe in pairs(mining_tool_shadow.stripes) do
+		stripe.height_in_frames = 1
+		stripe.y = direction * 142
+	end
+	mining_tool_mask.y = direction * 138
+	mining_prototypes[#mining_prototypes + 1] = {
+		type = "animation",
+		name = "not-alone-team-mate-mining-" .. direction,
+		layers = {
+			mining_tool,
+			mining_tool_shadow
+		}
 	}
-}
-
-local mining_mask_animation = {
-	type = "animation",
-	name = "not-alone-team-mate-mining-mask",
-	layers = {
-		mining_tool_mask
+	mining_prototypes[#mining_prototypes + 1] = {
+		type = "animation",
+		name = "not-alone-team-mate-mining-mask-" .. direction,
+		layers = {
+			mining_tool_mask
+		}
 	}
-}
+end
+data:extend(mining_prototypes)
 
 local mining_sound = {
 	type = "sound",
@@ -200,7 +229,7 @@ local iron_miner_recipe = {
 	}
 }
 
-local iron_miner_technology = {
+local mining_roles_technology = {
 	type = "technology",
 	name = "not-alone-iron-miner",
 	icon = "__base__/graphics/technology/steel-processing.png",
@@ -215,4 +244,4 @@ local iron_miner_technology = {
 	}
 }
 
-data:extend({team_mate, hidden_team_mate, mining_animation, mining_mask_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
+data:extend({team_mate, hidden_team_mate, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, mining_roles_technology})

@@ -8,19 +8,66 @@ local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
 local SCOUT_GENERATION_RADIUS = 2
-local IRON_MINER_ROLE = "iron-miner"
-local IRON_MINER_TECHNOLOGY_NAME = "not-alone-iron-miner"
-local IRON_ORE_SEARCH_RADIUS = 128
-local IRON_CONSUMER_SEARCH_RADIUS = 128
-local IRON_MINER_CAPACITY = 50
-local IRON_ORE_MINING_TIME = 1
+local MINER_TECHNOLOGY_NAME = "not-alone-iron-miner"
+local RESOURCE_SEARCH_RADIUS = 128
+local CONSUMER_SEARCH_RADIUS = 128
+local MINER_CAPACITY = 50
+local RESOURCE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
-local MINING_ANIMATION_FRAMES = 52
-local MINING_ANIMATION_SPEED = 52 / 60
+local MINING_ANIMATION_FRAMES = 51
+local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
+local MINING_ROLES = {
+  {
+    name = "iron-miner",
+    resource_name = "iron-ore",
+    item_name = "iron-ore",
+    inventory = defines.inventory.crafter_input,
+    button_name = "not_alone_assign_iron_miner",
+    caption = "not-alone.assign-iron-miner",
+    tooltip = "not-alone.assign-iron-miner-tooltip",
+    assigned_message = "not-alone.iron-miners-assigned"
+  },
+  {
+    name = "copper-miner",
+    resource_name = "copper-ore",
+    item_name = "copper-ore",
+    inventory = defines.inventory.crafter_input,
+    button_name = "not_alone_assign_copper_miner",
+    caption = "not-alone.assign-copper-miner",
+    tooltip = "not-alone.assign-copper-miner-tooltip",
+    assigned_message = "not-alone.copper-miners-assigned"
+  },
+  {
+    name = "coal-miner",
+    resource_name = "coal",
+    item_name = "coal",
+    inventory = defines.inventory.fuel,
+    button_name = "not_alone_assign_coal_miner",
+    caption = "not-alone.assign-coal-miner",
+    tooltip = "not-alone.assign-coal-miner-tooltip",
+    assigned_message = "not-alone.coal-miners-assigned"
+  },
+  {
+    name = "stone-miner",
+    resource_name = "stone",
+    item_name = "stone",
+    inventory = defines.inventory.crafter_input,
+    button_name = "not_alone_assign_stone_miner",
+    caption = "not-alone.assign-stone-miner",
+    tooltip = "not-alone.assign-stone-miner-tooltip",
+    assigned_message = "not-alone.stone-miners-assigned"
+  }
+}
+local MINING_ROLE_BY_NAME = {}
+local MINING_ROLE_BY_BUTTON = {}
+for _, mining_role in pairs(MINING_ROLES) do
+  MINING_ROLE_BY_NAME[mining_role.name] = mining_role
+  MINING_ROLE_BY_BUTTON[mining_role.button_name] = mining_role
+end
 local wander_with_team_mate
 local stop_team_mate
 local move_team_mate
@@ -71,13 +118,13 @@ local function find_nearest_entity(entities, position, accepts)
   return nearest_entity
 end
 
-local function find_nearest_iron_ore(record)
+local function find_nearest_resource(record, mining_role)
   return find_nearest_entity(
     record.entity.surface.find_entities_filtered({
       type = "resource",
-      name = "iron-ore",
+      name = mining_role.resource_name,
       position = record.entity.position,
-      radius = IRON_ORE_SEARCH_RADIUS
+      radius = RESOURCE_SEARCH_RADIUS
     }),
     record.entity.position,
     function(resource)
@@ -86,34 +133,40 @@ local function find_nearest_iron_ore(record)
   )
 end
 
-local function furnace_accepts_iron_ore(furnace)
-  local inventory = furnace.get_inventory(defines.inventory.crafter_input)
-  return inventory and inventory.can_insert({name = "iron-ore", count = 1})
+local function consumer_accepts_item(consumer, mining_role, count)
+  local inventory = consumer.get_inventory(mining_role.inventory)
+  return inventory and inventory.get_insertable_count(mining_role.item_name) >= count
 end
 
-local function find_nearest_iron_consumer(record)
+local function find_nearest_consumer(record, mining_role)
   return find_nearest_entity(
     record.entity.surface.find_entities_filtered({
       type = "furnace",
       position = record.entity.position,
-      radius = IRON_CONSUMER_SEARCH_RADIUS
+      radius = CONSUMER_SEARCH_RADIUS
     }),
     record.entity.position,
-    furnace_accepts_iron_ore
+    function(consumer)
+      return consumer_accepts_item(consumer, mining_role, 1)
+    end
   )
 end
 
-local function get_iron_mining_interval(player)
+local function get_mining_interval(player)
   local mining_speed_modifier = player.character_mining_speed_modifier
   local effective_mining_speed = NORMAL_CHARACTER_MINING_SPEED * (1 + mining_speed_modifier)
-  return math.max(1, math.ceil(IRON_ORE_MINING_TIME * 60 / effective_mining_speed))
+  return math.max(1, math.ceil(RESOURCE_MINING_TIME * 60 / effective_mining_speed))
 end
 
-local function update_iron_miner(record, player)
+local function update_miner(record, player, mining_role)
+  if record.carried_count == nil then
+    record.carried_count = record.carried_ore or 0
+    record.carried_ore = nil
+  end
   update_mining_animation(record, record.role_state == "mine")
 
   if record.role_state == "find-ore" then
-    local resource = find_nearest_iron_ore(record)
+    local resource = find_nearest_resource(record, mining_role)
     if resource then
       record.role_target = resource
       record.role_state = "move-to-ore"
@@ -125,7 +178,7 @@ local function update_iron_miner(record, player)
       record.role_state = "find-ore"
     elseif distance_squared(record.entity.position, record.role_target.position) <= 4 then
       record.role_state = "mine"
-      record.next_mining_tick = game.tick + math.random(get_iron_mining_interval(player))
+      record.next_mining_tick = game.tick + math.random(get_mining_interval(player))
       stop_team_mate(record)
     else
       move_team_mate(record, record.role_target.position, 2)
@@ -146,29 +199,32 @@ local function update_iron_miner(record, player)
         else
           resource.deplete()
         end
-        record.carried_ore = (record.carried_ore or 0) + mined
+        record.carried_count = (record.carried_count or 0) + mined
         record.entity.surface.play_sound({
           path = "not-alone-team-mate-mining-sound",
           position = mining_position,
           volume_modifier = 0.8
         })
-        record.next_mining_tick = record.next_mining_tick + get_iron_mining_interval(player)
-        if record.carried_ore >= IRON_MINER_CAPACITY or remaining_amount <= 0 then
+        record.next_mining_tick = record.next_mining_tick + get_mining_interval(player)
+        if record.carried_count >= MINER_CAPACITY or remaining_amount <= 0 then
           record.role_state = "find-consumer"
           record.role_target = nil
         end
       end
     end
   elseif record.role_state == "find-consumer" then
-    local furnace = find_nearest_iron_consumer(record)
-    if furnace then
-      record.role_target = furnace
+    local consumer = find_nearest_consumer(record, mining_role)
+    if consumer then
+      record.role_target = consumer
       record.role_state = "move-to-consumer"
     else
       wander_with_team_mate(record)
     end
   elseif record.role_state == "move-to-consumer" then
     if not record.role_target or not record.role_target.valid then
+      record.role_state = "find-consumer"
+    elseif not consumer_accepts_item(record.role_target, mining_role, 1) then
+      record.role_target = nil
       record.role_state = "find-consumer"
     elseif distance_squared(record.entity.position, record.role_target.position) <= 4 then
       record.role_state = "deliver"
@@ -177,20 +233,29 @@ local function update_iron_miner(record, player)
       move_team_mate(record, record.role_target.position, 2)
     end
   elseif record.role_state == "deliver" then
-    local furnace = record.role_target
-    if not furnace or not furnace.valid then
+    local consumer = record.role_target
+    if not consumer or not consumer.valid then
       record.role_state = "find-consumer"
     else
-      local inventory = furnace.get_inventory(defines.inventory.crafter_input)
-      local inserted = inventory and inventory.insert({
-        name = "iron-ore",
-        count = record.carried_ore or 0
-      }) or 0
-      record.carried_ore = (record.carried_ore or 0) - inserted
-      if record.carried_ore <= 0 then
-        record.carried_ore = 0
+      local inventory = consumer.get_inventory(mining_role.inventory)
+      local inserted = 0
+      if inventory and (record.carried_count or 0) > 0 then
+        local insertable = math.min(
+          inventory.get_insertable_count(mining_role.item_name),
+          record.carried_count
+        )
+        if insertable > 0 then
+          inserted = inventory.insert({name = mining_role.item_name, count = insertable})
+        end
+      end
+      record.carried_count = (record.carried_count or 0) - inserted
+      record.role_target = nil
+      if record.carried_count <= 0 then
+        record.carried_count = 0
         record.role_state = "find-ore"
-        record.role_target = nil
+      else
+        -- Deposit what fit; find another destination for the remainder.
+        record.role_state = "find-consumer"
       end
     end
   else
@@ -205,6 +270,19 @@ update_mining_animation = function(record, should_show)
     and rendering.get_object_by_id(record.mining_animation_id)
   local mask_object = record.mining_mask_animation_id
     and rendering.get_object_by_id(record.mining_mask_animation_id)
+  -- Body and mask only make sense as a pair; a lone survivor (stale save data
+  -- or a half-destroyed pair) shows as a second uncolored animation.
+  if not should_show or not render_object or not mask_object then
+    if render_object then
+      render_object.destroy()
+    end
+    if mask_object then
+      mask_object.destroy()
+    end
+    record.mining_animation_id = nil
+    record.mining_mask_animation_id = nil
+    render_object = nil
+  end
   if should_show then
     if not record.mining_hidden then
       record.mining_color = record.team_mate_color or record.entity.color
@@ -242,31 +320,27 @@ update_mining_animation = function(record, should_show)
     local anchor_tick = record.next_mining_tick or game.tick
     local animation_offset = (MINING_ANIMATION_FRAMES
       - ((anchor_tick * MINING_ANIMATION_SPEED) % MINING_ANIMATION_FRAMES)) % MINING_ANIMATION_FRAMES
+    -- Facing selects one of the 8 per-direction prototypes; passing orientation
+    -- to draw_animation would rotate the bitmap instead.
+    local direction_index = math.floor((record.entity.orientation or 0) * 8 + 0.5) % 8
     record.mining_animation_id = rendering.draw_animation({
-      animation = "not-alone-team-mate-mining",
+      animation = "not-alone-team-mate-mining-" .. direction_index,
       target = record.entity,
       surface = record.entity.surface,
-      orientation = record.entity.orientation,
       animation_offset = animation_offset,
       render_layer = "object"
     }).id
     local mask_color = record.mining_color
     record.mining_mask_animation_id = rendering.draw_animation({
-      animation = "not-alone-team-mate-mining-mask",
+      animation = "not-alone-team-mate-mining-mask-" .. direction_index,
       target = record.entity,
       surface = record.entity.surface,
-      orientation = record.entity.orientation,
       animation_offset = animation_offset,
       tint = {r = mask_color.r, g = mask_color.g, b = mask_color.b, a = 1},
-      render_layer = "object"
+      -- Strictly above the body layer; sharing "object" leaves the stacking
+      -- order tied, letting the untinted body render on top some frames.
+      render_layer = "higher-object-under"
     }).id
-  elseif render_object then
-    render_object.destroy()
-    record.mining_animation_id = nil
-  end
-  if not should_show and mask_object then
-    mask_object.destroy()
-    record.mining_mask_animation_id = nil
   end
   if not should_show and record.mining_hidden then
     local hidden_entity = record.entity
@@ -330,12 +404,27 @@ local function refresh_route_renderings(record, player_index)
   end
 end
 
+local function ensure_mining_role_buttons(frame)
+  for _, mining_role in ipairs(MINING_ROLES) do
+    if not frame[mining_role.button_name] then
+      frame.add({
+        type = "button",
+        name = mining_role.button_name,
+        caption = {mining_role.caption},
+        tooltip = {mining_role.tooltip}
+      })
+    end
+  end
+end
+
 local function ensure_role_gui(player)
   if not player.valid then
     return
   end
 
-  if player.gui.left.not_alone_role_frame then
+  local existing_frame = player.gui.left.not_alone_role_frame
+  if existing_frame then
+    ensure_mining_role_buttons(existing_frame)
     return
   end
 
@@ -356,16 +445,11 @@ local function ensure_role_gui(player)
     caption = {"not-alone.add-team-mate"},
     tooltip = {"not-alone.add-team-mate-tooltip"}
   })
-  frame.add({
-    type = "button",
-    name = "not_alone_assign_iron_miner",
-    caption = {"not-alone.assign-iron-miner"},
-    tooltip = {"not-alone.assign-iron-miner-tooltip"}
-  })
+  ensure_mining_role_buttons(frame)
 end
 
-local function ensure_iron_miner_technology(force)
-  local technology = force.technologies[IRON_MINER_TECHNOLOGY_NAME]
+local function ensure_miner_technology(force)
+  local technology = force.technologies[MINER_TECHNOLOGY_NAME]
   if technology then
     technology.researched = true
   end
@@ -600,8 +684,9 @@ local function update_team_mate(record, player)
     return true
   end
 
-  if record.role == IRON_MINER_ROLE then
-    return update_iron_miner(record, player)
+  local mining_role = MINING_ROLE_BY_NAME[record.role]
+  if mining_role then
+    return update_miner(record, player, mining_role)
   end
 
   local enemy = character.surface.find_nearest_enemy({
@@ -624,7 +709,7 @@ function poc.on_init()
   storage.not_alone_pending_spawns = {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
-    ensure_iron_miner_technology(player.force)
+    ensure_miner_technology(player.force)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
@@ -644,7 +729,7 @@ function poc.on_configuration_changed()
   storage.not_alone_pending_spawns = {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
-    ensure_iron_miner_technology(player.force)
+    ensure_miner_technology(player.force)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
@@ -652,16 +737,19 @@ end
 
 function poc.on_player_created(event)
   local player = game.get_player(event.player_index)
-  ensure_iron_miner_technology(player.force)
+  ensure_miner_technology(player.force)
   storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
   storage.not_alone_pending_spawns[event.player_index] = game.tick + 1
   ensure_role_gui(player)
 end
 
 function poc.on_gui_click(event)
-  if not event.element or not event.element.valid
-    or (event.element.name ~= "not_alone_add_team_mate"
-      and event.element.name ~= "not_alone_assign_iron_miner") then
+  if not event.element or not event.element.valid then
+    return
+  end
+
+  local mining_role = MINING_ROLE_BY_BUTTON[event.element.name]
+  if event.element.name ~= "not_alone_add_team_mate" and not mining_role then
     return
   end
 
@@ -679,9 +767,9 @@ function poc.on_gui_click(event)
     return
   end
 
-  local technology = player.force.technologies[IRON_MINER_TECHNOLOGY_NAME]
+  local technology = player.force.technologies[MINER_TECHNOLOGY_NAME]
   if not technology or not technology.researched then
-    player.print({"not-alone.iron-miner-technology-required"})
+    player.print({"not-alone.miner-technology-required"})
     return
   end
 
@@ -691,10 +779,11 @@ function poc.on_gui_click(event)
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
     if entity.valid and selected and selected[entity.unit_number] then
-      record.role = IRON_MINER_ROLE
+      record.role = mining_role.name
       record.role_state = "find-ore"
       record.role_target = nil
-      record.carried_ore = 0
+      record.carried_count = 0
+      record.carried_ore = nil
       record.next_mining_tick = nil
       record.manual_destinations = {}
       record.manual_surface_index = nil
@@ -706,7 +795,7 @@ function poc.on_gui_click(event)
     end
   end
 
-  player.print({"not-alone.iron-miners-assigned", assigned_count})
+  player.print({mining_role.assigned_message, assigned_count})
   update_role_selection_status(player)
 end
 

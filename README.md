@@ -30,13 +30,17 @@ right-drag replaces the existing route.
 Use **Add Team Mate** in the role panel to spawn additional teammates near your character, one per
 click.
 
-The Iron Miner technology is researched automatically and unlocks the Iron Miner role. Select team mates by putting the
-**Team mate command tool** in your cursor, dragging over the units, and releasing. The role panel
-shows the selected count; click **Assign Iron Miner** to assign the role. No token needs to be crafted.
-Assigned workers find the nearest iron ore within 128 tiles, mine one ore at the normal player rate
-until they have a 50-ore load, walk to the nearest furnace that accepts iron ore, deliver it, and
-repeat. Manual routes take priority over role work while they are active. While mining, they display
-the native player mining animation and play the vanilla mining strike sound for each ore.
+The Team Mate Mining technology is researched automatically and unlocks Iron Miner, Copper Miner,
+Coal Miner, and Stone Miner roles. Select team mates by putting the **Team mate command tool** in
+your cursor, dragging over the units, and releasing. The role panel shows the selected count; use
+one of the **Assign Miner** controls to choose the resource. No token needs to be crafted.
+
+Assigned workers find the nearest matching resource within 128 tiles and mine one item at the
+normal player rate until they have a 50-item load or exhaust the resource. Iron, copper, and stone
+are delivered to furnace input inventories; coal is delivered to furnace fuel inventories. Miners
+deposit whatever will fit and find another furnace for any remainder. Manual routes take priority
+over role work while they are active. While mining, team mates display the native player mining
+animation and play the vanilla mining strike sound for each item.
 
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are
