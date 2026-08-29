@@ -272,8 +272,8 @@ end
 local function find_logistics_job(record)
   local surface = record.entity.surface
   local network = surface.find_logistic_network_by_position(
-    record.entity.force,
-    position_table(record.entity.position)
+    position_table(record.entity.position),
+    record.entity.force
   )
   if not network then
     return nil
@@ -292,8 +292,8 @@ local function find_logistics_job(record)
 
   for _, target in pairs(destinations) do
     local target_network = surface.find_logistic_network_by_position(
-      record.entity.force,
-      position_table(target.position)
+      position_table(target.position),
+      record.entity.force
     )
     if target_network == network then
       local item_name, count, inventory_kind, source = get_recipe_job(
@@ -329,8 +329,8 @@ end
 
 local function find_logistics_return_source(record)
   local network = record.entity.surface.find_logistic_network_by_position(
-    record.entity.force,
-    position_table(record.entity.position)
+    position_table(record.entity.position),
+    record.entity.force
   )
   if not network then
     return nil
