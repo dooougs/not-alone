@@ -186,13 +186,13 @@ local command_tool = {
 	select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = {"not-alone-team-mate"},
+		entity_filters = {"not-alone-team-mate", "not-alone-team-mate-hidden"},
 		cursor_box_type = "entity"
 	},
 	alt_select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = {"not-alone-team-mate"},
+		entity_filters = {"not-alone-team-mate", "not-alone-team-mate-hidden"},
 		cursor_box_type = "entity"
 	},
 	reverse_select = {

@@ -26,3 +26,4 @@ Date: 2026-08-28
     - Generalized resource mining and added Copper Miner, Coal Miner, and Stone Miner roles.
     - Added resource-specific furnace delivery, including fuel-inventory delivery for coal.
     - Unlocked all logistic chest recipes and removed advanced circuits from their ingredients.
+    - Allowed the command tool to select team mates while they are mining.
