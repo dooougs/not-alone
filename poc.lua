@@ -102,6 +102,10 @@ local function distance_squared(first, second)
   return delta_x * delta_x + delta_y * delta_y
 end
 
+local function position_table(position)
+  return {x = position.x, y = position.y}
+end
+
 local function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -269,7 +273,7 @@ local function find_logistics_job(record)
   local surface = record.entity.surface
   local network = surface.find_logistic_network_by_position(
     record.entity.force,
-    record.entity.position
+    position_table(record.entity.position)
   )
   if not network then
     return nil
@@ -289,7 +293,7 @@ local function find_logistics_job(record)
   for _, target in pairs(destinations) do
     local target_network = surface.find_logistic_network_by_position(
       record.entity.force,
-      target.position
+      position_table(target.position)
     )
     if target_network == network then
       local item_name, count, inventory_kind, source = get_recipe_job(
@@ -326,7 +330,7 @@ end
 local function find_logistics_return_source(record)
   local network = record.entity.surface.find_logistic_network_by_position(
     record.entity.force,
-    record.entity.position
+    position_table(record.entity.position)
   )
   if not network then
     return nil
