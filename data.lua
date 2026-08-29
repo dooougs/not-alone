@@ -9,11 +9,17 @@ local logistic_chest_recipe_names = {
 }
 for _, recipe_name in pairs(logistic_chest_recipe_names) do
 	local recipe = data.raw.recipe[recipe_name]
-	recipe.enabled = true
+	recipe.enabled = false
 	recipe.ingredients = {
-		{type = "item", name = "steel-chest", amount = 1},
-		{type = "item", name = "electronic-circuit", amount = 3}
+		{type = "item", name = "iron-chest", amount = 1}
 	}
+end
+
+for _, recipe_name in pairs(logistic_chest_recipe_names) do
+	table.insert(data.raw.technology.electronics.effects, {
+		type = "unlock-recipe",
+		recipe = recipe_name
+	})
 end
 
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])

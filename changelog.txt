@@ -25,5 +25,5 @@ Date: 2026-08-28
     - Matched Iron Miner collection to one ore per normal mining interval and added mining sounds.
     - Generalized resource mining and added Copper Miner, Coal Miner, and Stone Miner roles.
     - Added resource-specific furnace delivery, including fuel-inventory delivery for coal.
-    - Unlocked all logistic chest recipes and removed advanced circuits from their ingredients.
+    - Moved logistic chest recipe unlocks to Electronics and changed their ingredient to one iron chest.
     - Allowed the command tool to select team mates while they are mining.
