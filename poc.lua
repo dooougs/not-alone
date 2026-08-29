@@ -15,8 +15,8 @@ local IRON_CONSUMER_SEARCH_RADIUS = 128
 local IRON_MINER_CAPACITY = 50
 local IRON_ORE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
-local MINING_ANIMATION_FRAMES = 50
-local MINING_ANIMATION_SPEED = 50 / 30
+local MINING_ANIMATION_FRAMES = 52
+local MINING_ANIMATION_SPEED = 52 / 30
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
@@ -203,9 +203,12 @@ end
 update_mining_animation = function(record, should_show)
   local render_object = record.mining_animation_id
     and rendering.get_object_by_id(record.mining_animation_id)
+  local mask_object = record.mining_mask_animation_id
+    and rendering.get_object_by_id(record.mining_mask_animation_id)
   if should_show then
     if not record.mining_hidden then
-      record.mining_color = record.entity.color or {r = 1, g = 1, b = 1, a = 1}
+      record.mining_color = record.team_mate_color or record.entity.color
+        or {r = 1, g = 1, b = 1, a = 1}
       local visible_entity = record.entity
       local hidden_entity = visible_entity.surface.create_entity({
         name = HIDDEN_TEAM_MATE_NAME,
@@ -245,12 +248,25 @@ update_mining_animation = function(record, should_show)
       surface = record.entity.surface,
       orientation = record.entity.orientation,
       animation_offset = animation_offset,
-      tint = record.mining_color,
+      render_layer = "object"
+    }).id
+    local mask_color = record.mining_color
+    record.mining_mask_animation_id = rendering.draw_animation({
+      animation = "not-alone-team-mate-mining-mask",
+      target = record.entity,
+      surface = record.entity.surface,
+      orientation = record.entity.orientation,
+      animation_offset = animation_offset,
+      tint = {r = mask_color.r, g = mask_color.g, b = mask_color.b, a = 1},
       render_layer = "object"
     }).id
   elseif render_object then
     render_object.destroy()
     record.mining_animation_id = nil
+  end
+  if not should_show and mask_object then
+    mask_object.destroy()
+    record.mining_mask_animation_id = nil
   end
   if not should_show and record.mining_hidden then
     local hidden_entity = record.entity
@@ -497,7 +513,7 @@ local function create_team_mate(player, index)
 
   character.color = player.color
   character.name_tag = "Team mate " .. index
-  return {entity = character}
+  return {entity = character, team_mate_color = player.color}
 end
 
 local function add_team_mate(player)

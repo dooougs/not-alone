@@ -88,27 +88,42 @@ hidden_team_mate.attack_parameters.animation = {layers = {hidden_animation_layer
 local mining_tool = table.deepcopy(character_animations.level1.mining_tool)
 local mining_tool_mask = table.deepcopy(character_animations.level1.mining_tool_mask)
 local mining_tool_shadow = table.deepcopy(character_animations.level1.mining_tool_shadow)
--- Bounce: play forward then backward for a 50-step cycle completing in 30 ticks
--- (divides the 120-tick strike interval exactly).
+-- Bounce (forward then backward) with a 2-frame hold at the top of the swing
+-- before it comes back down, approximating the native player's brief pause.
+-- Vanilla exposes no frame_sequence/hold data for this, so the exact native
+-- frame count could not be verified; 2 frames matches the reported effect.
 local mining_bounce_sequence = {}
 for frame = 1, 26 do
 	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
 end
+mining_bounce_sequence[#mining_bounce_sequence + 1] = 26
+mining_bounce_sequence[#mining_bounce_sequence + 1] = 26
 for frame = 25, 2, -1 do
 	mining_bounce_sequence[#mining_bounce_sequence + 1] = frame
 end
 mining_tool.frame_sequence = mining_bounce_sequence
 mining_tool_mask.frame_sequence = mining_bounce_sequence
 mining_tool_shadow.frame_sequence = mining_bounce_sequence
-mining_tool.animation_speed = 50 / 30
+mining_tool.animation_speed = 52 / 30
+mining_tool_mask.animation_speed = 52 / 30
+-- Runtime rendering tints the whole object, so the mask is a separate prototype
+-- tinted independently of the untinted body.
+mining_tool_mask.apply_runtime_tint = nil
 
 local mining_animation = {
 	type = "animation",
 	name = "not-alone-team-mate-mining",
 	layers = {
 		mining_tool,
-		mining_tool_mask,
 		mining_tool_shadow
+	}
+}
+
+local mining_mask_animation = {
+	type = "animation",
+	name = "not-alone-team-mate-mining-mask",
+	layers = {
+		mining_tool_mask
 	}
 }
 
@@ -198,4 +213,4 @@ local iron_miner_technology = {
 	}
 }
 
-data:extend({team_mate, hidden_team_mate, mining_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
+data:extend({team_mate, hidden_team_mate, mining_animation, mining_mask_animation, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, iron_miner_technology})
