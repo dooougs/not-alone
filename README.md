@@ -53,16 +53,28 @@ keep looking; placing a roboport or Habitat immediately triggers a new search, s
 extending their network over a patch puts them to work at once. Miners deliver only to covered
 buildings that are actively requesting their resource; they no longer choose the closest furnace.
 Manual routes take priority over role work while they are active. While mining, team mates display
-the native player mining animation and play the vanilla mining strike sound for each item.
+the native player mining animation and play the vanilla mining strike sound for each item. Changing
+a miner to another role drops its carried resource at its current position; reselecting the same
+mining role preserves its cargo and current work.
 
 Security team mates defend a 48-tile radius around their assigned Habitat and return to it when no
 enemy is present. Builders find entity ghosts inside their current logistic network, collect the
 required building item and quality from network storage, walk to the construction site, and revive
-the ghost. Idle Builders enter a Habitat without losing their role, automatically deploy when a
-covered construction job has material available, and redock after finishing. Unused material is
-returned if the order disappears or their role changes. Scouts use command-tool destinations and
-queued waypoints to travel into distant terrain, progressively generating a path and charting the
-area with their native radar before returning to their Habitat.
+the ghost. They also follow normal force-specific deconstruction orders inside Habitat logistic
+coverage or normal roboport construction coverage, including neutral resources, trees, and rocks.
+They walk to each marked entity, mine it, and carry the entity and its contents to logistic storage
+without losing item quality. If no storage can accept deconstruction cargo, every resulting loose
+item is automatically marked for collection and left in full stacks until storage becomes
+available. Builders also collect loose ground items marked manually within the same coverage when
+network storage can accept them. They must stand over a loose stack before picking it up and move
+adjacent to the collision box of marked resources, belts, trees, rocks, and buildings before mining
+them.
+Cancelled orders and jobs claimed by native robots are released. Idle Builders enter a Habitat
+without losing their role, remain listed as Builders in its roster, automatically deploy when a
+covered construction or deconstruction job is available, and redock after finishing. Unused material
+and mined cargo are returned if an order disappears or their role changes. Scouts use
+command-tool destinations and queued waypoints to travel into distant terrain, progressively
+generating a path and charting the area with their native radar before returning to their Habitat.
 
 Stone, steel, and electric furnaces are converted into recipe-selecting machines: open a furnace
 and choose its smelting recipe like an assembler. The chosen recipe drives the furnace's automatic

@@ -78,3 +78,16 @@ Date: 2026-08-28
     - Automatically dispatched stored Builders for covered construction jobs and redocked them afterward.
     - Made Builder pickup, return, and construction preserve item quality.
     - Fixed ghost revival detection and kept Builders managed after returning cancelled-job materials.
+    - Added Builder handling for force-specific deconstruction orders inside construction-network coverage.
+    - Made Builders return mined entities and their contents to logistic storage without losing quality.
+    - Kept filled-entity deconstruction lossless by sizing Builder cargo before mining.
+    - Fixed Builders ignoring marked neutral resources, trees, and rocks.
+    - Kept docked Builders identified by role and allowed Habitat reassignment without duplicating them.
+    - Let Builders deconstruct marked entities inside Habitat logistic coverage despite its zero native construction radius.
+    - Automatically marked all loose items spilled from Builder deconstruction cargo for collection.
+    - Made Builders collect manually marked loose ground items while preserving stack quality and metadata.
+    - Prevented Builders repeatedly collecting and respilling single items when no storage could accept them.
+    - Fixed Builders freezing in place after dropping cargo that no storage could accept.
+    - Required Builders to reach loose stacks and the edge of solid targets before deconstructing them.
+    - Made miners drop carried resources when changed to another role without resetting same-role work.
+    - Fixed a crash when a stored Builder's Habitat was destroyed before its next update.
