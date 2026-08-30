@@ -5,6 +5,7 @@ local INITIAL_HABITAT_COUNT = 1
 local STARTER_INVENTORY_VERSION = 2
 local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
+local SECURITY_RADIUS = 48
 local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
@@ -28,53 +29,50 @@ local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 local LOGISTICS_MEMBER_NAME = "not-alone-team-mate-logistics-member"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
+local HABITAT_ROSTER_NAME = "not_alone_habitat_roster"
 local MINING_ROLES = {
   {
     name = "iron-miner",
     resource_name = "iron-ore",
     item_name = "iron-ore",
-    inventory = defines.inventory.crafter_input,
-    button_name = "not_alone_assign_iron_miner",
-    caption = "not-alone.assign-iron-miner",
-    tooltip = "not-alone.assign-iron-miner-tooltip",
-    assigned_message = "not-alone.iron-miners-assigned"
+    inventory = defines.inventory.crafter_input
   },
   {
     name = "copper-miner",
     resource_name = "copper-ore",
     item_name = "copper-ore",
-    inventory = defines.inventory.crafter_input,
-    button_name = "not_alone_assign_copper_miner",
-    caption = "not-alone.assign-copper-miner",
-    tooltip = "not-alone.assign-copper-miner-tooltip",
-    assigned_message = "not-alone.copper-miners-assigned"
+    inventory = defines.inventory.crafter_input
   },
   {
     name = "coal-miner",
     resource_name = "coal",
     item_name = "coal",
-    inventory = defines.inventory.fuel,
-    button_name = "not_alone_assign_coal_miner",
-    caption = "not-alone.assign-coal-miner",
-    tooltip = "not-alone.assign-coal-miner-tooltip",
-    assigned_message = "not-alone.coal-miners-assigned"
+    inventory = defines.inventory.fuel
   },
   {
     name = "stone-miner",
     resource_name = "stone",
     item_name = "stone",
-    inventory = defines.inventory.crafter_input,
-    button_name = "not_alone_assign_stone_miner",
-    caption = "not-alone.assign-stone-miner",
-    tooltip = "not-alone.assign-stone-miner-tooltip",
-    assigned_message = "not-alone.stone-miners-assigned"
+    inventory = defines.inventory.crafter_input
   }
 }
 local MINING_ROLE_BY_NAME = {}
-local MINING_ROLE_BY_BUTTON = {}
 for _, mining_role in pairs(MINING_ROLES) do
   MINING_ROLE_BY_NAME[mining_role.name] = mining_role
-  MINING_ROLE_BY_BUTTON[mining_role.button_name] = mining_role
+end
+local ROLE_OPTIONS = {
+  {name = nil, caption = "not-alone.role-logistics"},
+  {name = "iron-miner", caption = "not-alone.role-iron-miner"},
+  {name = "copper-miner", caption = "not-alone.role-copper-miner"},
+  {name = "coal-miner", caption = "not-alone.role-coal-miner"},
+  {name = "stone-miner", caption = "not-alone.role-stone-miner"},
+  {name = "security", caption = "not-alone.role-security"},
+  {name = "builder", caption = "not-alone.role-builder"},
+  {name = "scout", caption = "not-alone.role-scout"}
+}
+local ROLE_INDEX_BY_NAME = {}
+for index, role in ipairs(ROLE_OPTIONS) do
+  ROLE_INDEX_BY_NAME[role.name or "logistics"] = index
 end
 local LOGISTICS_SOURCE_MODES = {
   ["active-provider"] = true,
@@ -528,7 +526,7 @@ local function clear_logistics_job(record)
   record.logistics_inventory_kind = nil
 end
 
-local function find_logistics_return_source(record)
+local function find_logistics_return_source(record, item_name)
   local network = record.entity.surface.find_logistic_network_by_position(
     position_table(record.entity.position),
     record.entity.force
@@ -541,7 +539,7 @@ local function find_logistics_return_source(record)
   local nearest_distance
   for _, source in pairs(network.storages) do
     local inventory = get_logistics_source_inventory(source)
-    if inventory and inventory.get_insertable_count(record.logistics_item_name) > 0 then
+    if inventory and inventory.get_insertable_count(item_name or record.logistics_item_name) > 0 then
       local current_distance = distance_squared(record.entity.position, source.position)
       if not nearest_distance or current_distance < nearest_distance then
         nearest_source = source
@@ -901,50 +899,6 @@ local function refresh_route_renderings(record, player_index)
   end
 end
 
-local function ensure_mining_role_buttons(frame)
-  for _, mining_role in ipairs(MINING_ROLES) do
-    if not frame[mining_role.button_name] then
-      frame.add({
-        type = "button",
-        name = mining_role.button_name,
-        caption = {mining_role.caption},
-        tooltip = {mining_role.tooltip}
-      })
-    end
-  end
-end
-
-local function ensure_role_gui(player)
-  if not player.valid then
-    return
-  end
-
-  local existing_frame = player.gui.left.not_alone_role_frame
-  if existing_frame then
-    ensure_mining_role_buttons(existing_frame)
-    return
-  end
-
-  local frame = player.gui.left.add({
-    type = "frame",
-    name = "not_alone_role_frame",
-    direction = "vertical",
-    caption = {"not-alone.role-frame-title"}
-  })
-  frame.add({
-    type = "label",
-    name = "not_alone_role_selection_status",
-    caption = {"not-alone.role-selection-status", 0}
-  })
-  frame.add({
-    type = "button",
-    name = "not_alone_add_team_mate",
-    caption = {"not-alone.add-team-mate"},
-    tooltip = {"not-alone.add-team-mate-tooltip"}
-  })
-  ensure_mining_role_buttons(frame)
-end
-
 local function ensure_miner_technology(force)
   local technology = force.technologies[MINER_TECHNOLOGY_NAME]
   if technology then
@@ -956,24 +910,11 @@ local function enable_logistics_network_gui(force)
   force.unlock_logistic_network = true
 end
 
-local function update_role_selection_status(player)
-  local frame = player.gui.left.not_alone_role_frame
-  if not frame or not frame.valid then
-    return
+local function remove_legacy_role_gui(player)
+  local frame = player.valid and player.gui.left.not_alone_role_frame
+  if frame then
+    frame.destroy()
   end
-
-  local status = frame.not_alone_role_selection_status
-  if not status or not status.valid then
-    return
-  end
-
-  local selected = storage.not_alone_selected_team_mates
-    and storage.not_alone_selected_team_mates[player.index]
-  local selected_count = 0
-  for _ in pairs(selected or {}) do
-    selected_count = selected_count + 1
-  end
-  status.caption = {"not-alone.role-selection-status", selected_count}
 end
 
 stop_team_mate = function(record)
@@ -1030,6 +971,11 @@ end
 
 local function find_nearest_habitat(record)
   local team_mate = record.entity
+  if record.habitat and record.habitat.valid
+    and record.habitat.surface == team_mate.surface
+    and record.habitat.force == team_mate.force then
+    return record.habitat
+  end
   local nearest_habitat = nil
   local nearest_distance = nil
   for _, habitat in pairs(team_mate.surface.find_entities_filtered({
@@ -1042,6 +988,7 @@ local function find_nearest_habitat(record)
       nearest_distance = distance
     end
   end
+  record.habitat = nearest_habitat
   return nearest_habitat
 end
 
@@ -1102,6 +1049,202 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
+local function update_security(record)
+  local habitat = find_nearest_habitat(record)
+  if not habitat then
+    stop_team_mate(record)
+    return true
+  end
+  local enemy = record.entity.surface.find_nearest_enemy({
+    position = habitat.position,
+    max_distance = SECURITY_RADIUS,
+    force = record.entity.force
+  })
+  if enemy and enemy.valid then
+    attack_with_team_mate(record, enemy)
+  else
+    return_to_habitat(record)
+  end
+  return true
+end
+
+local function get_ghost_item_name(ghost)
+  if not ghost or not ghost.valid or ghost.type ~= "entity-ghost" then
+    return nil
+  end
+  for key, item in pairs(ghost.ghost_prototype.items_to_place_this or {}) do
+    return item.name or key
+  end
+  return nil
+end
+
+local function find_builder_source(network, item_name, position)
+  local pickup_point = network.select_pickup_point({
+    name = item_name,
+    position = position,
+    include_buffers = true
+  })
+  local source = pickup_point and pickup_point.owner
+  local inventory = get_logistics_source_inventory(source)
+  return inventory and inventory.get_item_count(item_name) > 0 and source or nil
+end
+
+local function builder_target_is_claimed(ghost, current_record)
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record ~= current_record and record.builder_target == ghost then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function find_builder_job(record)
+  local team_mate = record.entity
+  local network = team_mate.surface.find_logistic_network_by_position(
+    position_table(team_mate.position),
+    team_mate.force
+  )
+  if not network then
+    return nil, nil, nil
+  end
+
+  local nearest_ghost = nil
+  local nearest_source = nil
+  local nearest_item_name = nil
+  local nearest_distance = nil
+  for _, cell in pairs(network.cells) do
+    if cell.valid and cell.owner.valid then
+      for _, ghost in pairs(team_mate.surface.find_entities_filtered({
+        type = "entity-ghost",
+        force = team_mate.force,
+        position = cell.owner.position,
+        radius = cell.logistic_radius * 1.5
+      })) do
+        if cell.is_in_logistic_range(ghost.position)
+          and not builder_target_is_claimed(ghost, record) then
+          local item_name = get_ghost_item_name(ghost)
+          local source = item_name and find_builder_source(
+            network,
+            item_name,
+            position_table(ghost.position)
+          )
+          local distance = distance_squared(team_mate.position, ghost.position)
+          if source and (not nearest_distance or distance < nearest_distance) then
+            nearest_ghost = ghost
+            nearest_source = source
+            nearest_item_name = item_name
+            nearest_distance = distance
+          end
+        end
+      end
+    end
+  end
+  return nearest_ghost, nearest_source, nearest_item_name
+end
+
+local function return_builder_material(record)
+  if not record.builder_item_name or (record.builder_carried_count or 0) == 0 then
+    record.builder_item_name = nil
+    record.builder_source = nil
+    record.builder_target = nil
+    record.builder_carried_count = 0
+    record.builder_state = nil
+    return false
+  end
+  local inventory = get_logistics_source_inventory(record.builder_source)
+  if not inventory or inventory.get_insertable_count(record.builder_item_name) == 0 then
+    record.builder_source = find_logistics_return_source(record, record.builder_item_name)
+    inventory = get_logistics_source_inventory(record.builder_source)
+  end
+  if not inventory then
+    record.entity.surface.spill_item_stack({
+      position = position_table(record.entity.position),
+      stack = {name = record.builder_item_name, count = 1}
+    })
+    record.builder_item_name = nil
+    record.builder_carried_count = 0
+    record.builder_state = nil
+    return false
+  end
+  if distance_squared(record.entity.position, record.builder_source.position) <= 4 then
+    local inserted = inventory.insert({name = record.builder_item_name, count = 1})
+    if inserted == 1 then
+      record.builder_item_name = nil
+      record.builder_source = nil
+      record.builder_target = nil
+      record.builder_carried_count = 0
+      record.builder_state = nil
+      return false
+    end
+  end
+  move_team_mate(record, record.builder_source.position, 2)
+  return true
+end
+
+local function update_builder(record)
+  if record.builder_state == "return-material" then
+    return return_builder_material(record)
+  end
+  if record.builder_state == "move-to-source" then
+    local inventory = get_logistics_source_inventory(record.builder_source)
+    if not record.builder_target or not record.builder_target.valid
+      or not inventory or inventory.get_item_count(record.builder_item_name) == 0 then
+      record.builder_state = nil
+      record.builder_target = nil
+      record.builder_source = nil
+      record.builder_item_name = nil
+      record.builder_carried_count = 0
+    elseif distance_squared(record.entity.position, record.builder_source.position) <= 4 then
+      if inventory.remove({name = record.builder_item_name, count = 1}) == 1 then
+        record.builder_carried_count = 1
+        record.builder_state = "move-to-ghost"
+      else
+        record.builder_state = nil
+        record.builder_target = nil
+        record.builder_source = nil
+        record.builder_item_name = nil
+      end
+    else
+      move_team_mate(record, record.builder_source.position, 2)
+    end
+    return true
+  end
+  if record.builder_state == "move-to-ghost" then
+    if not record.builder_target or not record.builder_target.valid then
+      record.builder_state = "return-material"
+    elseif distance_squared(record.entity.position, record.builder_target.position) <= 16 then
+      local revived = record.builder_target.revive({raise_revive = true})
+      if revived then
+        record.builder_item_name = nil
+        record.builder_carried_count = 0
+        record.builder_source = nil
+        record.builder_target = nil
+        record.builder_state = nil
+      else
+        record.builder_state = "return-material"
+      end
+      stop_team_mate(record)
+    else
+      move_team_mate(record, record.builder_target.position, 4)
+    end
+    return true
+  end
+
+  local ghost, source, item_name = find_builder_job(record)
+  if ghost then
+    record.builder_target = ghost
+    record.builder_source = source
+    record.builder_item_name = item_name
+    record.builder_carried_count = 0
+    record.builder_state = "move-to-source"
+    return true
+  end
+  return_to_habitat(record)
+  return true
+end
+
 local function create_team_mate(player, index, spawn_center)
   -- Units do not collide with each other, so find_non_colliding_position
   -- returns the same spot for every spawn; ring offsets keep them apart
@@ -1134,7 +1277,125 @@ local function create_team_mate(player, index, spawn_center)
 
   character.color = player.color
   character.name_tag = "Team mate " .. index
-  return {entity = character, team_mate_color = player.color}
+  local record = {entity = character, team_mate_color = player.color}
+  find_nearest_habitat(record)
+  return record
+end
+
+local function reset_team_mate_role(record, role_name)
+  update_mining_animation(record, false)
+  record.role = role_name
+  record.role_state = nil
+  record.role_target = nil
+  record.carried_count = 0
+  record.carried_ore = nil
+  record.next_mining_tick = nil
+  if (record.builder_carried_count or 0) > 0 then
+    record.builder_state = "return-material"
+  else
+    record.builder_state = nil
+    record.builder_target = nil
+    record.builder_source = nil
+    record.builder_carried_count = 0
+  end
+  if MINING_ROLE_BY_NAME[role_name] then
+    record.role_state = "find-ore"
+  end
+  if (record.logistics_carried_count or 0) > 0 then
+    record.logistics_state = "return-cargo"
+  else
+    record.logistics_carried_count = 0
+    clear_logistics_job(record)
+  end
+end
+
+local function find_team_mate_record(player_index, unit_number)
+  for _, record in pairs(storage.not_alone_team_mates[player_index] or {}) do
+    if record.entity.valid and record.entity.unit_number == unit_number then
+      return record
+    end
+  end
+  return nil
+end
+
+local function open_habitat_roster(player, habitat)
+  local existing = player.gui.relative[HABITAT_ROSTER_NAME]
+  if existing then
+    existing.destroy()
+  end
+
+  local frame = player.gui.relative.add({
+    type = "frame",
+    name = HABITAT_ROSTER_NAME,
+    caption = {"not-alone.habitat-roster-title"},
+    direction = "vertical",
+    anchor = {
+      gui = defines.relative_gui_type.roboport_gui,
+      position = defines.relative_gui_position.right
+    }
+  })
+  frame.add({
+    type = "button",
+    name = "not_alone_deploy_team_mate",
+    caption = {"not-alone.deploy-team-mate"},
+    tooltip = {"not-alone.deploy-team-mate-tooltip"},
+    tags = {
+      habitat_unit_number = habitat.unit_number,
+      habitat_surface_index = habitat.surface_index
+    }
+  })
+  frame.add({
+    type = "button",
+    name = "not_alone_assign_selected_to_habitat",
+    caption = {"not-alone.assign-selected-to-habitat"},
+    tooltip = {"not-alone.assign-selected-to-habitat-tooltip"},
+    tags = {
+      habitat_unit_number = habitat.unit_number,
+      habitat_surface_index = habitat.surface_index
+    }
+  })
+  local residents = 0
+  for _, record in pairs(storage.not_alone_team_mates[player.index] or {}) do
+    if record.entity.valid then
+      local assigned_habitat = find_nearest_habitat(record)
+      if assigned_habitat and assigned_habitat.unit_number == habitat.unit_number then
+        residents = residents + 1
+        local row = frame.add({type = "flow", direction = "horizontal"})
+        row.add({
+          type = "label",
+          caption = record.entity.name_tag ~= "" and record.entity.name_tag
+            or {"entity-name.not-alone-team-mate"}
+        })
+        local role_items = {}
+        for _, role in ipairs(ROLE_OPTIONS) do
+          role_items[#role_items + 1] = {role.caption}
+        end
+        row.add({
+          type = "drop-down",
+          name = "not_alone_habitat_role_" .. record.entity.unit_number,
+          items = role_items,
+          selected_index = ROLE_INDEX_BY_NAME[record.role or "logistics"] or 1,
+          tags = {team_mate_unit_number = record.entity.unit_number}
+        })
+      end
+    end
+  end
+  if residents == 0 then
+    frame.add({type = "label", caption = {"not-alone.habitat-roster-empty"}})
+  end
+end
+
+local function find_habitat(surface_index, unit_number)
+  local surface = game.get_surface(surface_index)
+  if not surface then
+    return nil
+  end
+  for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
+    if habitat.unit_number == unit_number then
+      return habitat
+    end
+  end
+  return nil
 end
 
 local function add_team_mate(player, spawn_center)
@@ -1301,8 +1562,7 @@ local function update_team_mate(record, player)
     return true
   end
 
-  local mining_role = MINING_ROLE_BY_NAME[record.role]
-  if mining_role then
+  if record.role then
     if (record.logistics_carried_count or 0) > 0 then
       record.logistics_state = "return-cargo"
       update_logistics(record)
@@ -1312,7 +1572,24 @@ local function update_team_mate(record, player)
       record.logistics_carried_count = 0
       clear_logistics_job(record)
     end
+  end
+
+  local mining_role = MINING_ROLE_BY_NAME[record.role]
+  if mining_role then
     return update_miner(record, player, mining_role)
+  end
+
+  if (record.builder_carried_count or 0) > 0 and record.role ~= "builder" then
+    record.builder_state = "return-material"
+    return_builder_material(record)
+    return true
+  elseif record.role == "security" then
+    return update_security(record)
+  elseif record.role == "builder" then
+    return update_builder(record)
+  elseif record.role == "scout" then
+    return_to_habitat(record)
+    return true
   end
 
   if update_logistics(record) then
@@ -1333,7 +1610,7 @@ function poc.on_init()
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
     queue_starter_inventory(player.index)
-    ensure_role_gui(player)
+    remove_legacy_role_gui(player)
   end
   storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
@@ -1353,7 +1630,7 @@ function poc.on_configuration_changed()
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
-    ensure_role_gui(player)
+    remove_legacy_role_gui(player)
   end
 end
 
@@ -1362,16 +1639,11 @@ function poc.on_player_created(event)
   ensure_miner_technology(player.force)
   enable_logistics_network_gui(player.force)
   queue_starter_inventory(player.index)
-  ensure_role_gui(player)
+  remove_legacy_role_gui(player)
 end
 
 function poc.on_gui_click(event)
   if not event.element or not event.element.valid then
-    return
-  end
-
-  local mining_role = MINING_ROLE_BY_BUTTON[event.element.name]
-  if event.element.name ~= "not_alone_add_team_mate" and not mining_role then
     return
   end
 
@@ -1380,9 +1652,35 @@ function poc.on_gui_click(event)
     return
   end
 
-  if event.element.name == "not_alone_add_team_mate" then
-    local record, failure = add_team_mate(player)
+  if event.element.name == "not_alone_assign_selected_to_habitat" then
+    local habitat = find_habitat(
+      event.element.tags.habitat_surface_index,
+      event.element.tags.habitat_unit_number
+    )
+    local selected = storage.not_alone_selected_team_mates
+      and storage.not_alone_selected_team_mates[event.player_index]
+    if not selected or not next(selected) then
+      player.print({"not-alone.no-team-mates-selected"})
+    elseif habitat then
+      for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
+        if record.entity.valid and selected[record.entity.unit_number] then
+          record.habitat = habitat
+        end
+      end
+      open_habitat_roster(player, habitat)
+    end
+    return
+  end
+
+  if event.element.name == "not_alone_deploy_team_mate" then
+    local habitat = find_habitat(
+      event.element.tags.habitat_surface_index,
+      event.element.tags.habitat_unit_number
+    )
+    local record, failure = habitat and add_team_mate(player, habitat.position)
     if record then
+      record.habitat = habitat
+      open_habitat_roster(player, habitat)
       player.print({"not-alone.team-mate-added"})
     elseif failure == "no-item" then
       player.print({"not-alone.no-team-mate-items"})
@@ -1391,40 +1689,39 @@ function poc.on_gui_click(event)
     end
     return
   end
+end
 
-  local technology = player.force.technologies[MINER_TECHNOLOGY_NAME]
-  if not technology or not technology.researched then
-    player.print({"not-alone.miner-technology-required"})
+function poc.on_gui_opened(event)
+  local player = game.get_player(event.player_index)
+  local entity = event.entity
+  if player and entity and entity.valid and entity.name == LOGISTICS_HUB_NAME then
+    open_habitat_roster(player, entity)
+  end
+end
+
+function poc.on_gui_closed(event)
+  local player = game.get_player(event.player_index)
+  local roster = player and player.gui.relative[HABITAT_ROSTER_NAME]
+  if roster then
+    roster.destroy()
+  end
+end
+
+function poc.on_gui_selection_state_changed(event)
+  local element = event.element
+  if not element or not element.valid
+    or not element.tags.team_mate_unit_number
+    or element.selected_index < 1 then
     return
   end
-
-  local selected = storage.not_alone_selected_team_mates
-    and storage.not_alone_selected_team_mates[event.player_index]
-  local assigned_count = 0
-  for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-    local entity = record.entity
-    if entity.valid and selected and selected[entity.unit_number] then
-      record.role = mining_role.name
-      record.role_state = "find-ore"
-      record.role_target = nil
-      record.carried_count = 0
-      record.carried_ore = nil
-      record.next_mining_tick = nil
-      record.manual_destinations = {}
-      record.manual_surface_index = nil
-      if (record.logistics_carried_count or 0) > 0 then
-        record.logistics_state = "return-cargo"
-      else
-        record.logistics_carried_count = 0
-        clear_logistics_job(record)
-      end
-      refresh_route_renderings(record, event.player_index)
-      assigned_count = assigned_count + 1
-    end
+  local record = find_team_mate_record(
+    event.player_index,
+    element.tags.team_mate_unit_number
+  )
+  local role = ROLE_OPTIONS[element.selected_index]
+  if record and role then
+    reset_team_mate_role(record, role.name)
   end
-
-  player.print({mining_role.assigned_message, assigned_count})
-  update_role_selection_status(player)
 end
 
 function poc.on_player_removed(event)
@@ -1470,7 +1767,6 @@ function poc.on_selected_area(event)
   storage.not_alone_selected_team_mates[event.player_index] = selected
   local player = game.get_player(event.player_index)
   player.print({"not-alone.team-mates-selected", selected_count})
-  update_role_selection_status(player)
 end
 
 local function order_selected_team_mates(event, append)
@@ -1561,7 +1857,7 @@ function poc.on_update(event)
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
     if player then
-      ensure_role_gui(player)
+      remove_legacy_role_gui(player)
     end
     if player and player.character and player.character.valid then
       local active_team_mates = {}
@@ -1580,6 +1876,12 @@ function poc.register()
   script.on_configuration_changed(poc.on_configuration_changed)
   script.on_event(defines.events.on_player_created, poc.on_player_created)
   script.on_event(defines.events.on_gui_click, poc.on_gui_click)
+  script.on_event(defines.events.on_gui_opened, poc.on_gui_opened)
+  script.on_event(defines.events.on_gui_closed, poc.on_gui_closed)
+  script.on_event(
+    defines.events.on_gui_selection_state_changed,
+    poc.on_gui_selection_state_changed
+  )
   script.on_event(defines.events.on_player_removed, poc.on_player_removed)
   script.on_event(defines.events.on_player_selected_area, poc.on_selected_area)
   script.on_event(defines.events.on_player_reverse_selected_area, poc.on_reverse_selected_area)

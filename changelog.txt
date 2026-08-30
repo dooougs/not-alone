@@ -59,3 +59,9 @@ Date: 2026-08-28
     - Replaced idle and miner wandering with returning to the nearest Habitat.
     - Removed wander-based movement recovery.
     - Removed automatic starter Habitat placement.
+    - Added a Habitat roster GUI for assigning residents and job roles.
+    - Added Security team mates that defend the area around their Habitat.
+    - Added Builders that collect materials from logistic storage and construct entity ghosts.
+    - Added Scouts for directed long-range exploration with queued waypoints.
+    - Fixed newly added and transferred team mates not appearing immediately in an open Habitat roster.
+    - Removed the legacy top-left Add Team Mate and job-role panel; deployment and roles now live in Habitat rosters.

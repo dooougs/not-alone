@@ -13,8 +13,8 @@ A basic mod skeleton for Factorio 2.1.
 ## Current proof of concept
 
 Each player starts with ten **Team mate** items and one **Habitat** item. Place the Habitat where
-you want the initial logistic network, then use the role panel's **Add Team Mate** button to consume
-one item and deploy a player-shaped team mate. Team mate items stack to 20. Deployed units are
+you want the initial logistic network, open it, then use **Deploy team mate** in its roster to
+consume one item and deploy a player-shaped team mate. Team mate items stack to 20. Deployed units are
 native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
 team mates have no route, role work, enemy, or logistics job, they return to the nearest Habitat and
 wait there. While a route is active, they follow its destinations in order. Their built-in ranged
@@ -29,12 +29,14 @@ group there. Shift-right-drag adds further destinations to the end of the route.
 route is shown with connected ground lines and waypoint markers visible to its owner. A normal
 right-drag replaces the existing route.
 
-Use **Add Team Mate** in the role panel to deploy team mates near your character, one item per click.
+Open a Habitat to view its roster beside the normal roboport GUI. Team mates deployed near a
+Habitat become its residents. Select team mates with the command tool and use **Assign selected
+here** to move them to another Habitat. Each roster row assigns Logistics, a resource-specific
+Miner role, Security, Builder, or Scout.
 
 The Team Mate Mining technology is researched automatically and unlocks Iron Miner, Copper Miner,
-Coal Miner, and Stone Miner roles. Select team mates by putting the **Team mate command tool** in
-your cursor, dragging over the units, and releasing. The role panel shows the selected count; use
-one of the **Assign Miner** controls to choose the resource. No token needs to be crafted.
+Coal Miner, and Stone Miner roles. Use each resident's role dropdown in its Habitat roster to choose
+the resource. No token needs to be crafted.
 
 Assigned workers find the nearest matching resource covered by the logistic network they are
 currently part of and mine one item at the normal player rate until they have a 50-item load or
@@ -44,6 +46,13 @@ extending their network over a patch puts them to work at once. Miners deliver o
 buildings that are actively requesting their resource; they no longer choose the closest furnace.
 Manual routes take priority over role work while they are active. While mining, team mates display
 the native player mining animation and play the vanilla mining strike sound for each item.
+
+Security team mates defend a 48-tile radius around their assigned Habitat and return to it when no
+enemy is present. Builders find entity ghosts inside their current logistic network, collect the
+required building item from network storage, and construct the ghost; unused material is returned
+if the order disappears or their role changes. Scouts use command-tool destinations and queued
+waypoints to travel into distant terrain, progressively generating a path and charting the area
+with their native radar before returning to their Habitat.
 
 Stone, steel, and electric furnaces are converted into recipe-selecting machines: open a furnace
 and choose its smelting recipe like an assembler. The chosen recipe drives the furnace's automatic
