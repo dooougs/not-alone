@@ -12,11 +12,11 @@ A basic mod skeleton for Factorio 2.1.
 
 ## Current proof of concept
 
-When a player is created, ten player-shaped **team mates** spawn nearby. They are native Factorio
-units, so they use the engine's pathfinder to navigate around obstacles. When team mates have no
-destination or queued waypoint remaining, they wander freely and engage nearby enemies. While a
-route is active, they follow its destinations in order without wandering. Their built-in ranged
-attack uses pistol-like physical damage.
+Use the role panel's **Add Team Mate** button to spawn player-shaped **team mates** manually. They
+are native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
+team mates have no destination or queued waypoint remaining, they wander freely and engage nearby
+enemies. While a route is active, they follow its destinations in order without wandering. Their
+built-in ranged attack uses pistol-like physical damage.
 
 Factorio units do not have character gun or ammunition inventories. The unit conversion therefore
 replaces copied starter equipment and ammunition depletion with a built-in attack.
@@ -27,8 +27,7 @@ group there. Shift-right-drag adds further destinations to the end of the route.
 route is shown with connected ground lines and waypoint markers visible to its owner. A normal
 right-drag replaces the existing route.
 
-Use **Add Team Mate** in the role panel to spawn additional teammates near your character, one per
-click.
+Use **Add Team Mate** in the role panel to spawn teammates near your character, one per click.
 
 The Team Mate Mining technology is researched automatically and unlocks Iron Miner, Copper Miner,
 Coal Miner, and Stone Miner roles. Select team mates by putting the **Team mate command tool** in
@@ -43,6 +42,12 @@ extending their network over a patch puts them to work at once. Miners deliver o
 buildings that are actively requesting their resource; they no longer choose the closest furnace.
 Manual routes take priority over role work while they are active. While mining, team mates display
 the native player mining animation and play the vanilla mining strike sound for each item.
+
+Stone, steel, and electric furnaces are converted into recipe-selecting machines: open a furnace
+and choose its smelting recipe like an assembler. The chosen recipe drives the furnace's automatic
+ingredient and fuel requests, so miners and haulers deliver to it before any ore has ever been
+inserted. Burner buildings request fuel that assigned miners are collecting as well as fuel already
+stored in network chests.
 
 Unassigned team mates also work as ground-based logistic bots while inside a logistic network.
 They collect requested items from active or passive provider, storage, and buffer chests, then walk
@@ -61,10 +66,10 @@ and then default logistics. Higher-priority actions pause logistics. If a team m
 logistics cargo when a job role becomes active, it returns that cargo to logistic storage before
 resuming the role.
 
-Each force starts with one **Logistics coverage hub** just south of its spawn. The initial team
-mates spawn inside its 25-tile logistic radius, and the logistic-network GUI is enabled from the
-start. The hub consumes no power, stores no robots or materials, and cannot charge robots; it only
-creates logistic-network coverage. Additional hubs are available from the start and cost 5 wood.
+Each force starts with one **Logistics coverage hub** just south of its spawn, and the
+logistic-network GUI is enabled from the start. The hub consumes no power, stores no robots or
+materials, and cannot charge robots; it only creates logistic-network coverage. Additional hubs are
+available from the start and cost 5 wood.
 
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are

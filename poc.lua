@@ -15,6 +15,7 @@ local NORMAL_CHARACTER_MINING_SPEED = 0.5
 local LOGISTICS_SEARCH_RADIUS = 128
 local LOGISTICS_CAPACITY = 50
 local FUEL_REQUEST_COUNT = 5
+local INGREDIENT_REQUEST_COUNT = 10
 local BUILDING_REQUEST_SLOT_COUNT = 20
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
@@ -264,6 +265,19 @@ local function find_available_fuel(target, network)
       end
     end
   end
+
+  -- Fuel mined by team mates exists in no chest yet but is en route.
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      local mining_role = MINING_ROLE_BY_NAME[record.role]
+      local item_prototype = mining_role and prototypes.item[mining_role.item_name]
+      if item_prototype and record.entity.valid
+        and record.entity.force == target.force
+        and burner.fuel_categories[item_prototype.fuel_category] then
+        return mining_role.item_name
+      end
+    end
+  end
   return nil
 end
 
@@ -275,8 +289,9 @@ local function get_building_requests(target, network)
     if recipe and inventory then
       for _, ingredient in pairs(recipe.ingredients) do
         if ingredient.type == "item" then
-          local missing_count = math.ceil(ingredient.amount)
-            - inventory.get_item_count(ingredient.name)
+          -- Batch requests so carriers deliver loads, not single items.
+          local desired_count = math.max(math.ceil(ingredient.amount), INGREDIENT_REQUEST_COUNT)
+          local missing_count = desired_count - inventory.get_item_count(ingredient.name)
           if missing_count > 0 and inventory.get_insertable_count(ingredient.name) > 0 then
             requests[#requests + 1] = {
               item_name = ingredient.name,
@@ -1178,29 +1193,6 @@ local function ensure_starter_logistics_hub(player)
   })
 end
 
-local function spawn_team_mates(player)
-  if not player.valid or not player.character or not player.character.valid then
-    return false
-  end
-
-  storage.not_alone_team_mates = storage.not_alone_team_mates or {}
-  local existing = storage.not_alone_team_mates[player.index]
-  if existing and #existing > 0 then
-    return true
-  end
-
-  local logistics_hub = ensure_starter_logistics_hub(player)
-  local spawn_center = logistics_hub and logistics_hub.position or player.position
-  local spawned_count = 0
-  for _ = 1, TEAM_MATE_COUNT do
-    if add_team_mate(player, spawn_center) then
-      spawned_count = spawned_count + 1
-    end
-  end
-  player.print({"not-alone.team-mates-arrived", spawned_count})
-  return spawned_count > 0
-end
-
 local function rescue_immobile_team_mate(record)
   local entity = record.entity
   if record.command_kind ~= "move" and record.command_kind ~= "move-recovery" then
@@ -1310,13 +1302,11 @@ end
 
 function poc.on_init()
   storage.not_alone_team_mates = {}
-  storage.not_alone_pending_spawns = {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
     ensure_starter_logistics_hub(player)
-    storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
 end
@@ -1330,23 +1320,12 @@ function poc.on_configuration_changed()
   end
   storage.not_alone_building_requesters = nil
   storage.not_alone_building_requester_ticks = nil
-  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
-    for _, record in pairs(team_mates) do
-      destroy_logistics_member(record)
-      if record.entity and record.entity.valid then
-        record.entity.destroy()
-      end
-    end
-  end
-
-  storage.not_alone_team_mates = {}
-  storage.not_alone_pending_spawns = {}
+  storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
     ensure_starter_logistics_hub(player)
-    storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
 end
@@ -1356,8 +1335,6 @@ function poc.on_player_created(event)
   ensure_miner_technology(player.force)
   enable_logistics_network_gui(player.force)
   ensure_starter_logistics_hub(player)
-  storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
-  storage.not_alone_pending_spawns[event.player_index] = game.tick + 1
   ensure_role_gui(player)
 end
 
@@ -1544,16 +1521,6 @@ function poc.on_roboport_built(event)
 end
 
 function poc.on_update(event)
-  storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
-  for player_index, spawn_tick in pairs(storage.not_alone_pending_spawns) do
-    if event.tick >= spawn_tick then
-      local player = game.get_player(player_index)
-      if player and spawn_team_mates(player) then
-        storage.not_alone_pending_spawns[player_index] = nil
-      end
-    end
-  end
-
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
     if player then

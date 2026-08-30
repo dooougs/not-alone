@@ -48,3 +48,7 @@ Date: 2026-08-28
     - Added wander-based recovery for team mate paths that fail repeatedly.
     - Removed teleport-based team mate recovery.
     - Fixed automatic building request slots requiring an explicit normal quality filter.
+    - Converted smelting furnaces into recipe-selecting machines so they request ingredients.
+    - Requested burner fuel that assigned miners are collecting, not only chest-stored fuel.
+    - Batched building ingredient requests so carriers deliver loads instead of single items.
+    - Removed automatic initial team mate spawning; team mates are added manually from the role panel.
