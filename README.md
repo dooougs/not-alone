@@ -18,8 +18,11 @@ Habitat and choose a working role for a stored team mate to deploy it automatica
 items stack to 20. Deployed units are
 native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
 team mates have no route, role work, enemy, or logistics job, they return to the nearest Habitat and
-wait there. While a route is active, they follow its destinations in order. Their built-in ranged
-attack uses pistol-like physical damage.
+enter it, becoming stored Team mate items in its roster. Team mates carrying ore, logistics cargo,
+or building material remain outside until their cargo is handled. If the closest Habitat is full,
+they use the next-nearest Habitat with room; they remain outside only when every Habitat is full.
+While a route is active, they follow its destinations in order. Their built-in ranged attack uses
+pistol-like physical damage.
 
 Factorio units do not have character gun or ammunition inventories. The unit conversion therefore
 replaces copied starter equipment and ammunition depletion with a built-in attack.

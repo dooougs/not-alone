@@ -698,7 +698,7 @@ local function update_miner(record, player, mining_role)
       record.role_target = resource
       record.role_state = "move-to-ore"
     else
-      return_to_habitat(record)
+      return return_to_habitat(record)
     end
   elseif record.role_state == "move-to-ore" then
     if not record.role_target or not record.role_target.valid then
@@ -746,7 +746,7 @@ local function update_miner(record, player, mining_role)
       record.role_target = consumer
       record.role_state = "move-to-consumer"
     else
-      return_to_habitat(record)
+      return return_to_habitat(record)
     end
   elseif record.role_state == "move-to-consumer" then
     if not record.role_target or not record.role_target.valid then
@@ -1006,15 +1006,12 @@ move_team_mate = function(record, destination, stopping_distance)
   record.command_target = nil
 end
 
-local function find_nearest_habitat(record)
+local function find_nearest_habitat(record, require_space)
   local team_mate = record.entity
-  if record.habitat and record.habitat.valid
-    and record.habitat.surface == team_mate.surface
-    and record.habitat.force == team_mate.force then
-    return record.habitat
-  end
   local nearest_habitat = nil
   local nearest_distance = nil
+  local nearest_available_habitat = nil
+  local nearest_available_distance = nil
   for _, habitat in pairs(team_mate.surface.find_entities_filtered({
     name = LOGISTICS_HUB_NAME,
     force = team_mate.force
@@ -1024,18 +1021,51 @@ local function find_nearest_habitat(record)
       nearest_habitat = habitat
       nearest_distance = distance
     end
+    local inventory = get_habitat_inventory(habitat)
+    if inventory and inventory.get_insertable_count(TEAM_MATE_ITEM_NAME) > 0
+      and (not nearest_available_distance or distance < nearest_available_distance) then
+      nearest_available_habitat = habitat
+      nearest_available_distance = distance
+    end
   end
-  record.habitat = nearest_habitat
-  return nearest_habitat
+  record.habitat = require_space and nearest_available_habitat or nearest_habitat
+  return record.habitat or nearest_habitat
+end
+
+local function can_enter_habitat(record)
+  return (record.carried_count or record.carried_ore or 0) == 0
+    and (record.logistics_carried_count or 0) == 0
+    and (record.builder_carried_count or 0) == 0
 end
 
 return_to_habitat = function(record)
-  local habitat = find_nearest_habitat(record)
-  if habitat then
-    move_team_mate(record, habitat.position, 3)
-  else
+  local can_enter = can_enter_habitat(record)
+  local habitat = find_nearest_habitat(record, can_enter)
+  if not habitat then
     stop_team_mate(record)
+    return true
   end
+  if distance_squared(record.entity.position, habitat.position) > 9 then
+    move_team_mate(record, habitat.position, 3)
+    return true
+  end
+
+  stop_team_mate(record)
+  if not can_enter then
+    return true
+  end
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory or inventory.insert({name = TEAM_MATE_ITEM_NAME, count = 1}) ~= 1 then
+    return true
+  end
+
+  update_mining_animation(record, false)
+  destroy_route_renderings(record)
+  destroy_logistics_member(record)
+  if record.entity.valid then
+    record.entity.destroy()
+  end
+  return false
 end
 
 local function move_team_mate_toward_destination(record, destination)
@@ -1100,7 +1130,7 @@ local function update_security(record)
   if enemy and enemy.valid then
     attack_with_team_mate(record, enemy)
   else
-    return_to_habitat(record)
+    return return_to_habitat(record)
   end
   return true
 end
@@ -1278,8 +1308,7 @@ local function update_builder(record)
     record.builder_state = "move-to-source"
     return true
   end
-  return_to_habitat(record)
-  return true
+  return return_to_habitat(record)
 end
 
 local function create_team_mate(player, index, spawn_center)
@@ -1706,17 +1735,13 @@ local function update_team_mate(record, player)
   elseif record.role == "builder" then
     return update_builder(record)
   elseif record.role == "scout" then
-    return_to_habitat(record)
-    return true
+    return return_to_habitat(record)
   end
 
   if update_logistics(record) then
     return true
-  else
-    return_to_habitat(record)
   end
-
-  return true
+  return return_to_habitat(record)
 end
 
 function poc.on_init()

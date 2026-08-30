@@ -73,3 +73,4 @@ Date: 2026-08-28
     - Kept command-tool selections stable while miners switch between visible and hidden entities.
     - Centered the selected-team roster and added a close button that clears the selection.
     - Added native resource-chip particle bursts when team mates complete mining cycles.
+    - Made idle team mates enter the nearest Habitat and return to its stored roster on arrival.
