@@ -65,3 +65,10 @@ Date: 2026-08-28
     - Added Scouts for directed long-range exploration with queued waypoints.
     - Fixed newly added and transferred team mates not appearing immediately in an open Habitat roster.
     - Removed the legacy top-left Add Team Mate and job-role panel; deployment and roles now live in Habitat rosters.
+    - Made Habitat rosters mirror the Team mate items stored in each Habitat.
+    - Removed the Deploy Team Mate button and made choosing a working role deploy one stored team mate automatically.
+    - Removed deployed team mates from Habitat inventories and rosters.
+    - Added resource and role icons to Habitat roster dropdowns.
+    - Added a selected-team roster for reassigning deployed team mates to any job role.
+    - Kept command-tool selections stable while miners switch between visible and hidden entities.
+    - Centered the selected-team roster and added a close button that clears the selection.

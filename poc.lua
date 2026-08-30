@@ -30,6 +30,7 @@ local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 local LOGISTICS_MEMBER_NAME = "not-alone-team-mate-logistics-member"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
 local HABITAT_ROSTER_NAME = "not_alone_habitat_roster"
+local SELECTED_ROSTER_NAME = "not_alone_selected_roster"
 local MINING_ROLES = {
   {
     name = "iron-miner",
@@ -61,18 +62,19 @@ for _, mining_role in pairs(MINING_ROLES) do
   MINING_ROLE_BY_NAME[mining_role.name] = mining_role
 end
 local ROLE_OPTIONS = {
-  {name = nil, caption = "not-alone.role-logistics"},
-  {name = "iron-miner", caption = "not-alone.role-iron-miner"},
-  {name = "copper-miner", caption = "not-alone.role-copper-miner"},
-  {name = "coal-miner", caption = "not-alone.role-coal-miner"},
-  {name = "stone-miner", caption = "not-alone.role-stone-miner"},
-  {name = "security", caption = "not-alone.role-security"},
-  {name = "builder", caption = "not-alone.role-builder"},
-  {name = "scout", caption = "not-alone.role-scout"}
+  {caption = "not-alone.role-waiting", icon = "not-alone-team-mate"},
+  {caption = "not-alone.role-logistics", icon = "logistic-robot"},
+  {name = "iron-miner", caption = "not-alone.role-iron-miner", icon = "iron-ore"},
+  {name = "copper-miner", caption = "not-alone.role-copper-miner", icon = "copper-ore"},
+  {name = "coal-miner", caption = "not-alone.role-coal-miner", icon = "coal"},
+  {name = "stone-miner", caption = "not-alone.role-stone-miner", icon = "stone"},
+  {name = "security", caption = "not-alone.role-security", icon = "submachine-gun"},
+  {name = "builder", caption = "not-alone.role-builder", icon = "construction-robot"},
+  {name = "scout", caption = "not-alone.role-scout", icon = "radar"}
 }
-local ROLE_INDEX_BY_NAME = {}
-for index, role in ipairs(ROLE_OPTIONS) do
-  ROLE_INDEX_BY_NAME[role.name or "logistics"] = index
+local DEPLOYED_ROLE_INDEX_BY_NAME = {}
+for index = 2, #ROLE_OPTIONS do
+  DEPLOYED_ROLE_INDEX_BY_NAME[ROLE_OPTIONS[index].name or "logistics"] = index - 1
 end
 local LOGISTICS_SOURCE_MODES = {
   ["active-provider"] = true,
@@ -107,6 +109,17 @@ end
 
 local function position_table(position)
   return {x = position.x, y = position.y}
+end
+
+local function get_habitat_inventory(habitat)
+  return habitat and habitat.valid
+    and habitat.get_inventory(defines.inventory.roboport_material)
+    or nil
+end
+
+local function get_habitat_team_mate_count(habitat)
+  local inventory = get_habitat_inventory(habitat)
+  return inventory and inventory.get_item_count(TEAM_MATE_ITEM_NAME) or 0
 end
 
 local function destroy_logistics_member(record)
@@ -1309,16 +1322,112 @@ local function reset_team_mate_role(record, role_name)
   end
 end
 
-local function find_team_mate_record(player_index, unit_number)
-  for _, record in pairs(storage.not_alone_team_mates[player_index] or {}) do
-    if record.entity.valid and record.entity.unit_number == unit_number then
-      return record
+local function get_team_mate_id(record)
+  record.team_mate_id = record.team_mate_id or record.entity.unit_number
+  return record.team_mate_id
+end
+
+local function open_selected_roster(player)
+  local old_left_roster = player.gui.left[SELECTED_ROSTER_NAME]
+  if old_left_roster then
+    old_left_roster.destroy()
+  end
+  local existing = player.gui.screen[SELECTED_ROSTER_NAME]
+  if existing then
+    existing.destroy()
+  end
+
+  local selected = storage.not_alone_selected_team_mates
+    and storage.not_alone_selected_team_mates[player.index]
+  if not selected or not next(selected) then
+    return
+  end
+
+  local role_items = {}
+  for index = 2, #ROLE_OPTIONS do
+    local role = ROLE_OPTIONS[index]
+    role_items[#role_items + 1] = {
+      "",
+      "[item=" .. role.icon .. "] ",
+      {role.caption}
+    }
+  end
+
+  local frame = player.gui.screen.add({
+    type = "frame",
+    name = SELECTED_ROSTER_NAME,
+    direction = "vertical"
+  })
+  frame.auto_center = true
+  local titlebar = frame.add({type = "flow", direction = "horizontal"})
+  titlebar.drag_target = frame
+  titlebar.add({
+    type = "label",
+    caption = {"not-alone.selected-roster-title"},
+    style = "frame_title"
+  })
+  local drag_handle = titlebar.add({
+    type = "empty-widget",
+    style = "draggable_space_header"
+  })
+  drag_handle.style.horizontally_stretchable = true
+  drag_handle.style.height = 24
+  drag_handle.drag_target = frame
+  titlebar.add({
+    type = "sprite-button",
+    name = "not_alone_close_selected_roster",
+    sprite = "utility/close",
+    hovered_sprite = "utility/close_black",
+    clicked_sprite = "utility/close_black",
+    tooltip = {"not-alone.close-selected-roster"},
+    style = "frame_action_button"
+  })
+  local row_count = 0
+  for _, record in pairs(storage.not_alone_team_mates[player.index] or {}) do
+    local team_mate_id = get_team_mate_id(record)
+    if record.entity.valid and selected[team_mate_id] then
+      row_count = row_count + 1
+      local row = frame.add({type = "flow", direction = "horizontal"})
+      row.add({
+        type = "label",
+        caption = record.entity.name_tag ~= "" and record.entity.name_tag
+          or {"entity-name.not-alone-team-mate"}
+      })
+      row.add({
+        type = "drop-down",
+        name = "not_alone_selected_role_" .. team_mate_id,
+        items = role_items,
+        selected_index = DEPLOYED_ROLE_INDEX_BY_NAME[record.role or "logistics"] or 1,
+        tags = {selected_team_mate_id = team_mate_id}
+      })
     end
   end
-  return nil
+  if row_count == 0 then
+    frame.destroy()
+  end
+end
+
+local function close_selected_roster(player)
+  local screen_roster = player.gui.screen[SELECTED_ROSTER_NAME]
+  if screen_roster then
+    screen_roster.destroy()
+  end
+  local left_roster = player.gui.left[SELECTED_ROSTER_NAME]
+  if left_roster then
+    left_roster.destroy()
+  end
+  storage.not_alone_selected_team_mates = storage.not_alone_selected_team_mates or {}
+  storage.not_alone_selected_team_mates[player.index] = {}
 end
 
 local function open_habitat_roster(player, habitat)
+  local team_mate_count = get_habitat_team_mate_count(habitat)
+  storage.not_alone_open_habitats = storage.not_alone_open_habitats or {}
+  storage.not_alone_open_habitats[player.index] = {
+    surface_index = habitat.surface_index,
+    unit_number = habitat.unit_number,
+    team_mate_count = team_mate_count
+  }
   local existing = player.gui.relative[HABITAT_ROSTER_NAME]
   if existing then
     existing.destroy()
@@ -1334,53 +1443,32 @@ local function open_habitat_roster(player, habitat)
       position = defines.relative_gui_position.right
     }
   })
-  frame.add({
-    type = "button",
-    name = "not_alone_deploy_team_mate",
-    caption = {"not-alone.deploy-team-mate"},
-    tooltip = {"not-alone.deploy-team-mate-tooltip"},
-    tags = {
-      habitat_unit_number = habitat.unit_number,
-      habitat_surface_index = habitat.surface_index
+  local role_items = {}
+  for _, role in ipairs(ROLE_OPTIONS) do
+    role_items[#role_items + 1] = {
+      "",
+      "[item=" .. role.icon .. "] ",
+      {role.caption}
     }
-  })
-  frame.add({
-    type = "button",
-    name = "not_alone_assign_selected_to_habitat",
-    caption = {"not-alone.assign-selected-to-habitat"},
-    tooltip = {"not-alone.assign-selected-to-habitat-tooltip"},
-    tags = {
-      habitat_unit_number = habitat.unit_number,
-      habitat_surface_index = habitat.surface_index
-    }
-  })
-  local residents = 0
-  for _, record in pairs(storage.not_alone_team_mates[player.index] or {}) do
-    if record.entity.valid then
-      local assigned_habitat = find_nearest_habitat(record)
-      if assigned_habitat and assigned_habitat.unit_number == habitat.unit_number then
-        residents = residents + 1
-        local row = frame.add({type = "flow", direction = "horizontal"})
-        row.add({
-          type = "label",
-          caption = record.entity.name_tag ~= "" and record.entity.name_tag
-            or {"entity-name.not-alone-team-mate"}
-        })
-        local role_items = {}
-        for _, role in ipairs(ROLE_OPTIONS) do
-          role_items[#role_items + 1] = {role.caption}
-        end
-        row.add({
-          type = "drop-down",
-          name = "not_alone_habitat_role_" .. record.entity.unit_number,
-          items = role_items,
-          selected_index = ROLE_INDEX_BY_NAME[record.role or "logistics"] or 1,
-          tags = {team_mate_unit_number = record.entity.unit_number}
-        })
-      end
-    end
   end
-  if residents == 0 then
+  for roster_index = 1, team_mate_count do
+    local row = frame.add({type = "flow", direction = "horizontal"})
+    row.add({
+      type = "label",
+      caption = {"not-alone.stored-team-mate", roster_index}
+    })
+    row.add({
+      type = "drop-down",
+      name = "not_alone_habitat_role_" .. roster_index,
+      items = role_items,
+      selected_index = 1,
+      tags = {
+        habitat_unit_number = habitat.unit_number,
+        habitat_surface_index = habitat.surface_index
+      }
+    })
+  end
+  if team_mate_count == 0 then
     frame.add({type = "label", caption = {"not-alone.habitat-roster-empty"}})
   end
 end
@@ -1398,11 +1486,12 @@ local function find_habitat(surface_index, unit_number)
   return nil
 end
 
-local function add_team_mate(player, spawn_center)
+local function deploy_team_mate_from_habitat(player, habitat, role_name)
   if not player.valid or not player.character or not player.character.valid then
     return nil, "no-space"
   end
-  if player.get_item_count(TEAM_MATE_ITEM_NAME) == 0 then
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory or inventory.get_item_count(TEAM_MATE_ITEM_NAME) == 0 then
     return nil, "no-item"
   end
 
@@ -1412,12 +1501,17 @@ local function add_team_mate(player, spawn_center)
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   local team_mates = storage.not_alone_team_mates[player.index] or {}
-  local record = create_team_mate(player, #team_mates + 1, spawn_center)
+  local record = create_team_mate(player, #team_mates + 1, habitat.position)
   if not record then
     return nil, "no-space"
   end
 
-  player.remove_item({name = TEAM_MATE_ITEM_NAME, count = 1})
+  if inventory.remove({name = TEAM_MATE_ITEM_NAME, count = 1}) ~= 1 then
+    record.entity.destroy()
+    return nil, "no-item"
+  end
+  record.habitat = habitat
+  reset_team_mate_role(record, role_name)
   team_mates[#team_mates + 1] = record
   storage.not_alone_team_mates[player.index] = team_mates
   return record
@@ -1631,6 +1725,7 @@ function poc.on_configuration_changed()
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
     remove_legacy_role_gui(player)
+    close_selected_roster(player)
   end
 end
 
@@ -1643,51 +1738,13 @@ function poc.on_player_created(event)
 end
 
 function poc.on_gui_click(event)
-  if not event.element or not event.element.valid then
+  local element = event.element
+  if not element or not element.valid or element.name ~= "not_alone_close_selected_roster" then
     return
   end
-
   local player = game.get_player(event.player_index)
-  if not player or not player.valid then
-    return
-  end
-
-  if event.element.name == "not_alone_assign_selected_to_habitat" then
-    local habitat = find_habitat(
-      event.element.tags.habitat_surface_index,
-      event.element.tags.habitat_unit_number
-    )
-    local selected = storage.not_alone_selected_team_mates
-      and storage.not_alone_selected_team_mates[event.player_index]
-    if not selected or not next(selected) then
-      player.print({"not-alone.no-team-mates-selected"})
-    elseif habitat then
-      for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-        if record.entity.valid and selected[record.entity.unit_number] then
-          record.habitat = habitat
-        end
-      end
-      open_habitat_roster(player, habitat)
-    end
-    return
-  end
-
-  if event.element.name == "not_alone_deploy_team_mate" then
-    local habitat = find_habitat(
-      event.element.tags.habitat_surface_index,
-      event.element.tags.habitat_unit_number
-    )
-    local record, failure = habitat and add_team_mate(player, habitat.position)
-    if record then
-      record.habitat = habitat
-      open_habitat_roster(player, habitat)
-      player.print({"not-alone.team-mate-added"})
-    elseif failure == "no-item" then
-      player.print({"not-alone.no-team-mate-items"})
-    else
-      player.print({"not-alone.team-mate-could-not-be-added"})
-    end
-    return
+  if player then
+    close_selected_roster(player)
   end
 end
 
@@ -1705,22 +1762,50 @@ function poc.on_gui_closed(event)
   if roster then
     roster.destroy()
   end
+  if storage.not_alone_open_habitats then
+    storage.not_alone_open_habitats[event.player_index] = nil
+  end
 end
 
 function poc.on_gui_selection_state_changed(event)
   local element = event.element
-  if not element or not element.valid
-    or not element.tags.team_mate_unit_number
-    or element.selected_index < 1 then
+  if not element or not element.valid or element.selected_index < 1 then
     return
   end
-  local record = find_team_mate_record(
-    event.player_index,
-    element.tags.team_mate_unit_number
+  local player = game.get_player(event.player_index)
+  local selected_team_mate_id = element.tags.selected_team_mate_id
+  if selected_team_mate_id then
+    local role = ROLE_OPTIONS[element.selected_index + 1]
+    for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
+      if get_team_mate_id(record) == selected_team_mate_id and role then
+        reset_team_mate_role(record, role.name)
+        open_selected_roster(player)
+        return
+      end
+    end
+    open_selected_roster(player)
+    return
+  end
+  if not element.tags.habitat_unit_number or element.selected_index <= 1 then
+    return
+  end
+  local habitat = find_habitat(
+    element.tags.habitat_surface_index,
+    element.tags.habitat_unit_number
   )
   local role = ROLE_OPTIONS[element.selected_index]
-  if record and role then
-    reset_team_mate_role(record, role.name)
+  if not player or not habitat or not role then
+    return
+  end
+  local record, failure = deploy_team_mate_from_habitat(player, habitat, role.name)
+  if record then
+    open_habitat_roster(player, habitat)
+  elseif failure == "no-item" then
+    player.print({"not-alone.no-team-mate-items-in-habitat"})
+    open_habitat_roster(player, habitat)
+  else
+    player.print({"not-alone.team-mate-could-not-be-added"})
+    element.selected_index = 1
   end
 end
 
@@ -1737,6 +1822,9 @@ function poc.on_player_removed(event)
     end
     storage.not_alone_team_mates[event.player_index] = nil
   end
+  if storage.not_alone_open_habitats then
+    storage.not_alone_open_habitats[event.player_index] = nil
+  end
   if storage.not_alone_selected_team_mates then
     storage.not_alone_selected_team_mates[event.player_index] = nil
   end
@@ -1750,15 +1838,16 @@ function poc.on_selected_area(event)
   local owned_team_mates = {}
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     if record.entity.valid then
-      owned_team_mates[record.entity.unit_number] = true
+      owned_team_mates[record.entity.unit_number] = get_team_mate_id(record)
     end
   end
 
   local selected = {}
   local selected_count = 0
   for _, entity in pairs(event.entities) do
-    if entity.valid and owned_team_mates[entity.unit_number] then
-      selected[entity.unit_number] = true
+    local team_mate_id = entity.valid and owned_team_mates[entity.unit_number]
+    if team_mate_id then
+      selected[team_mate_id] = true
       selected_count = selected_count + 1
     end
   end
@@ -1766,6 +1855,7 @@ function poc.on_selected_area(event)
   storage.not_alone_selected_team_mates = storage.not_alone_selected_team_mates or {}
   storage.not_alone_selected_team_mates[event.player_index] = selected
   local player = game.get_player(event.player_index)
+  open_selected_roster(player)
   player.print({"not-alone.team-mates-selected", selected_count})
 end
 
@@ -1790,7 +1880,7 @@ local function order_selected_team_mates(event, append)
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
     if entity.valid
-      and selected[entity.unit_number]
+      and selected[get_team_mate_id(record)]
       and entity.surface_index == event.surface.index then
       local manual_destinations = get_manual_destinations(record)
       if not append then
@@ -1854,6 +1944,17 @@ function poc.on_update(event)
     end
   end
 
+  for player_index, open_habitat in pairs(storage.not_alone_open_habitats or {}) do
+    local player = game.get_player(player_index)
+    local habitat = find_habitat(open_habitat.surface_index, open_habitat.unit_number)
+    local roster = player and player.gui.relative[HABITAT_ROSTER_NAME]
+    if not player or not habitat or not roster then
+      storage.not_alone_open_habitats[player_index] = nil
+    elseif get_habitat_team_mate_count(habitat) ~= open_habitat.team_mate_count then
+      open_habitat_roster(player, habitat)
+    end
+  end
+
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
     if player then
@@ -1867,6 +1968,24 @@ function poc.on_update(event)
         end
       end
       storage.not_alone_team_mates[player_index] = active_team_mates
+      local selected = storage.not_alone_selected_team_mates
+        and storage.not_alone_selected_team_mates[player_index]
+      if selected and next(selected) then
+        local active_ids = {}
+        for _, record in pairs(active_team_mates) do
+          active_ids[get_team_mate_id(record)] = true
+        end
+        local selection_changed = false
+        for team_mate_id in pairs(selected) do
+          if not active_ids[team_mate_id] then
+            selected[team_mate_id] = nil
+            selection_changed = true
+          end
+        end
+        if selection_changed then
+          open_selected_roster(player)
+        end
+      end
     end
   end
 end

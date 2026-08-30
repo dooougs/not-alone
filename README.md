@@ -13,8 +13,9 @@ A basic mod skeleton for Factorio 2.1.
 ## Current proof of concept
 
 Each player starts with ten **Team mate** items and one **Habitat** item. Place the Habitat where
-you want the initial logistic network, open it, then use **Deploy team mate** in its roster to
-consume one item and deploy a player-shaped team mate. Team mate items stack to 20. Deployed units are
+you want the initial logistic network and put Team mate items in its material slot. Open the
+Habitat and choose a working role for a stored team mate to deploy it automatically. Team mate
+items stack to 20. Deployed units are
 native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
 team mates have no route, role work, enemy, or logistics job, they return to the nearest Habitat and
 wait there. While a route is active, they follow its destinations in order. Their built-in ranged
@@ -24,19 +25,23 @@ Factorio units do not have character gun or ammunition inventories. The unit con
 replaces copied starter equipment and ammunition depletion with a built-in attack.
 
 Each player receives a **Team mate command tool**. Drag with the tool to select a group of your own
-team mates, then right-drag over any destination, including fogged or uncharted terrain, to send that
+team mates. A centered selected-team roster opens with one row per deployed team mate and iconized
+dropdowns for reassigning them to Logistics, a resource-specific Miner role, Security, Builder, or
+Scout. Its close button closes the roster and clears the selection; selecting an empty area does the
+same. Right-drag over any destination, including fogged or uncharted terrain, to send the selected
 group there. Shift-right-drag adds further destinations to the end of the route. Each team mate's
 route is shown with connected ground lines and waypoint markers visible to its owner. A normal
 right-drag replaces the existing route.
 
-Open a Habitat to view its roster beside the normal roboport GUI. Team mates deployed near a
-Habitat become its residents. Select team mates with the command tool and use **Assign selected
-here** to move them to another Habitat. Each roster row assigns Logistics, a resource-specific
-Miner role, Security, Builder, or Scout.
+Open a Habitat to view its roster beside the normal roboport GUI. The roster contains exactly one
+row for each Team mate item stored in that Habitat. Each role dropdown includes an identifying icon
+and starts at Waiting. Choosing Logistics, a resource-specific Miner role, Security, Builder, or
+Scout consumes that stored item and deploys the team mate with the selected role. Deployed team
+mates are no longer stored and therefore do not appear in the Habitat inventory or roster.
 
 The Team Mate Mining technology is researched automatically and unlocks Iron Miner, Copper Miner,
-Coal Miner, and Stone Miner roles. Use each resident's role dropdown in its Habitat roster to choose
-the resource. No token needs to be crafted.
+Coal Miner, and Stone Miner roles. Choose the resource when deploying a stored team mate from its
+Habitat roster. No token needs to be crafted.
 
 Assigned workers find the nearest matching resource covered by the logistic network they are
 currently part of and mine one item at the normal player rate until they have a 50-item load or
@@ -60,7 +65,8 @@ ingredient and fuel requests, so miners and haulers deliver to it before any ore
 inserted. Burner buildings request fuel that assigned miners are collecting as well as fuel already
 stored in network chests.
 
-Unassigned team mates also work as ground-based logistic bots while inside a logistic network.
+Team mates deployed with the Logistics role work as ground-based logistic bots while inside a
+logistic network.
 They collect requested items from active or passive provider, storage, and buffer chests, then walk
 them to covered buildings. Assemblers, furnaces, and rocket silos automatically request missing
 item ingredients for their current recipe. Burner-powered buildings automatically request
