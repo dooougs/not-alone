@@ -133,7 +133,8 @@ local function update_logistics_member(record)
     member.operable = false
     record.logistics_member = member
   elseif distance_squared(member.position, team_mate.position) > 0 then
-    member.teleport(position_table(team_mate.position))
+    member.destroy()
+    record.logistics_member = nil
   end
 end
 
@@ -1200,31 +1201,6 @@ local function spawn_team_mates(player)
   return spawned_count > 0
 end
 
-local function separate_stacked_team_mate(record, player)
-  local entity = record.entity
-  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
-    for _, other_record in pairs(team_mates) do
-      local other = other_record.entity
-      if other ~= entity and other and other.valid
-        and distance_squared(other.position, entity.position) == 0 then
-        -- Perfectly co-located units cannot push apart, freezing all commands.
-        local free_position = entity.surface.find_non_colliding_position(
-          HIDDEN_TEAM_MATE_NAME,
-          {x = entity.position.x + math.random(-3, 3), y = entity.position.y + math.random(-3, 3)},
-          8,
-          0.5
-        )
-        if free_position and distance_squared(free_position, entity.position) > 0 then
-          entity.teleport(free_position)
-          record.command_kind = nil
-          record.command_destination = nil
-        end
-        return
-      end
-    end
-  end
-end
-
 local function rescue_immobile_team_mate(record)
   local entity = record.entity
   if record.command_kind ~= "move" and record.command_kind ~= "move-recovery" then
@@ -1236,26 +1212,10 @@ local function rescue_immobile_team_mate(record)
     and distance_squared(entity.position, record.stall_position) < 0.01 then
     record.stall_count = (record.stall_count or 0) + 1
     if record.stall_count >= 30 then
-      -- Wants to move but has not shifted for 300 ticks: physically trapped.
       record.stall_count = 0
-      for _ = 1, 8 do
-        local angle = math.random() * 2 * math.pi
-        local free_position = entity.surface.find_non_colliding_position(
-          HIDDEN_TEAM_MATE_NAME,
-          {
-            x = entity.position.x + math.cos(angle) * 8,
-            y = entity.position.y + math.sin(angle) * 8
-          },
-          6,
-          0.5
-        )
-        if free_position and distance_squared(free_position, entity.position) > 4 then
-          entity.teleport(free_position)
-          record.command_kind = nil
-          record.command_destination = nil
-          break
-        end
-      end
+      record.move_failures = 2
+      record.command_kind = nil
+      record.command_destination = nil
     end
   else
     record.stall_position = position_table(entity.position)
@@ -1271,7 +1231,6 @@ local function update_team_mate(record, player)
     return false
   end
 
-  separate_stacked_team_mate(record, player)
   rescue_immobile_team_mate(record)
   update_logistics_member(record)
   update_building_requesters(record)

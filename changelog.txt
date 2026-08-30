@@ -43,7 +43,8 @@ Date: 2026-08-28
     - Limited miner resource searches to the logistic network the team mate is part of.
     - Made newly placed roboports immediately trigger resource searches for looking miners.
     - Fixed team mates spawning on one exact spot, which froze all engine movement commands.
-    - Spread team mate spawns into a ring and separated already-stacked team mates.
+    - Spread team mate spawns into a ring to prevent stacked team mates.
     - Disabled path caching and allowed paths through own entities for team mate movement.
-    - Added wander-then-teleport recovery for team mates whose paths fail or who are trapped.
+    - Added wander-based recovery for team mate paths that fail repeatedly.
+    - Removed teleport-based team mate recovery.
     - Fixed automatic building request slots requiring an explicit normal quality filter.
