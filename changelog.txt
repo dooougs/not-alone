@@ -72,3 +72,4 @@ Date: 2026-08-28
     - Added a selected-team roster for reassigning deployed team mates to any job role.
     - Kept command-tool selections stable while miners switch between visible and hidden entities.
     - Centered the selected-team roster and added a close button that clears the selection.
+    - Added native resource-chip particle bursts when team mates complete mining cycles.

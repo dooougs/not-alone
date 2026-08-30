@@ -36,24 +36,28 @@ local MINING_ROLES = {
     name = "iron-miner",
     resource_name = "iron-ore",
     item_name = "iron-ore",
+    particle_name = "iron-ore-particle",
     inventory = defines.inventory.crafter_input
   },
   {
     name = "copper-miner",
     resource_name = "copper-ore",
     item_name = "copper-ore",
+    particle_name = "copper-ore-particle",
     inventory = defines.inventory.crafter_input
   },
   {
     name = "coal-miner",
     resource_name = "coal",
     item_name = "coal",
+    particle_name = "coal-particle",
     inventory = defines.inventory.fuel
   },
   {
     name = "stone-miner",
     resource_name = "stone",
     item_name = "stone",
+    particle_name = "stone-particle",
     inventory = defines.inventory.crafter_input
   }
 }
@@ -109,6 +113,25 @@ end
 
 local function position_table(position)
   return {x = position.x, y = position.y}
+end
+
+local function create_mining_particles(surface, position, particle_name)
+  if not prototypes.particle[particle_name] then
+    return
+  end
+  for _ = 1, 5 do
+    surface.create_particle({
+      name = particle_name,
+      position = position,
+      movement = {
+        (math.random() - 0.5) * 0.08,
+        (math.random() - 0.5) * 0.08
+      },
+      height = 0.1,
+      vertical_speed = 0.08 + math.random() * 0.04,
+      frame_speed = 1
+    })
+  end
 end
 
 local function get_habitat_inventory(habitat)
@@ -704,6 +727,7 @@ local function update_miner(record, player, mining_role)
           resource.deplete()
         end
         record.carried_count = (record.carried_count or 0) + mined
+        create_mining_particles(record.entity.surface, mining_position, mining_role.particle_name)
         record.entity.surface.play_sound({
           path = "not-alone-team-mate-mining-sound",
           position = mining_position,
