@@ -12,11 +12,13 @@ A basic mod skeleton for Factorio 2.1.
 
 ## Current proof of concept
 
-Use the role panel's **Add Team Mate** button to spawn player-shaped **team mates** manually. They
-are native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
-team mates have no destination or queued waypoint remaining, they wander freely and engage nearby
-enemies. While a route is active, they follow its destinations in order without wandering. Their
-built-in ranged attack uses pistol-like physical damage.
+Each player starts with ten **Team mate** items and one **Habitat** item. Place the Habitat where
+you want the initial logistic network, then use the role panel's **Add Team Mate** button to consume
+one item and deploy a player-shaped team mate. Team mate items stack to 20. Deployed units are
+native Factorio units, so they use the engine's pathfinder to navigate around obstacles. When
+team mates have no route, role work, enemy, or logistics job, they return to the nearest Habitat and
+wait there. While a route is active, they follow its destinations in order. Their built-in ranged
+attack uses pistol-like physical damage.
 
 Factorio units do not have character gun or ammunition inventories. The unit conversion therefore
 replaces copied starter equipment and ammunition depletion with a built-in attack.
@@ -27,7 +29,7 @@ group there. Shift-right-drag adds further destinations to the end of the route.
 route is shown with connected ground lines and waypoint markers visible to its owner. A normal
 right-drag replaces the existing route.
 
-Use **Add Team Mate** in the role panel to spawn teammates near your character, one per click.
+Use **Add Team Mate** in the role panel to deploy team mates near your character, one item per click.
 
 The Team Mate Mining technology is researched automatically and unlocks Iron Miner, Copper Miner,
 Coal Miner, and Stone Miner roles. Select team mates by putting the **Team mate command tool** in
@@ -36,8 +38,8 @@ one of the **Assign Miner** controls to choose the resource. No token needs to b
 
 Assigned workers find the nearest matching resource covered by the logistic network they are
 currently part of and mine one item at the normal player rate until they have a 50-item load or
-exhaust the resource. If their network covers no matching resource, miners wander and keep
-looking; placing a roboport or Logistics coverage hub immediately triggers a new search, so
+exhaust the resource. If their network covers no matching resource, miners return to a Habitat and
+keep looking; placing a roboport or Habitat immediately triggers a new search, so
 extending their network over a patch puts them to work at once. Miners deliver only to covered
 buildings that are actively requesting their resource; they no longer choose the closest furnace.
 Manual routes take priority over role work while they are active. While mining, team mates display
@@ -66,10 +68,10 @@ and then default logistics. Higher-priority actions pause logistics. If a team m
 logistics cargo when a job role becomes active, it returns that cargo to logistic storage before
 resuming the role.
 
-Each force starts with one **Logistics coverage hub** just south of its spawn, and the
-logistic-network GUI is enabled from the start. The hub consumes no power, stores no robots or
-materials, and cannot charge robots; it only creates logistic-network coverage. Additional hubs are
-available from the start and cost 5 wood.
+The logistic-network GUI is enabled from the start. A Habitat consumes no power, stores no robots,
+and cannot charge robots; it creates logistic-network coverage and has one material slot for a
+single stack of 20 team mate items. Additional Habitats are available from the start and cost 5
+wood. Habitats are never placed automatically.
 
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are

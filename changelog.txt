@@ -52,3 +52,10 @@ Date: 2026-08-28
     - Requested burner fuel that assigned miners are collecting, not only chest-stored fuel.
     - Batched building ingredient requests so carriers deliver loads instead of single items.
     - Removed automatic initial team mate spawning; team mates are added manually from the role panel.
+    - Renamed Logistics coverage hubs to Habitats.
+    - Added Team mate items with a stack size of 20 and the basic armor icon.
+    - Gave each player ten Team mate items and one Habitat item initially and made deployment consume one Team mate item.
+    - Gave Habitats one material slot capable of holding one Team mate stack.
+    - Replaced idle and miner wandering with returning to the nearest Habitat.
+    - Removed wander-based movement recovery.
+    - Removed automatic starter Habitat placement.

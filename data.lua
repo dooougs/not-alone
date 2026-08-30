@@ -35,7 +35,7 @@ logistics_hub.recharge_minimum = "0J"
 logistics_hub.charging_energy = "0W"
 logistics_hub.charging_offsets = {}
 logistics_hub.robot_slots_count = 0
-logistics_hub.material_slots_count = 0
+logistics_hub.material_slots_count = 1
 logistics_hub.construction_radius = 0
 
 local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
@@ -55,6 +55,15 @@ local logistics_hub_recipe = {
 		{type = "item", name = "not-alone-logistics-hub", amount = 1}
 	}
 }
+
+local team_mate_item = table.deepcopy(data.raw["repair-tool"]["repair-pack"])
+team_mate_item.name = "not-alone-team-mate"
+team_mate_item.localised_name = {"item-name.not-alone-team-mate"}
+team_mate_item.localised_description = {"item-description.not-alone-team-mate"}
+team_mate_item.icon = "__base__/graphics/icons/light-armor.png"
+team_mate_item.subgroup = "tool"
+team_mate_item.order = "z[not-alone]-a[team-mate]"
+team_mate_item.stack_size = 20
 
 local team_mate_logistics_member = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
 team_mate_logistics_member.name = "not-alone-team-mate-logistics-member"
@@ -88,7 +97,7 @@ building_logistics_requester.max_logistic_slots = 20
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
 team_mate.localised_name = {"entity-name.not-alone-team-mate"}
-team_mate.icon = "__core__/graphics/icons/entity/character.png"
+team_mate.icon = "__base__/graphics/icons/light-armor.png"
 team_mate.flags = {"placeable-player", "placeable-off-grid", "not-repairable", "breaths-air"}
 team_mate.max_health = 250
 team_mate.healing_per_tick = 0.15
@@ -317,6 +326,7 @@ data:extend({
 	logistics_hub,
 	logistics_hub_item,
 	logistics_hub_recipe,
+	team_mate_item,
 	team_mate_logistics_member,
 	building_logistics_requester,
 	team_mate,

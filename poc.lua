@@ -1,9 +1,10 @@
 local poc = {}
 
-local TEAM_MATE_COUNT = 10
+local INITIAL_TEAM_MATE_COUNT = 10
+local INITIAL_HABITAT_COUNT = 1
+local STARTER_INVENTORY_VERSION = 2
 local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
-local WANDER_RADIUS = 10
 local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
@@ -22,9 +23,9 @@ local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
+local TEAM_MATE_ITEM_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
-local LOGISTICS_HUB_SOUTH_OFFSET = 8
 local LOGISTICS_MEMBER_NAME = "not-alone-team-mate-logistics-member"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
 local MINING_ROLES = {
@@ -95,7 +96,7 @@ local RECIPE_ENTITY_TYPES = {
   ["furnace"] = true,
   ["rocket-silo"] = true
 }
-local wander_with_team_mate
+local return_to_habitat
 local stop_team_mate
 local move_team_mate
 local update_mining_animation
@@ -663,7 +664,7 @@ local function update_miner(record, player, mining_role)
       record.role_target = resource
       record.role_state = "move-to-ore"
     else
-      wander_with_team_mate(record)
+      return_to_habitat(record)
     end
   elseif record.role_state == "move-to-ore" then
     if not record.role_target or not record.role_target.valid then
@@ -710,7 +711,7 @@ local function update_miner(record, player, mining_role)
       record.role_target = consumer
       record.role_state = "move-to-consumer"
     else
-      wander_with_team_mate(record)
+      return_to_habitat(record)
     end
   elseif record.role_state == "move-to-consumer" then
     if not record.role_target or not record.role_target.valid then
@@ -984,33 +985,11 @@ stop_team_mate = function(record)
   end
 end
 
-wander_with_team_mate = function(record)
-  if record.command_kind == "wander" and record.entity.commandable.has_command then
-    return
-  end
-
-  record.entity.commandable.set_command({
-    type = defines.command.wander,
-    radius = WANDER_RADIUS,
-    distraction = defines.distraction.by_enemy
-  })
-  record.command_kind = "wander"
-  record.command_destination = nil
-  record.command_target = nil
-end
-
 move_team_mate = function(record, destination, stopping_distance)
   if distance_squared(record.entity.position, destination) <= stopping_distance * stopping_distance then
     record.move_failures = nil
     stop_team_mate(record)
     return
-  end
-
-  if record.command_kind == "move-recovery" then
-    if record.entity.commandable.has_command then
-      return
-    end
-    record.command_kind = nil
   end
 
   if record.command_kind == "move"
@@ -1022,18 +1001,13 @@ move_team_mate = function(record, destination, stopping_distance)
       and record.entity.commandable.command.type == defines.command.go_to_location then
       return
     end
-    -- The same move ended without arrival: the path failed. After repeated
-    -- failures, wander briefly to leave the dead pocket before retrying.
+    -- The same move ended without arrival: retry with a fresh path while
+    -- staying focused on the requested destination.
     record.move_failures = (record.move_failures or 0) + 1
     if record.move_failures >= 2 then
       record.move_failures = 0
-      record.entity.commandable.set_command({
-        type = defines.command.wander,
-        radius = WANDER_RADIUS,
-        ticks_to_wait = 120,
-        distraction = defines.distraction.none
-      })
-      record.command_kind = "move-recovery"
+      record.entity.commandable.set_command({type = defines.command.stop})
+      record.command_kind = "stop"
       record.command_destination = nil
       record.command_target = nil
       return
@@ -1052,6 +1026,32 @@ move_team_mate = function(record, destination, stopping_distance)
   record.command_kind = "move"
   record.command_destination = {x = destination.x, y = destination.y}
   record.command_target = nil
+end
+
+local function find_nearest_habitat(record)
+  local team_mate = record.entity
+  local nearest_habitat = nil
+  local nearest_distance = nil
+  for _, habitat in pairs(team_mate.surface.find_entities_filtered({
+    name = LOGISTICS_HUB_NAME,
+    force = team_mate.force
+  })) do
+    local distance = distance_squared(team_mate.position, habitat.position)
+    if not nearest_distance or distance < nearest_distance then
+      nearest_habitat = habitat
+      nearest_distance = distance
+    end
+  end
+  return nearest_habitat
+end
+
+return_to_habitat = function(record)
+  local habitat = find_nearest_habitat(record)
+  if habitat then
+    move_team_mate(record, habitat.position, 3)
+  else
+    stop_team_mate(record)
+  end
 end
 
 local function move_team_mate_toward_destination(record, destination)
@@ -1107,7 +1107,7 @@ local function create_team_mate(player, index, spawn_center)
   -- returns the same spot for every spawn; ring offsets keep them apart
   -- because perfectly co-located units cannot be separated by the engine.
   local center = spawn_center or player.position
-  local angle = (index - 1) / TEAM_MATE_COUNT * 2 * math.pi
+  local angle = (index - 1) / INITIAL_TEAM_MATE_COUNT * 2 * math.pi
   local ring_center = {
     x = center.x + math.cos(angle) * 3,
     y = center.y + math.sin(angle) * 3
@@ -1139,7 +1139,10 @@ end
 
 local function add_team_mate(player, spawn_center)
   if not player.valid or not player.character or not player.character.valid then
-    return nil
+    return nil, "no-space"
+  end
+  if player.get_item_count(TEAM_MATE_ITEM_NAME) == 0 then
+    return nil, "no-item"
   end
 
   if player.get_item_count(COMMAND_TOOL_NAME) == 0 then
@@ -1150,52 +1153,73 @@ local function add_team_mate(player, spawn_center)
   local team_mates = storage.not_alone_team_mates[player.index] or {}
   local record = create_team_mate(player, #team_mates + 1, spawn_center)
   if not record then
-    return nil
+    return nil, "no-space"
   end
 
+  player.remove_item({name = TEAM_MATE_ITEM_NAME, count = 1})
   team_mates[#team_mates + 1] = record
   storage.not_alone_team_mates[player.index] = team_mates
   return record
 end
 
-local function ensure_starter_logistics_hub(player)
-  local surface = player.surface
-  local spawn_position = player.force.get_spawn_position(surface)
-  local existing_hub = surface.find_entities_filtered({
-    name = LOGISTICS_HUB_NAME,
-    force = player.force,
-    position = spawn_position,
-    radius = 32,
-    limit = 1
-  })[1]
-  if existing_hub then
-    return existing_hub
+local function configure_freeplay_starter_inventory()
+  local freeplay = remote.interfaces.freeplay
+  if not freeplay or not freeplay.get_created_items or not freeplay.set_created_items then
+    return
   end
 
-  local desired_position = {
-    x = spawn_position.x,
-    y = spawn_position.y + LOGISTICS_HUB_SOUTH_OFFSET
-  }
-  local hub_position = surface.find_non_colliding_position(
-    LOGISTICS_HUB_NAME,
-    desired_position,
-    8,
-    0.5
-  )
-  if not hub_position then
-    return nil
+  local created_items = remote.call("freeplay", "get_created_items")
+  if not created_items then
+    return
   end
-  return surface.create_entity({
-    name = LOGISTICS_HUB_NAME,
-    position = hub_position,
-    force = player.force,
-    create_build_effect_smoke = false
-  })
+  created_items[TEAM_MATE_ITEM_NAME] = INITIAL_TEAM_MATE_COUNT
+  created_items[LOGISTICS_HUB_NAME] = INITIAL_HABITAT_COUNT
+  remote.call("freeplay", "set_created_items", created_items)
+end
+
+local function queue_starter_inventory(player_index)
+  storage.not_alone_starter_inventory_pending =
+    storage.not_alone_starter_inventory_pending or {}
+  storage.not_alone_starter_inventory_pending[player_index] = true
+end
+
+local function queue_starter_inventory_migration()
+  if storage.not_alone_starter_inventory_version == STARTER_INVENTORY_VERSION then
+    return
+  end
+  for _, player in pairs(game.players) do
+    queue_starter_inventory(player.index)
+  end
+  storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
+end
+
+local function ensure_starter_inventory(player)
+  if not player or not player.valid or not player.character or not player.character.valid then
+    return false
+  end
+
+  local missing_team_mates = math.max(
+    INITIAL_TEAM_MATE_COUNT - player.get_item_count(TEAM_MATE_ITEM_NAME),
+    0
+  )
+  local missing_habitats = math.max(
+    INITIAL_HABITAT_COUNT - player.get_item_count(LOGISTICS_HUB_NAME),
+    0
+  )
+  if missing_team_mates > 0 then
+    player.insert({name = TEAM_MATE_ITEM_NAME, count = missing_team_mates})
+  end
+  if missing_habitats > 0 then
+    player.insert({name = LOGISTICS_HUB_NAME, count = missing_habitats})
+  end
+
+  return player.get_item_count(TEAM_MATE_ITEM_NAME) >= INITIAL_TEAM_MATE_COUNT
+    and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
 end
 
 local function rescue_immobile_team_mate(record)
   local entity = record.entity
-  if record.command_kind ~= "move" and record.command_kind ~= "move-recovery" then
+  if record.command_kind ~= "move" then
     record.stall_position = nil
     record.stall_count = nil
     return
@@ -1294,7 +1318,7 @@ local function update_team_mate(record, player)
   if update_logistics(record) then
     return true
   else
-    wander_with_team_mate(record)
+    return_to_habitat(record)
   end
 
   return true
@@ -1303,12 +1327,15 @@ end
 function poc.on_init()
   storage.not_alone_team_mates = {}
   storage.not_alone_selected_team_mates = {}
+  storage.not_alone_starter_inventory_pending = {}
+  configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
-    ensure_starter_logistics_hub(player)
+    queue_starter_inventory(player.index)
     ensure_role_gui(player)
   end
+  storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
 function poc.on_configuration_changed()
@@ -1322,10 +1349,10 @@ function poc.on_configuration_changed()
   storage.not_alone_building_requester_ticks = nil
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
+  queue_starter_inventory_migration()
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
     enable_logistics_network_gui(player.force)
-    ensure_starter_logistics_hub(player)
     ensure_role_gui(player)
   end
 end
@@ -1334,7 +1361,7 @@ function poc.on_player_created(event)
   local player = game.get_player(event.player_index)
   ensure_miner_technology(player.force)
   enable_logistics_network_gui(player.force)
-  ensure_starter_logistics_hub(player)
+  queue_starter_inventory(player.index)
   ensure_role_gui(player)
 end
 
@@ -1354,8 +1381,11 @@ function poc.on_gui_click(event)
   end
 
   if event.element.name == "not_alone_add_team_mate" then
-    if add_team_mate(player) then
+    local record, failure = add_team_mate(player)
+    if record then
       player.print({"not-alone.team-mate-added"})
+    elseif failure == "no-item" then
+      player.print({"not-alone.no-team-mate-items"})
     else
       player.print({"not-alone.team-mate-could-not-be-added"})
     end
@@ -1521,6 +1551,13 @@ function poc.on_roboport_built(event)
 end
 
 function poc.on_update(event)
+  queue_starter_inventory_migration()
+  for player_index in pairs(storage.not_alone_starter_inventory_pending or {}) do
+    if ensure_starter_inventory(game.get_player(player_index)) then
+      storage.not_alone_starter_inventory_pending[player_index] = nil
+    end
+  end
+
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
     if player then
