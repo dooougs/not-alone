@@ -29,3 +29,21 @@ Date: 2026-08-28
     - Allowed the command tool to select team mates while they are mining.
     - Added autonomous logistic-network hauling for unassigned team mates.
     - Added automatic item-ingredient and compatible-fuel requests for covered buildings.
+    - Added a power-free, non-charging Logistics coverage hub crafted from five wood.
+    - Added one starter hub south of each force spawn and placed initial team mates in its network.
+    - Enabled the logistic-network GUI for player forces from the start.
+    - Made each team mate an engine-recognized logistic network member through a following interface.
+    - Replaced closest-building deliveries with engine-selected logistic requester deliveries.
+    - Exposed automatic building requests to vanilla logistic robots as well as team mates.
+    - Prioritized move orders, combat, and assigned roles over default logistic hauling.
+    - Required carried logistic cargo to be returned before an assigned role resumes.
+    - Made assigning a mining role clear pending move orders again.
+    - Fixed team mates stalling on waypoints the pathfinder finishes slightly short of.
+    - Made team mates drop undeliverable return cargo instead of freezing in place.
+    - Limited miner resource searches to the logistic network the team mate is part of.
+    - Made newly placed roboports immediately trigger resource searches for looking miners.
+    - Fixed team mates spawning on one exact spot, which froze all engine movement commands.
+    - Spread team mate spawns into a ring and separated already-stacked team mates.
+    - Disabled path caching and allowed paths through own entities for team mate movement.
+    - Added wander-then-teleport recovery for team mates whose paths fail or who are trapped.
+    - Fixed automatic building request slots requiring an explicit normal quality filter.

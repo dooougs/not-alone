@@ -22,6 +22,69 @@ for _, recipe_name in pairs(logistic_chest_recipe_names) do
 	})
 end
 
+local logistics_hub = table.deepcopy(data.raw.roboport.roboport)
+logistics_hub.name = "not-alone-logistics-hub"
+logistics_hub.localised_name = {"entity-name.not-alone-logistics-hub"}
+logistics_hub.icon = "__base__/graphics/icons/roboport.png"
+logistics_hub.minable = {mining_time = 0.1, result = "not-alone-logistics-hub"}
+logistics_hub.fast_replaceable_group = nil
+logistics_hub.next_upgrade = nil
+logistics_hub.energy_source = {type = "void"}
+logistics_hub.energy_usage = "0W"
+logistics_hub.recharge_minimum = "0J"
+logistics_hub.charging_energy = "0W"
+logistics_hub.charging_offsets = {}
+logistics_hub.robot_slots_count = 0
+logistics_hub.material_slots_count = 0
+logistics_hub.construction_radius = 0
+
+local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
+logistics_hub_item.name = "not-alone-logistics-hub"
+logistics_hub_item.localised_name = {"item-name.not-alone-logistics-hub"}
+logistics_hub_item.place_result = "not-alone-logistics-hub"
+logistics_hub_item.order = "c[signal]-a[not-alone-logistics-hub]"
+
+local logistics_hub_recipe = {
+	type = "recipe",
+	name = "not-alone-logistics-hub",
+	enabled = true,
+	ingredients = {
+		{type = "item", name = "wood", amount = 5}
+	},
+	results = {
+		{type = "item", name = "not-alone-logistics-hub", amount = 1}
+	}
+}
+
+local team_mate_logistics_member = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
+team_mate_logistics_member.name = "not-alone-team-mate-logistics-member"
+team_mate_logistics_member.localised_name = {"entity-name.not-alone-team-mate-logistics-member"}
+team_mate_logistics_member.flags = {"not-on-map", "not-blueprintable", "not-deconstructable"}
+team_mate_logistics_member.collision_box = {{0, 0}, {0, 0}}
+team_mate_logistics_member.selection_box = {{0, 0}, {0, 0}}
+team_mate_logistics_member.selectable_in_game = false
+team_mate_logistics_member.inventory_size = 1
+team_mate_logistics_member.trash_inventory_size = 0
+team_mate_logistics_member.max_logistic_slots = 0
+team_mate_logistics_member.minable = nil
+team_mate_logistics_member.corpse = nil
+team_mate_logistics_member.dying_explosion = nil
+team_mate_logistics_member.picture = {
+	filename = "__core__/graphics/empty.png",
+	width = 1,
+	height = 1
+}
+team_mate_logistics_member.robot_door = nil
+team_mate_logistics_member.circuit_connector = nil
+team_mate_logistics_member.circuit_wire_max_distance = 0
+team_mate_logistics_member.render_not_in_network_icon = false
+
+local building_logistics_requester = table.deepcopy(team_mate_logistics_member)
+building_logistics_requester.name = "not-alone-building-logistics-requester"
+building_logistics_requester.localised_name = {"entity-name.not-alone-building-logistics-requester"}
+building_logistics_requester.inventory_size = 20
+building_logistics_requester.max_logistic_slots = 20
+
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
 team_mate.localised_name = {"entity-name.not-alone-team-mate"}
@@ -250,4 +313,17 @@ local mining_roles_technology = {
 	}
 }
 
-data:extend({team_mate, hidden_team_mate, mining_sound, command_tool, iron_miner_token, iron_miner_recipe, mining_roles_technology})
+data:extend({
+	logistics_hub,
+	logistics_hub_item,
+	logistics_hub_recipe,
+	team_mate_logistics_member,
+	building_logistics_requester,
+	team_mate,
+	hidden_team_mate,
+	mining_sound,
+	command_tool,
+	iron_miner_token,
+	iron_miner_recipe,
+	mining_roles_technology
+})

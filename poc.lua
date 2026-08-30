@@ -9,20 +9,23 @@ local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
 local SCOUT_GENERATION_RADIUS = 2
 local MINER_TECHNOLOGY_NAME = "not-alone-iron-miner"
-local RESOURCE_SEARCH_RADIUS = 128
-local CONSUMER_SEARCH_RADIUS = 128
 local MINER_CAPACITY = 50
 local RESOURCE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
 local LOGISTICS_SEARCH_RADIUS = 128
 local LOGISTICS_CAPACITY = 50
 local FUEL_REQUEST_COUNT = 5
+local BUILDING_REQUEST_SLOT_COUNT = 20
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
+local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
+local LOGISTICS_HUB_SOUTH_OFFSET = 8
+local LOGISTICS_MEMBER_NAME = "not-alone-team-mate-logistics-member"
+local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
 local MINING_ROLES = {
   {
     name = "iron-miner",
@@ -106,6 +109,34 @@ local function position_table(position)
   return {x = position.x, y = position.y}
 end
 
+local function destroy_logistics_member(record)
+  if record.logistics_member and record.logistics_member.valid then
+    record.logistics_member.destroy()
+  end
+  record.logistics_member = nil
+end
+
+local function update_logistics_member(record)
+  local team_mate = record.entity
+  local member = record.logistics_member
+  if not member or not member.valid then
+    member = team_mate.surface.create_entity({
+      name = LOGISTICS_MEMBER_NAME,
+      position = team_mate.position,
+      force = team_mate.force,
+      create_build_effect_smoke = false
+    })
+    if not member then
+      return
+    end
+    member.destructible = false
+    member.operable = false
+    record.logistics_member = member
+  elseif distance_squared(member.position, team_mate.position) > 0 then
+    member.teleport(position_table(team_mate.position))
+  end
+end
+
 local function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -130,53 +161,62 @@ local function get_manual_destinations(record)
   return record.manual_destinations
 end
 
-local function find_nearest_entity(entities, position, accepts)
-  local nearest_entity
+local function find_nearest_resource(record, mining_role)
+  local network = record.entity.surface.find_logistic_network_by_position(
+    position_table(record.entity.position),
+    record.entity.force
+  )
+  if not network then
+    return nil
+  end
+  local surface = record.entity.surface
+  local nearest_resource
   local nearest_distance
-  for _, entity in pairs(entities) do
-    if entity.valid and (not accepts or accepts(entity)) then
-      local current_distance = distance_squared(entity.position, position)
-      if not nearest_distance or current_distance < nearest_distance then
-        nearest_entity = entity
-        nearest_distance = current_distance
+  for _, cell in pairs(network.cells) do
+    if cell.valid and cell.owner.valid then
+      -- Cover the square logistic area's corners; is_in_logistic_range is exact.
+      for _, resource in pairs(surface.find_entities_filtered({
+        type = "resource",
+        name = mining_role.resource_name,
+        position = cell.owner.position,
+        radius = cell.logistic_radius * 1.5
+      })) do
+        if resource.amount > 0 and cell.is_in_logistic_range(resource.position) then
+          local current_distance = distance_squared(resource.position, record.entity.position)
+          if not nearest_distance or current_distance < nearest_distance then
+            nearest_resource = resource
+            nearest_distance = current_distance
+          end
+        end
       end
     end
   end
-  return nearest_entity
-end
-
-local function find_nearest_resource(record, mining_role)
-  return find_nearest_entity(
-    record.entity.surface.find_entities_filtered({
-      type = "resource",
-      name = mining_role.resource_name,
-      position = record.entity.position,
-      radius = RESOURCE_SEARCH_RADIUS
-    }),
-    record.entity.position,
-    function(resource)
-      return resource.amount > 0
-    end
-  )
+  return nearest_resource
 end
 
 local function consumer_accepts_item(consumer, mining_role, count)
-  local inventory = consumer.get_inventory(mining_role.inventory)
+  local inventory = consumer.get_inventory(
+    consumer.name == BUILDING_REQUESTER_NAME
+      and defines.inventory.chest
+      or mining_role.inventory
+  )
   return inventory and inventory.get_insertable_count(mining_role.item_name) >= count
 end
 
-local function find_nearest_consumer(record, mining_role)
-  return find_nearest_entity(
-    record.entity.surface.find_entities_filtered({
-      type = "furnace",
-      position = record.entity.position,
-      radius = CONSUMER_SEARCH_RADIUS
-    }),
-    record.entity.position,
-    function(consumer)
-      return consumer_accepts_item(consumer, mining_role, 1)
-    end
+local function find_requesting_consumer(record, mining_role)
+  local network = record.entity.surface.find_logistic_network_by_position(
+    position_table(record.entity.position),
+    record.entity.force
   )
+  local requester_point = network and network.select_drop_point({
+    stack = {name = mining_role.item_name, count = 1},
+    members = "requester"
+  })
+  local requester = requester_point and requester_point.owner
+  if requester and requester.valid and requester.name == BUILDING_REQUESTER_NAME then
+    return requester
+  end
+  return nil
 end
 
 local function get_mining_interval(player)
@@ -193,22 +233,6 @@ local function get_logistics_source_inventory(source)
   return source.get_inventory(defines.inventory.chest)
 end
 
-local function find_logistics_source(record, network, item_name)
-  local nearest_source
-  local nearest_distance
-  for _, source in pairs(network.storages) do
-    local inventory = get_logistics_source_inventory(source)
-    if inventory and inventory.get_item_count(item_name) > 0 then
-      local current_distance = distance_squared(record.entity.position, source.position)
-      if not nearest_distance or current_distance < nearest_distance then
-        nearest_source = source
-        nearest_distance = current_distance
-      end
-    end
-  end
-  return nearest_source
-end
-
 local function get_logistics_target_inventory(target, inventory_kind)
   if not target or not target.valid then
     return nil
@@ -216,35 +240,13 @@ local function get_logistics_target_inventory(target, inventory_kind)
   if inventory_kind == "fuel" then
     return target.burner and target.burner.inventory
   end
+  if inventory_kind == "requester" then
+    return target.get_inventory(defines.inventory.chest)
+  end
   return target.get_inventory(defines.inventory.crafter_input)
 end
 
-local function get_recipe_job(record, target, network)
-  if not RECIPE_ENTITY_TYPES[target.type] then
-    return nil
-  end
-  local recipe = target.get_recipe()
-  local inventory = target.get_inventory(defines.inventory.crafter_input)
-  if not recipe or not inventory then
-    return nil
-  end
-
-  for _, ingredient in pairs(recipe.ingredients) do
-    if ingredient.type == "item" then
-      local desired_count = math.ceil(ingredient.amount)
-      local missing_count = desired_count - inventory.get_item_count(ingredient.name)
-      if missing_count > 0 and inventory.get_insertable_count(ingredient.name) > 0 then
-        local source = find_logistics_source(record, network, ingredient.name)
-        if source then
-          return ingredient.name, missing_count, "input", source
-        end
-      end
-    end
-  end
-  return nil
-end
-
-local function get_fuel_request(target, network, record)
+local function find_available_fuel(target, network)
   local burner = target.burner
   if not burner or not burner.inventory then
     return nil
@@ -255,18 +257,199 @@ local function get_fuel_request(target, network, record)
     if inventory then
       for _, item in pairs(inventory.get_contents()) do
         local item_prototype = prototypes.item[item.name]
-        if item_prototype and burner.fuel_categories[item_prototype.fuel_category]
-          and burner.inventory.get_item_count(item.name) < FUEL_REQUEST_COUNT
-          and burner.inventory.get_insertable_count(item.name) > 0 then
-          return item.name,
-            FUEL_REQUEST_COUNT - burner.inventory.get_item_count(item.name),
-            "fuel",
-            find_logistics_source(record, network, item.name)
+        if item_prototype and burner.fuel_categories[item_prototype.fuel_category] then
+          return item.name
         end
       end
     end
   end
   return nil
+end
+
+local function get_building_requests(target, network)
+  local requests = {}
+  if RECIPE_ENTITY_TYPES[target.type] then
+    local recipe = target.get_recipe()
+    local inventory = target.get_inventory(defines.inventory.crafter_input)
+    if recipe and inventory then
+      for _, ingredient in pairs(recipe.ingredients) do
+        if ingredient.type == "item" then
+          local missing_count = math.ceil(ingredient.amount)
+            - inventory.get_item_count(ingredient.name)
+          if missing_count > 0 and inventory.get_insertable_count(ingredient.name) > 0 then
+            requests[#requests + 1] = {
+              item_name = ingredient.name,
+              count = missing_count,
+              inventory_kind = "input"
+            }
+          end
+        end
+      end
+    end
+  end
+
+  local fuel_name = find_available_fuel(target, network)
+  local fuel_inventory = target.burner and target.burner.inventory
+  if fuel_name and fuel_inventory then
+    local missing_count = FUEL_REQUEST_COUNT - fuel_inventory.get_item_count(fuel_name)
+    if missing_count > 0 and fuel_inventory.get_insertable_count(fuel_name) > 0 then
+      requests[#requests + 1] = {
+        item_name = fuel_name,
+        count = missing_count,
+        inventory_kind = "fuel"
+      }
+    end
+  end
+  return requests
+end
+
+local function update_building_requester(requester_record, network)
+  local target = requester_record.target
+  local requester = requester_record.requester
+  if not target.valid or not requester.valid then
+    if requester.valid then
+      requester.destroy()
+    end
+    return false
+  end
+
+  local requests = get_building_requests(target, network)
+  local request_by_item = {}
+  for _, request in pairs(requests) do
+    request_by_item[request.item_name] = request
+  end
+
+  local requester_inventory = requester.get_inventory(defines.inventory.chest)
+  for _, item in pairs(requester_inventory.get_contents()) do
+    local request = request_by_item[item.name]
+    local target_inventory = request
+      and get_logistics_target_inventory(target, request.inventory_kind)
+    if target_inventory then
+      local inserted = target_inventory.insert({name = item.name, count = item.count})
+      requester_inventory.remove({name = item.name, count = inserted})
+    end
+  end
+
+  requests = get_building_requests(target, network)
+
+  local requester_point = requester.get_requester_point()
+  local section = requester_point and requester_point.get_section(1)
+  if requester_point and not section then
+    section = requester_point.add_section()
+  end
+  if section then
+    for slot = 1, BUILDING_REQUEST_SLOT_COUNT do
+      section.clear_slot(slot)
+    end
+    for slot, request in ipairs(requests) do
+      if slot > BUILDING_REQUEST_SLOT_COUNT then
+        break
+      end
+      section.set_slot(slot, {
+        value = {type = "item", name = request.item_name, quality = "normal"},
+        min = request.count
+      })
+    end
+  end
+  return true
+end
+
+local function update_building_requesters(record)
+  local entity = record.entity
+  local network = entity.surface.find_logistic_network_by_position(
+    position_table(entity.position),
+    entity.force
+  )
+  if not network then
+    return
+  end
+
+  storage.not_alone_building_requesters = storage.not_alone_building_requesters or {}
+  storage.not_alone_building_requester_ticks = storage.not_alone_building_requester_ticks or {}
+  local network_key = entity.surface.index .. ":" .. entity.force.index
+    .. ":" .. network.network_id
+  if storage.not_alone_building_requester_ticks[network_key] == game.tick then
+    return
+  end
+  storage.not_alone_building_requester_ticks[network_key] = game.tick
+
+  local requesters = storage.not_alone_building_requesters
+  local destinations = entity.surface.find_entities_filtered({
+    type = LOGISTICS_DESTINATION_TYPES,
+    force = entity.force,
+    position = entity.position,
+    radius = LOGISTICS_SEARCH_RADIUS
+  })
+  for _, target in pairs(destinations) do
+    local target_network = entity.surface.find_logistic_network_by_position(
+      position_table(target.position),
+      entity.force
+    )
+    if target_network == network and target.unit_number then
+      local requester_record = requesters[target.unit_number]
+      if not requester_record or not requester_record.requester.valid then
+        local requester = entity.surface.create_entity({
+          name = BUILDING_REQUESTER_NAME,
+          position = target.position,
+          force = entity.force,
+          create_build_effect_smoke = false
+        })
+        if requester then
+          requester.destructible = false
+          requester.operable = false
+          requester_record = {target = target, requester = requester}
+          requesters[target.unit_number] = requester_record
+        end
+      end
+      if requester_record and not update_building_requester(requester_record, network) then
+        requesters[target.unit_number] = nil
+      end
+    end
+  end
+
+  for unit_number, requester_record in pairs(requesters) do
+    if not requester_record.target.valid or not requester_record.requester.valid then
+      if requester_record.requester.valid then
+        requester_record.requester.destroy()
+      end
+      requesters[unit_number] = nil
+    end
+  end
+end
+
+local function get_reserved_delivery_count(target, item_name)
+  local reserved_count = 0
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, other_record in pairs(team_mates) do
+      if other_record.logistics_target == target
+        and other_record.logistics_item_name == item_name
+        and (other_record.logistics_state == "move-to-source"
+          or other_record.logistics_state == "move-to-target") then
+        reserved_count = reserved_count + (other_record.logistics_requested_count or 0)
+      end
+    end
+  end
+  return reserved_count
+end
+
+local function get_request_count(requester_point, item_name)
+  local requested_count = 0
+  for _, filter in pairs(requester_point.filters or {}) do
+    if filter.value and filter.value.type == "item" and filter.value.name == item_name then
+      requested_count = requested_count + math.max(filter.min or 0, 0)
+    end
+  end
+  return requested_count
+end
+
+local function get_targeted_delivery_count(requester_point, item_name)
+  local targeted_count = 0
+  for _, item in pairs(requester_point.targeted_items_deliver) do
+    if item.name == item_name then
+      targeted_count = targeted_count + item.count
+    end
+  end
+  return targeted_count
 end
 
 local function find_logistics_job(record)
@@ -279,39 +462,40 @@ local function find_logistics_job(record)
     return nil
   end
 
-  local destinations = surface.find_entities_filtered({
-    type = LOGISTICS_DESTINATION_TYPES,
-    force = record.entity.force,
-    position = record.entity.position,
-    radius = LOGISTICS_SEARCH_RADIUS
-  })
-  table.sort(destinations, function(first, second)
-    return distance_squared(record.entity.position, first.position)
-      < distance_squared(record.entity.position, second.position)
-  end)
-
-  for _, target in pairs(destinations) do
-    local target_network = surface.find_logistic_network_by_position(
-      position_table(target.position),
-      record.entity.force
-    )
-    if target_network == network then
-      local item_name, count, inventory_kind, source = get_recipe_job(
-        record,
-        target,
-        network
-      )
-      if not source then
-        item_name, count, inventory_kind, source = get_fuel_request(target, network, record)
-      end
-      if source then
-        return {
-          source = source,
-          target = target,
-          item_name = item_name,
-          count = math.min(count, LOGISTICS_CAPACITY),
-          inventory_kind = inventory_kind
-        }
+  for _, candidate_point in pairs(network.requester_points) do
+    if candidate_point.valid and candidate_point.enabled
+      and candidate_point.owner.valid and candidate_point.owner.name == BUILDING_REQUESTER_NAME then
+      for _, filter in pairs(candidate_point.filters or {}) do
+        local item_name = filter.value and filter.value.type == "item" and filter.value.name
+        if item_name and (filter.min or 0) > 0 then
+          local requester_point = network.select_drop_point({
+            stack = {name = item_name, count = 1},
+            members = "requester"
+          })
+          local target = requester_point and requester_point.owner
+          local outstanding_count = target and target.name == BUILDING_REQUESTER_NAME
+            and get_request_count(requester_point, item_name)
+              - target.get_item_count(item_name)
+              - get_targeted_delivery_count(requester_point, item_name)
+              - get_reserved_delivery_count(target, item_name)
+          local pickup_point = outstanding_count and outstanding_count > 0
+            and network.select_pickup_point({
+              name = item_name,
+              position = position_table(target.position),
+              include_buffers = true
+            })
+          local source = pickup_point and pickup_point.owner
+          local source_inventory = get_logistics_source_inventory(source)
+          if source_inventory and source_inventory.get_item_count(item_name) > 0 then
+            return {
+              source = source,
+              target = target,
+              item_name = item_name,
+              count = math.min(outstanding_count, LOGISTICS_CAPACITY),
+              inventory_kind = "requester"
+            }
+          end
+        end
       end
     end
   end
@@ -349,40 +533,6 @@ local function find_logistics_return_source(record)
     end
   end
   return nearest_source
-end
-
-local function return_logistics_cargo_immediately(record)
-  local remaining_count = record.logistics_carried_count or 0
-  if remaining_count <= 0 then
-    record.logistics_carried_count = 0
-    clear_logistics_job(record)
-    return true
-  end
-
-  local source = record.logistics_source
-  local inventory = get_logistics_source_inventory(source)
-  if not inventory or inventory.get_insertable_count(record.logistics_item_name) <= 0 then
-    source = find_logistics_return_source(record)
-    inventory = get_logistics_source_inventory(source)
-  end
-  if not inventory then
-    record.logistics_state = "return-cargo"
-    return false
-  end
-
-  local inserted = inventory.insert({
-    name = record.logistics_item_name,
-    count = remaining_count
-  })
-  record.logistics_carried_count = remaining_count - inserted
-  if record.logistics_carried_count <= 0 then
-    record.logistics_carried_count = 0
-    clear_logistics_job(record)
-    return true
-  end
-  record.logistics_source = source
-  record.logistics_state = "return-cargo"
-  return false
 end
 
 local function update_logistics(record)
@@ -459,8 +609,14 @@ local function update_logistics(record)
       source_inventory = get_logistics_source_inventory(record.logistics_source)
     end
     if not source_inventory then
-      stop_team_mate(record)
-      return true
+      -- No chest can take the cargo back; drop it rather than freeze forever.
+      record.entity.surface.spill_item_stack({
+        position = position_table(record.entity.position),
+        stack = {name = record.logistics_item_name, count = record.logistics_carried_count}
+      })
+      record.logistics_carried_count = 0
+      clear_logistics_job(record)
+      return false
     elseif distance_squared(record.entity.position, record.logistics_source.position) <= 4 then
       local inserted = source_inventory.insert({
         name = record.logistics_item_name,
@@ -533,7 +689,7 @@ local function update_miner(record, player, mining_role)
       end
     end
   elseif record.role_state == "find-consumer" then
-    local consumer = find_nearest_consumer(record, mining_role)
+    local consumer = find_requesting_consumer(record, mining_role)
     if consumer then
       record.role_target = consumer
       record.role_state = "move-to-consumer"
@@ -557,7 +713,11 @@ local function update_miner(record, player, mining_role)
     if not consumer or not consumer.valid then
       record.role_state = "find-consumer"
     else
-      local inventory = consumer.get_inventory(mining_role.inventory)
+      local inventory = consumer.get_inventory(
+        consumer.name == BUILDING_REQUESTER_NAME
+          and defines.inventory.chest
+          or mining_role.inventory
+      )
       local inserted = 0
       if inventory and (record.carried_count or 0) > 0 then
         local insertable = math.min(
@@ -775,6 +935,10 @@ local function ensure_miner_technology(force)
   end
 end
 
+local function enable_logistics_network_gui(force)
+  force.unlock_logistic_network = true
+end
+
 local function update_role_selection_status(player)
   local frame = player.gui.left.not_alone_role_frame
   if not frame or not frame.valid then
@@ -821,25 +985,53 @@ end
 
 move_team_mate = function(record, destination, stopping_distance)
   if distance_squared(record.entity.position, destination) <= stopping_distance * stopping_distance then
+    record.move_failures = nil
     stop_team_mate(record)
     return
   end
 
+  if record.command_kind == "move-recovery" then
+    if record.entity.commandable.has_command then
+      return
+    end
+    record.command_kind = nil
+  end
+
   if record.command_kind == "move"
     and record.command_destination
-    and record.entity.commandable.has_command
-    and record.entity.commandable.command
-    and record.entity.commandable.command.type == defines.command.go_to_location
     and distance_squared(record.command_destination, destination)
       <= COMMAND_REFRESH_DISTANCE * COMMAND_REFRESH_DISTANCE then
-    return
+    if record.entity.commandable.has_command
+      and record.entity.commandable.command
+      and record.entity.commandable.command.type == defines.command.go_to_location then
+      return
+    end
+    -- The same move ended without arrival: the path failed. After repeated
+    -- failures, wander briefly to leave the dead pocket before retrying.
+    record.move_failures = (record.move_failures or 0) + 1
+    if record.move_failures >= 2 then
+      record.move_failures = 0
+      record.entity.commandable.set_command({
+        type = defines.command.wander,
+        radius = WANDER_RADIUS,
+        ticks_to_wait = 120,
+        distraction = defines.distraction.none
+      })
+      record.command_kind = "move-recovery"
+      record.command_destination = nil
+      record.command_target = nil
+      return
+    end
   end
 
   record.entity.commandable.set_command({
     type = defines.command.go_to_location,
     destination = destination,
     radius = stopping_distance,
-    distraction = defines.distraction.none
+    distraction = defines.distraction.none,
+    -- Cached path failures otherwise repeat forever, and crowded spawns need
+    -- paths that may pass through fellow team mates.
+    pathfind_flags = {cache = false, allow_paths_through_own_entities = true}
   })
   record.command_kind = "move"
   record.command_destination = {x = destination.x, y = destination.y}
@@ -894,10 +1086,19 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
-local function create_team_mate(player, index)
+local function create_team_mate(player, index, spawn_center)
+  -- Units do not collide with each other, so find_non_colliding_position
+  -- returns the same spot for every spawn; ring offsets keep them apart
+  -- because perfectly co-located units cannot be separated by the engine.
+  local center = spawn_center or player.position
+  local angle = (index - 1) / TEAM_MATE_COUNT * 2 * math.pi
+  local ring_center = {
+    x = center.x + math.cos(angle) * 3,
+    y = center.y + math.sin(angle) * 3
+  }
   local spawn_position = player.surface.find_non_colliding_position(
     TEAM_MATE_NAME,
-    player.position,
+    ring_center,
     8,
     0.5
   )
@@ -920,7 +1121,7 @@ local function create_team_mate(player, index)
   return {entity = character, team_mate_color = player.color}
 end
 
-local function add_team_mate(player)
+local function add_team_mate(player, spawn_center)
   if not player.valid or not player.character or not player.character.valid then
     return nil
   end
@@ -931,7 +1132,7 @@ local function add_team_mate(player)
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   local team_mates = storage.not_alone_team_mates[player.index] or {}
-  local record = create_team_mate(player, #team_mates + 1)
+  local record = create_team_mate(player, #team_mates + 1, spawn_center)
   if not record then
     return nil
   end
@@ -939,6 +1140,41 @@ local function add_team_mate(player)
   team_mates[#team_mates + 1] = record
   storage.not_alone_team_mates[player.index] = team_mates
   return record
+end
+
+local function ensure_starter_logistics_hub(player)
+  local surface = player.surface
+  local spawn_position = player.force.get_spawn_position(surface)
+  local existing_hub = surface.find_entities_filtered({
+    name = LOGISTICS_HUB_NAME,
+    force = player.force,
+    position = spawn_position,
+    radius = 32,
+    limit = 1
+  })[1]
+  if existing_hub then
+    return existing_hub
+  end
+
+  local desired_position = {
+    x = spawn_position.x,
+    y = spawn_position.y + LOGISTICS_HUB_SOUTH_OFFSET
+  }
+  local hub_position = surface.find_non_colliding_position(
+    LOGISTICS_HUB_NAME,
+    desired_position,
+    8,
+    0.5
+  )
+  if not hub_position then
+    return nil
+  end
+  return surface.create_entity({
+    name = LOGISTICS_HUB_NAME,
+    position = hub_position,
+    force = player.force,
+    create_build_effect_smoke = false
+  })
 end
 
 local function spawn_team_mates(player)
@@ -952,9 +1188,11 @@ local function spawn_team_mates(player)
     return true
   end
 
+  local logistics_hub = ensure_starter_logistics_hub(player)
+  local spawn_center = logistics_hub and logistics_hub.position or player.position
   local spawned_count = 0
   for _ = 1, TEAM_MATE_COUNT do
-    if add_team_mate(player) then
+    if add_team_mate(player, spawn_center) then
       spawned_count = spawned_count + 1
     end
   end
@@ -962,12 +1200,81 @@ local function spawn_team_mates(player)
   return spawned_count > 0
 end
 
+local function separate_stacked_team_mate(record, player)
+  local entity = record.entity
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, other_record in pairs(team_mates) do
+      local other = other_record.entity
+      if other ~= entity and other and other.valid
+        and distance_squared(other.position, entity.position) == 0 then
+        -- Perfectly co-located units cannot push apart, freezing all commands.
+        local free_position = entity.surface.find_non_colliding_position(
+          HIDDEN_TEAM_MATE_NAME,
+          {x = entity.position.x + math.random(-3, 3), y = entity.position.y + math.random(-3, 3)},
+          8,
+          0.5
+        )
+        if free_position and distance_squared(free_position, entity.position) > 0 then
+          entity.teleport(free_position)
+          record.command_kind = nil
+          record.command_destination = nil
+        end
+        return
+      end
+    end
+  end
+end
+
+local function rescue_immobile_team_mate(record)
+  local entity = record.entity
+  if record.command_kind ~= "move" and record.command_kind ~= "move-recovery" then
+    record.stall_position = nil
+    record.stall_count = nil
+    return
+  end
+  if record.stall_position
+    and distance_squared(entity.position, record.stall_position) < 0.01 then
+    record.stall_count = (record.stall_count or 0) + 1
+    if record.stall_count >= 30 then
+      -- Wants to move but has not shifted for 300 ticks: physically trapped.
+      record.stall_count = 0
+      for _ = 1, 8 do
+        local angle = math.random() * 2 * math.pi
+        local free_position = entity.surface.find_non_colliding_position(
+          HIDDEN_TEAM_MATE_NAME,
+          {
+            x = entity.position.x + math.cos(angle) * 8,
+            y = entity.position.y + math.sin(angle) * 8
+          },
+          6,
+          0.5
+        )
+        if free_position and distance_squared(free_position, entity.position) > 4 then
+          entity.teleport(free_position)
+          record.command_kind = nil
+          record.command_destination = nil
+          break
+        end
+      end
+    end
+  else
+    record.stall_position = position_table(entity.position)
+    record.stall_count = 0
+  end
+end
+
 local function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
+    destroy_logistics_member(record)
     return false
   end
+
+  separate_stacked_team_mate(record, player)
+  rescue_immobile_team_mate(record)
+  update_logistics_member(record)
+  update_building_requesters(record)
 
   local manual_destinations = get_manual_destinations(record)
   if record.route_render_ids == nil and #manual_destinations > 0 then
@@ -977,8 +1284,12 @@ local function update_team_mate(record, player)
   if #manual_destinations > 0 then
     if character.surface_index == record.manual_surface_index then
       local route_changed = false
+      -- The engine parks units near, not on, a waypoint; a finished move
+      -- command also counts as arrival so crowded routes cannot loop forever.
       while #manual_destinations > 0
-        and distance_squared(character.position, manual_destinations[1]) <= 1 do
+        and (distance_squared(character.position, manual_destinations[1]) <= 4
+          or (record.command_kind == "move"
+            and not character.commandable.has_command)) do
         table.remove(manual_destinations, 1)
         route_changed = true
       end
@@ -1004,11 +1315,6 @@ local function update_team_mate(record, player)
     return true
   end
 
-  local mining_role = MINING_ROLE_BY_NAME[record.role]
-  if mining_role then
-    return update_miner(record, player, mining_role)
-  end
-
   local enemy = character.surface.find_nearest_enemy({
     position = character.position,
     max_distance = ENGAGEMENT_RADIUS,
@@ -1017,7 +1323,24 @@ local function update_team_mate(record, player)
 
   if enemy and enemy.valid then
     attack_with_team_mate(record, enemy)
-  elseif update_logistics(record) then
+    return true
+  end
+
+  local mining_role = MINING_ROLE_BY_NAME[record.role]
+  if mining_role then
+    if (record.logistics_carried_count or 0) > 0 then
+      record.logistics_state = "return-cargo"
+      update_logistics(record)
+      return true
+    end
+    if record.logistics_state then
+      record.logistics_carried_count = 0
+      clear_logistics_job(record)
+    end
+    return update_miner(record, player, mining_role)
+  end
+
+  if update_logistics(record) then
     return true
   else
     wander_with_team_mate(record)
@@ -1032,6 +1355,8 @@ function poc.on_init()
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
+    enable_logistics_network_gui(player.force)
+    ensure_starter_logistics_hub(player)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
@@ -1039,8 +1364,16 @@ end
 
 function poc.on_configuration_changed()
   rendering.clear("not-alone")
+  for _, requester_record in pairs(storage.not_alone_building_requesters or {}) do
+    if requester_record.requester and requester_record.requester.valid then
+      requester_record.requester.destroy()
+    end
+  end
+  storage.not_alone_building_requesters = nil
+  storage.not_alone_building_requester_ticks = nil
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
+      destroy_logistics_member(record)
       if record.entity and record.entity.valid then
         record.entity.destroy()
       end
@@ -1052,6 +1385,8 @@ function poc.on_configuration_changed()
   storage.not_alone_selected_team_mates = {}
   for _, player in pairs(game.players) do
     ensure_miner_technology(player.force)
+    enable_logistics_network_gui(player.force)
+    ensure_starter_logistics_hub(player)
     storage.not_alone_pending_spawns[player.index] = game.tick + 1
     ensure_role_gui(player)
   end
@@ -1060,6 +1395,8 @@ end
 function poc.on_player_created(event)
   local player = game.get_player(event.player_index)
   ensure_miner_technology(player.force)
+  enable_logistics_network_gui(player.force)
+  ensure_starter_logistics_hub(player)
   storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
   storage.not_alone_pending_spawns[event.player_index] = game.tick + 1
   ensure_role_gui(player)
@@ -1100,8 +1437,7 @@ function poc.on_gui_click(event)
   local assigned_count = 0
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
-    if entity.valid and selected and selected[entity.unit_number]
-      and return_logistics_cargo_immediately(record) then
+    if entity.valid and selected and selected[entity.unit_number] then
       record.role = mining_role.name
       record.role_state = "find-ore"
       record.role_target = nil
@@ -1110,9 +1446,12 @@ function poc.on_gui_click(event)
       record.next_mining_tick = nil
       record.manual_destinations = {}
       record.manual_surface_index = nil
-      record.command_kind = nil
-      record.command_destination = nil
-      record.command_target = nil
+      if (record.logistics_carried_count or 0) > 0 then
+        record.logistics_state = "return-cargo"
+      else
+        record.logistics_carried_count = 0
+        clear_logistics_job(record)
+      end
       refresh_route_renderings(record, event.player_index)
       assigned_count = assigned_count + 1
     end
@@ -1128,6 +1467,7 @@ function poc.on_player_removed(event)
   if team_mates then
     for _, record in pairs(team_mates) do
       destroy_route_renderings(record)
+      destroy_logistics_member(record)
       if record.entity.valid then
         record.entity.destroy()
       end
@@ -1223,6 +1563,27 @@ function poc.on_alt_reverse_selected_area(event)
   order_selected_team_mates(event, true)
 end
 
+function poc.on_roboport_built(event)
+  local entity = event.entity
+  if not entity or not entity.valid or entity.type ~= "roboport" then
+    return
+  end
+  -- New coverage may reveal resources to miners still looking for ore.
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      local mining_role = MINING_ROLE_BY_NAME[record.role]
+      if mining_role and record.role_state == "find-ore"
+        and record.entity.valid and record.entity.surface == entity.surface then
+        local resource = find_nearest_resource(record, mining_role)
+        if resource then
+          record.role_target = resource
+          record.role_state = "move-to-ore"
+        end
+      end
+    end
+  end
+end
+
 function poc.on_update(event)
   storage.not_alone_pending_spawns = storage.not_alone_pending_spawns or {}
   for player_index, spawn_tick in pairs(storage.not_alone_pending_spawns) do
@@ -1263,6 +1624,10 @@ function poc.register()
     defines.events.on_player_alt_reverse_selected_area,
     poc.on_alt_reverse_selected_area
   )
+  script.on_event(defines.events.on_built_entity, poc.on_roboport_built)
+  script.on_event(defines.events.on_robot_built_entity, poc.on_roboport_built)
+  script.on_event(defines.events.script_raised_built, poc.on_roboport_built)
+  script.on_event(defines.events.script_raised_revive, poc.on_roboport_built)
   script.on_nth_tick(UPDATE_INTERVAL, poc.on_update)
 end
 
