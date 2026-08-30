@@ -57,10 +57,12 @@ the native player mining animation and play the vanilla mining strike sound for 
 
 Security team mates defend a 48-tile radius around their assigned Habitat and return to it when no
 enemy is present. Builders find entity ghosts inside their current logistic network, collect the
-required building item from network storage, and construct the ghost; unused material is returned
-if the order disappears or their role changes. Scouts use command-tool destinations and queued
-waypoints to travel into distant terrain, progressively generating a path and charting the area
-with their native radar before returning to their Habitat.
+required building item and quality from network storage, walk to the construction site, and revive
+the ghost. Idle Builders enter a Habitat without losing their role, automatically deploy when a
+covered construction job has material available, and redock after finishing. Unused material is
+returned if the order disappears or their role changes. Scouts use command-tool destinations and
+queued waypoints to travel into distant terrain, progressively generating a path and charting the
+area with their native radar before returning to their Habitat.
 
 Stone, steel, and electric furnaces are converted into recipe-selecting machines: open a furnace
 and choose its smelting recipe like an assembler. The chosen recipe drives the furnace's automatic

@@ -1135,25 +1135,28 @@ local function update_security(record)
   return true
 end
 
-local function get_ghost_item_name(ghost)
+local function get_ghost_item(ghost)
   if not ghost or not ghost.valid or ghost.type ~= "entity-ghost" then
     return nil
   end
   for key, item in pairs(ghost.ghost_prototype.items_to_place_this or {}) do
-    return item.name or key
+    return {
+      name = item.name or key,
+      quality = ghost.quality.name
+    }
   end
   return nil
 end
 
-local function find_builder_source(network, item_name, position)
+local function find_builder_source(network, item, position)
   local pickup_point = network.select_pickup_point({
-    name = item_name,
+    name = item,
     position = position,
     include_buffers = true
   })
   local source = pickup_point and pickup_point.owner
   local inventory = get_logistics_source_inventory(source)
-  return inventory and inventory.get_item_count(item_name) > 0 and source or nil
+  return inventory and inventory.get_item_count(item) > 0 and source or nil
 end
 
 local function builder_target_is_claimed(ghost, current_record)
@@ -1167,11 +1170,14 @@ local function builder_target_is_claimed(ghost, current_record)
   return false
 end
 
-local function find_builder_job(record)
+local function find_builder_job(record, surface, force, position)
   local team_mate = record.entity
-  local network = team_mate.surface.find_logistic_network_by_position(
-    position_table(team_mate.position),
-    team_mate.force
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local network = surface.find_logistic_network_by_position(
+    position_table(position),
+    force
   )
   if not network then
     return nil, nil, nil
@@ -1183,25 +1189,25 @@ local function find_builder_job(record)
   local nearest_distance = nil
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
-      for _, ghost in pairs(team_mate.surface.find_entities_filtered({
+      for _, ghost in pairs(surface.find_entities_filtered({
         type = "entity-ghost",
-        force = team_mate.force,
+        force = force,
         position = cell.owner.position,
         radius = cell.logistic_radius * 1.5
       })) do
         if cell.is_in_logistic_range(ghost.position)
           and not builder_target_is_claimed(ghost, record) then
-          local item_name = get_ghost_item_name(ghost)
-          local source = item_name and find_builder_source(
+          local item = get_ghost_item(ghost)
+          local source = item and find_builder_source(
             network,
-            item_name,
+            item,
             position_table(ghost.position)
           )
-          local distance = distance_squared(team_mate.position, ghost.position)
+          local distance = distance_squared(position, ghost.position)
           if source and (not nearest_distance or distance < nearest_distance) then
             nearest_ghost = ghost
             nearest_source = source
-            nearest_item_name = item_name
+            nearest_item_name = item
             nearest_distance = distance
           end
         end
@@ -1212,8 +1218,8 @@ local function find_builder_job(record)
 end
 
 local function return_builder_material(record)
-  if not record.builder_item_name or (record.builder_carried_count or 0) == 0 then
-    record.builder_item_name = nil
+  if not record.builder_item or (record.builder_carried_count or 0) == 0 then
+    record.builder_item = nil
     record.builder_source = nil
     record.builder_target = nil
     record.builder_carried_count = 0
@@ -1221,24 +1227,32 @@ local function return_builder_material(record)
     return false
   end
   local inventory = get_logistics_source_inventory(record.builder_source)
-  if not inventory or inventory.get_insertable_count(record.builder_item_name) == 0 then
-    record.builder_source = find_logistics_return_source(record, record.builder_item_name)
+  if not inventory or inventory.get_insertable_count(record.builder_item) == 0 then
+    record.builder_source = find_logistics_return_source(record, record.builder_item)
     inventory = get_logistics_source_inventory(record.builder_source)
   end
   if not inventory then
     record.entity.surface.spill_item_stack({
       position = position_table(record.entity.position),
-      stack = {name = record.builder_item_name, count = 1}
+      stack = {
+        name = record.builder_item.name,
+        quality = record.builder_item.quality,
+        count = 1
+      }
     })
-    record.builder_item_name = nil
+    record.builder_item = nil
     record.builder_carried_count = 0
     record.builder_state = nil
     return false
   end
   if distance_squared(record.entity.position, record.builder_source.position) <= 4 then
-    local inserted = inventory.insert({name = record.builder_item_name, count = 1})
+    local inserted = inventory.insert({
+      name = record.builder_item.name,
+      quality = record.builder_item.quality,
+      count = 1
+    })
     if inserted == 1 then
-      record.builder_item_name = nil
+      record.builder_item = nil
       record.builder_source = nil
       record.builder_target = nil
       record.builder_carried_count = 0
@@ -1250,28 +1264,115 @@ local function return_builder_material(record)
   return true
 end
 
+local function dock_builder(record)
+  local habitat = find_nearest_habitat(record, true)
+  if not habitat then
+    stop_team_mate(record)
+    return true
+  end
+  if distance_squared(record.entity.position, habitat.position) > 9 then
+    move_team_mate(record, habitat.position, 3)
+    return true
+  end
+
+  stop_team_mate(record)
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory or inventory.insert({name = TEAM_MATE_ITEM_NAME, count = 1}) ~= 1 then
+    return true
+  end
+
+  record.team_mate_id = record.team_mate_id or record.entity.unit_number
+  record.team_mate_name = record.entity.name_tag
+  record.team_mate_health = record.entity.health
+  record.docked_habitat = habitat
+  destroy_route_renderings(record)
+  destroy_logistics_member(record)
+  record.entity.destroy()
+  return true
+end
+
+local function wake_docked_builder(record)
+  local habitat = record.docked_habitat
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory or inventory.get_item_count(TEAM_MATE_ITEM_NAME) == 0 then
+    return false
+  end
+
+  local ghost, source, item = find_builder_job(
+    record,
+    habitat.surface,
+    habitat.force,
+    position_table(habitat.position)
+  )
+  if not ghost then
+    return true
+  end
+  local spawn_position = habitat.surface.find_non_colliding_position(
+    TEAM_MATE_NAME,
+    habitat.position,
+    8,
+    0.5
+  )
+  if not spawn_position then
+    return true
+  end
+  local entity = habitat.surface.create_entity({
+    name = TEAM_MATE_NAME,
+    position = spawn_position,
+    force = habitat.force,
+    create_build_effect_smoke = false
+  })
+  if not entity then
+    return true
+  end
+  if inventory.remove({name = TEAM_MATE_ITEM_NAME, count = 1}) ~= 1 then
+    entity.destroy()
+    return false
+  end
+
+  entity.color = record.team_mate_color
+  entity.name_tag = record.team_mate_name or "Team mate"
+  entity.health = math.min(record.team_mate_health or entity.max_health, entity.max_health)
+  record.entity = entity
+  record.docked_habitat = nil
+  record.builder_target = ghost
+  record.builder_source = source
+  record.builder_item = item
+  record.builder_carried_count = 0
+  record.builder_state = "move-to-source"
+  record.command_kind = nil
+  record.command_destination = nil
+  record.command_target = nil
+  return true
+end
+
 local function update_builder(record)
   if record.builder_state == "return-material" then
-    return return_builder_material(record)
+    return_builder_material(record)
+    return true
   end
   if record.builder_state == "move-to-source" then
     local inventory = get_logistics_source_inventory(record.builder_source)
     if not record.builder_target or not record.builder_target.valid
-      or not inventory or inventory.get_item_count(record.builder_item_name) == 0 then
+      or not inventory or inventory.get_item_count(record.builder_item) == 0 then
       record.builder_state = nil
       record.builder_target = nil
       record.builder_source = nil
-      record.builder_item_name = nil
+      record.builder_item = nil
       record.builder_carried_count = 0
     elseif distance_squared(record.entity.position, record.builder_source.position) <= 4 then
-      if inventory.remove({name = record.builder_item_name, count = 1}) == 1 then
+      if inventory.remove({
+        name = record.builder_item.name,
+        quality = record.builder_item.quality,
+        count = 1
+      }) == 1 then
         record.builder_carried_count = 1
         record.builder_state = "move-to-ghost"
       else
         record.builder_state = nil
         record.builder_target = nil
         record.builder_source = nil
-        record.builder_item_name = nil
+        record.builder_item = nil
       end
     else
       move_team_mate(record, record.builder_source.position, 2)
@@ -1282,9 +1383,9 @@ local function update_builder(record)
     if not record.builder_target or not record.builder_target.valid then
       record.builder_state = "return-material"
     elseif distance_squared(record.entity.position, record.builder_target.position) <= 16 then
-      local revived = record.builder_target.revive({raise_revive = true})
-      if revived then
-        record.builder_item_name = nil
+      local _, revived_entity = record.builder_target.revive({raise_revive = true})
+      if revived_entity then
+        record.builder_item = nil
         record.builder_carried_count = 0
         record.builder_source = nil
         record.builder_target = nil
@@ -1299,16 +1400,16 @@ local function update_builder(record)
     return true
   end
 
-  local ghost, source, item_name = find_builder_job(record)
+  local ghost, source, item = find_builder_job(record)
   if ghost then
     record.builder_target = ghost
     record.builder_source = source
-    record.builder_item_name = item_name
+    record.builder_item = item
     record.builder_carried_count = 0
     record.builder_state = "move-to-source"
     return true
   end
-  return return_to_habitat(record)
+  return dock_builder(record)
 end
 
 local function create_team_mate(player, index, spawn_center)
@@ -1362,6 +1463,7 @@ local function reset_team_mate_role(record, role_name)
     record.builder_state = nil
     record.builder_target = nil
     record.builder_source = nil
+    record.builder_item = nil
     record.builder_carried_count = 0
   end
   if MINING_ROLE_BY_NAME[role_name] then
@@ -1458,6 +1560,16 @@ local function open_selected_roster(player)
   if row_count == 0 then
     frame.destroy()
   end
+end
+
+local function migrate_builder_item(record)
+  if record.builder_item or not record.builder_item_name then
+    return
+  end
+  local quality = record.builder_target and record.builder_target.valid
+    and record.builder_target.quality.name or "normal"
+  record.builder_item = {name = record.builder_item_name, quality = quality}
+  record.builder_item_name = nil
 end
 
 local function close_selected_roster(player)
@@ -1648,7 +1760,11 @@ local function rescue_immobile_team_mate(record)
 end
 
 local function update_team_mate(record, player)
+  migrate_builder_item(record)
   local character = record.entity
+  if record.docked_habitat then
+    return wake_docked_builder(record)
+  end
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
     destroy_logistics_member(record)

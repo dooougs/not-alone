@@ -74,3 +74,7 @@ Date: 2026-08-28
     - Centered the selected-team roster and added a close button that clears the selection.
     - Added native resource-chip particle bursts when team mates complete mining cycles.
     - Made idle team mates enter the nearest Habitat and return to its stored roster on arrival.
+    - Kept Builder assignments while idle team mates are stored inside Habitats.
+    - Automatically dispatched stored Builders for covered construction jobs and redocked them afterward.
+    - Made Builder pickup, return, and construction preserve item quality.
+    - Fixed ghost revival detection and kept Builders managed after returning cancelled-job materials.
