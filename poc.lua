@@ -37,10 +37,6 @@ local ITEM_NAME_BY_KIND = {
   builder = "not-alone-builder",
   soldier = "not-alone-soldier"
 }
-local KIND_BY_ITEM_NAME = {}
-for kind, item_name in pairs(ITEM_NAME_BY_KIND) do
-  KIND_BY_ITEM_NAME[item_name] = kind
-end
 local TEAM_MATE_KINDS = {"miner", "builder", "soldier"}
 local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier"}
 local LOGISTICS_SOURCE_MODES = {
@@ -55,8 +51,6 @@ local LOGISTICS_DESTINATION_TYPES = {
   "boiler",
   "burner-generator",
   "furnace",
-  "inserter",
-  "mining-drill",
   "rocket-silo"
 }
 local RECIPE_ENTITY_TYPES = {
@@ -110,18 +104,6 @@ local function get_habitat_inventory(habitat)
     or nil
 end
 
-local function get_habitat_team_mate_count(habitat)
-  local inventory = get_habitat_inventory(habitat)
-  if not inventory then
-    return 0
-  end
-  local total = 0
-  for _, kind in pairs(TEAM_MATE_KINDS) do
-    total = total + inventory.get_item_count(ITEM_NAME_BY_KIND[kind])
-  end
-  return total
-end
-
 local function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -133,16 +115,7 @@ local function destroy_route_renderings(record)
 end
 
 local function get_manual_destinations(record)
-  if not record.manual_destinations then
-    record.manual_destinations = {}
-    if record.manual_destination then
-      record.manual_destinations[1] = {
-        x = record.manual_destination.x,
-        y = record.manual_destination.y
-      }
-    end
-    record.manual_destination = nil
-  end
+  record.manual_destinations = record.manual_destinations or {}
   return record.manual_destinations
 end
 
@@ -403,7 +376,7 @@ local function find_logistics_return_source(record, item_name)
   local nearest_distance
   for _, source in pairs(network.storages) do
     local inventory = get_logistics_source_inventory(source)
-    if inventory and inventory.get_insertable_count(item_name or record.logistics_item_name) > 0 then
+    if inventory and inventory.get_insertable_count(item_name) > 0 then
       local current_distance = distance_squared(record.entity.position, source.position)
       if not nearest_distance or current_distance < nearest_distance then
         nearest_source = source
@@ -526,126 +499,160 @@ local function assign_miner_job(record, surface, force, position)
   if not resource then
     return false
   end
-  record.role_target = resource
+  record.miner_target = resource
   record.mining_resource_info = get_resource_info(resource.name)
-  record.role_state = "move-to-ore"
+  record.miner_state = "move-to-ore"
   return true
 end
 
 local function update_miner(record, player)
-  if record.carried_count == nil then
-    record.carried_count = record.carried_ore or 0
-    record.carried_ore = nil
-  end
-  update_mining_animation(record, record.role_state == "mine")
+  update_mining_animation(record, record.miner_state == "mine")
 
-  if record.role_state == "find-ore" then
-    if not assign_miner_job(record) then
-      return dock_team_mate(record)
-    end
-  elseif record.role_state == "move-to-ore" then
-    if not record.role_target or not record.role_target.valid then
-      record.role_state = "find-ore"
-    elseif distance_squared(record.entity.position, record.role_target.position) <= 4 then
-      record.role_state = "mine"
+  if record.miner_state == "move-to-ore" then
+    if not record.miner_target or not record.miner_target.valid then
+      record.miner_state = nil
+    elseif distance_squared(record.entity.position, record.miner_target.position) <= 4 then
+      record.miner_state = "mine"
       record.next_mining_tick = game.tick + math.random(get_mining_interval(player))
       stop_team_mate(record)
     else
-      move_team_mate(record, record.role_target.position, 2)
+      move_team_mate(record, record.miner_target.position, 2)
     end
-  elseif record.role_state == "mine" then
-    stop_team_mate(record)
-    if game.tick >= (record.next_mining_tick or 0) then
-      local resource = record.role_target
-      if not resource or not resource.valid or resource.amount <= 0 then
-        record.role_state = "find-ore"
-        record.role_target = nil
-      else
-        local mined = 1
-        local mining_position = resource.position
-        local remaining_amount = resource.amount - mined
-        if remaining_amount > 0 then
-          resource.amount = remaining_amount
-        else
-          resource.deplete()
-        end
-        record.carried_count = (record.carried_count or 0) + mined
-        create_mining_particles(
-          record.entity.surface,
-          mining_position,
-          record.mining_resource_info.particle_name
-        )
-        record.entity.surface.play_sound({
-          path = "not-alone-team-mate-mining-sound",
-          position = mining_position,
-          volume_modifier = 0.8
-        })
-        record.next_mining_tick = record.next_mining_tick + get_mining_interval(player)
-        if remaining_amount <= 0 then
-          unmark_resource_for_mining(resource)
-        end
-        if record.carried_count >= MINER_CAPACITY or remaining_amount <= 0 then
-          record.role_state = "find-consumer"
-          record.role_target = nil
-        end
-      end
-    end
-  elseif record.role_state == "find-consumer" then
-    local consumer = find_requesting_consumer(record, record.mining_resource_info)
-    if consumer then
-      record.role_target = consumer
-      record.role_state = "move-to-consumer"
-    else
-      return dock_team_mate(record)
-    end
-  elseif record.role_state == "move-to-consumer" then
-    if not record.role_target or not record.role_target.valid then
-      record.role_state = "find-consumer"
-    elseif not consumer_accepts_item(record.role_target, record.mining_resource_info, 1) then
-      record.role_target = nil
-      record.role_state = "find-consumer"
-    elseif distance_squared(record.entity.position, record.role_target.position) <= 4 then
-      record.role_state = "deliver"
-      stop_team_mate(record)
-    else
-      move_team_mate(record, record.role_target.position, 2)
-    end
-  elseif record.role_state == "deliver" then
-    local consumer = record.role_target
-    if not consumer or not consumer.valid then
-      record.role_state = "find-consumer"
-    else
-      local inventory = consumer.get_inventory(
-        consumer.name == BUILDING_REQUESTER_NAME
-          and defines.inventory.chest
-          or record.mining_resource_info.inventory
-      )
-      local inserted = 0
-      if inventory and (record.carried_count or 0) > 0 then
-        local insertable = math.min(
-          inventory.get_insertable_count(record.mining_resource_info.item_name),
-          record.carried_count
-        )
-        if insertable > 0 then
-          inserted = inventory.insert({name = record.mining_resource_info.item_name, count = insertable})
-        end
-      end
-      record.carried_count = (record.carried_count or 0) - inserted
-      record.role_target = nil
-      if record.carried_count <= 0 then
-        record.carried_count = 0
-        record.mining_resource_info = nil
-        record.role_state = "find-ore"
-      else
-        -- Deposit what fit; find another destination for the remainder.
-        record.role_state = "find-consumer"
-      end
-    end
-  else
-    record.role_state = "find-ore"
+    return true
   end
 
-  return true
+  if record.miner_state == "mine" then
+    stop_team_mate(record)
+    if game.tick < (record.next_mining_tick or 0) then
+      return true
+    end
+    local resource = record.miner_target
+    if not resource or not resource.valid or resource.amount <= 0 then
+      record.miner_state = nil
+      record.miner_target = nil
+      return true
+    end
+
+    local mining_position = resource.position
+    local remaining_amount = resource.amount - 1
+    if remaining_amount > 0 then
+      resource.amount = remaining_amount
+    else
+      resource.deplete()
+      unmark_resource_for_mining(resource)
+    end
+    record.carried_count = (record.carried_count or 0) + 1
+    create_mining_particles(
+      record.entity.surface,
+      mining_position,
+      record.mining_resource_info.particle_name
+    )
+    record.entity.surface.play_sound({
+      path = "not-alone-team-mate-mining-sound",
+      position = mining_position,
+      volume_modifier = 0.8
+    })
+    record.next_mining_tick = record.next_mining_tick + get_mining_interval(player)
+    if record.carried_count >= MINER_CAPACITY or remaining_amount <= 0 then
+      record.miner_state = "find-consumer"
+      record.miner_target = nil
+    end
+    return true
+  end
+
+  if record.miner_state == "find-consumer" then
+    local consumer = find_requesting_consumer(record, record.mining_resource_info)
+    if consumer then
+      record.miner_target = consumer
+      record.miner_state = "move-to-consumer"
+    else
+      record.miner_state = "store-cargo"
+    end
+    return true
+  end
+
+  if record.miner_state == "move-to-consumer" then
+    if not record.miner_target or not record.miner_target.valid
+      or not consumer_accepts_item(record.miner_target, record.mining_resource_info, 1) then
+      record.miner_target = nil
+      record.miner_state = "find-consumer"
+    elseif distance_squared(record.entity.position, record.miner_target.position) <= 4 then
+      record.miner_state = "deliver"
+      stop_team_mate(record)
+    else
+      move_team_mate(record, record.miner_target.position, 2)
+    end
+    return true
+  end
+
+  if record.miner_state == "deliver" then
+    local consumer = record.miner_target
+    record.miner_target = nil
+    if not consumer or not consumer.valid then
+      record.miner_state = "find-consumer"
+      return true
+    end
+    local inventory = consumer.get_inventory(
+      consumer.name == BUILDING_REQUESTER_NAME
+        and defines.inventory.chest
+        or record.mining_resource_info.inventory
+    )
+    if inventory then
+      local insertable = math.min(
+        inventory.get_insertable_count(record.mining_resource_info.item_name),
+        record.carried_count
+      )
+      if insertable > 0 then
+        record.carried_count = record.carried_count - inventory.insert({
+          name = record.mining_resource_info.item_name,
+          count = insertable
+        })
+      end
+    end
+    -- Deposit what fit; find another destination for any remainder.
+    record.miner_state = record.carried_count > 0 and "find-consumer" or nil
+    return true
+  end
+
+  if record.miner_state == "store-cargo" then
+    local item_name = record.mining_resource_info.item_name
+    local source = record.miner_target
+    if not get_logistics_source_inventory(source) then
+      source = find_logistics_return_source(record, item_name)
+      record.miner_target = source
+    end
+    if not source then
+      record.entity.surface.spill_item_stack({
+        position = position_table(record.entity.position),
+        stack = {name = item_name, count = record.carried_count},
+        drop_full_stack = true
+      })
+      record.carried_count = 0
+      record.miner_state = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      record.carried_count = record.carried_count - get_logistics_source_inventory(source).insert({
+        name = item_name,
+        count = record.carried_count
+      })
+      record.miner_target = nil
+      record.miner_state = record.carried_count > 0 and "store-cargo" or nil
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
+
+  -- Idle: carry on delivering leftovers, take new work, or go back in the box.
+  if (record.carried_count or 0) > 0 then
+    record.miner_state = "find-consumer"
+    return true
+  end
+  record.carried_count = 0
+  record.mining_resource_info = nil
+  if assign_miner_job(record) then
+    return true
+  end
+  return dock_team_mate(record)
 end
 
 update_mining_animation = function(record, should_show)
@@ -668,7 +675,7 @@ update_mining_animation = function(record, should_show)
   end
   if should_show then
     if not record.mining_hidden then
-      record.mining_color = record.team_mate_color or record.entity.color
+      record.mining_color = record.entity.color
         or {r = 1, g = 1, b = 1, a = 1}
       local visible_entity = record.entity
       local hidden_entity = visible_entity.surface.create_entity({
@@ -868,14 +875,6 @@ local function find_nearest_habitat(record, require_space)
   end
   record.habitat = require_space and nearest_available_habitat or nearest_habitat
   return record.habitat or nearest_habitat
-end
-
-local function can_enter_habitat(record)
-  return (record.carried_count or record.carried_ore or 0) == 0
-    and (record.logistics_carried_count or 0) == 0
-    and (record.builder_carried_count or 0) == 0
-    and (not record.builder_cargo or not record.builder_cargo.valid
-      or record.builder_cargo.is_empty())
 end
 
 local function move_team_mate_toward_destination(record, destination)
@@ -1276,60 +1275,17 @@ dock_team_mate = function(record)
     return true
   end
 
+  -- Stored team mates are just items; the record is dropped so the only
+  -- inactive state in the mod is "an item sitting in a Habitat".
   update_mining_animation(record, false)
   destroy_route_renderings(record)
-  record.team_mate_id = record.team_mate_id or record.entity.unit_number
-  record.team_mate_name = record.entity.name_tag
-  record.team_mate_health = record.entity.health
-  record.docked_habitat = habitat
+  if record.builder_cargo and record.builder_cargo.valid then
+    record.builder_cargo.destroy()
+  end
   if record.entity.valid then
     record.entity.destroy()
   end
-  return true
-end
-
-local function deploy_docked_team_mate(record)
-  local habitat = record.docked_habitat
-  if not habitat or not habitat.valid then
-    return false
-  end
-  local item_name = ITEM_NAME_BY_KIND[record.kind]
-  local inventory = get_habitat_inventory(habitat)
-  if not inventory or inventory.get_item_count(item_name) == 0 then
-    return false
-  end
-  local spawn_position = habitat.surface.find_non_colliding_position(
-    TEAM_MATE_NAME,
-    habitat.position,
-    8,
-    0.5
-  )
-  if not spawn_position then
-    return true
-  end
-  local entity = habitat.surface.create_entity({
-    name = TEAM_MATE_NAME,
-    position = spawn_position,
-    force = habitat.force,
-    create_build_effect_smoke = false
-  })
-  if not entity then
-    return true
-  end
-  if inventory.remove({name = item_name, count = 1}) ~= 1 then
-    entity.destroy()
-    return false
-  end
-
-  entity.color = record.team_mate_color
-  entity.name_tag = record.team_mate_name or (KIND_LABEL[record.kind] or "Team mate")
-  entity.health = math.min(record.team_mate_health or entity.max_health, entity.max_health)
-  record.entity = entity
-  record.docked_habitat = nil
-  record.command_kind = nil
-  record.command_destination = nil
-  record.command_target = nil
-  return true
+  return false
 end
 
 local function builder_is_at_target(record, target)
@@ -1357,33 +1313,6 @@ local function builder_target_destination(record, target)
       math.min(position.y, box.right_bottom.y + BUILDER_TARGET_CLEARANCE)
     )
   }
-end
-
-local function wake_docked_team_mate(record)
-  local habitat = record.docked_habitat
-  if not habitat or not habitat.valid then
-    return false
-  end
-  if record.kind == "builder" then
-    if not assign_builder_job(
-        record,
-        habitat.surface,
-        habitat.force,
-        position_table(habitat.position)
-      ) then
-      return true
-    end
-  elseif record.kind == "miner" then
-    if not assign_miner_job(
-        record,
-        habitat.surface,
-        habitat.force,
-        position_table(habitat.position)
-      ) then
-      return true
-    end
-  end
-  return deploy_docked_team_mate(record)
 end
 
 local function update_builder(record)
@@ -1520,12 +1449,12 @@ local function update_builder(record)
   return dock_team_mate(record)
 end
 
-local function create_team_mate(player, kind, index, total, spawn_center)
+local function create_team_mate(player, kind, index, spawn_center)
   -- Units do not collide with each other, so find_non_colliding_position
   -- returns the same spot for every spawn; ring offsets keep them apart
   -- because perfectly co-located units cannot be separated by the engine.
   local center = spawn_center or player.position
-  local angle = (index - 1) / total * 2 * math.pi
+  local angle = index * 2.39996
   local ring_center = {
     x = center.x + math.cos(angle) * 3,
     y = center.y + math.sin(angle) * 3
@@ -1552,27 +1481,19 @@ local function create_team_mate(player, kind, index, total, spawn_center)
 
   character.color = player.color
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
-  local record = {entity = character, team_mate_color = player.color, kind = kind}
-  if kind == "miner" then
-    record.role_state = "find-ore"
-  end
+  local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
   return record
 end
 
-local function get_team_mate_id(record)
-  record.team_mate_id = record.team_mate_id or record.entity.unit_number
-  return record.team_mate_id
-end
-
-local function migrate_builder_item(record)
-  if record.builder_item or not record.builder_item_name then
-    return
+local function assign_job(record, surface, force, position)
+  if record.kind == "miner" then
+    return assign_miner_job(record, surface, force, position)
   end
-  local quality = record.builder_target and record.builder_target.valid
-    and record.builder_target.quality.name or "normal"
-  record.builder_item = {name = record.builder_item_name, quality = quality}
-  record.builder_item_name = nil
+  if record.kind == "builder" then
+    return assign_builder_job(record, surface, force, position)
+  end
+  return false
 end
 
 local function find_any_player_for_force(force)
@@ -1592,50 +1513,26 @@ local function auto_deploy_from_habitat(habitat)
     return
   end
 
+  storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   for _, kind in pairs(TEAM_MATE_KINDS) do
     local item_name = ITEM_NAME_BY_KIND[kind]
-    if inventory.get_item_count(item_name) > 0 then
-      local fake_record = {entity = habitat, kind = kind}
-      local has_work
-      if kind == "builder" then
-        has_work = assign_builder_job(
-          fake_record,
-          habitat.surface,
-          habitat.force,
-          position_table(habitat.position)
-        )
-      elseif kind == "miner" then
-        has_work = assign_miner_job(
-          fake_record,
-          habitat.surface,
-          habitat.force,
-          position_table(habitat.position)
-        )
-      end
-      if has_work then
-        storage.not_alone_team_mates = storage.not_alone_team_mates or {}
-        local team_mates = storage.not_alone_team_mates[player.index] or {}
-        local record = create_team_mate(player, kind, #team_mates + 1, #team_mates + 1, habitat.position)
-        if record then
-          if inventory.remove({name = item_name, count = 1}) ~= 1 then
-            record.entity.destroy()
-          else
-            record.habitat = habitat
-            if kind == "builder" then
-              record.builder_target = fake_record.builder_target
-              record.builder_source = fake_record.builder_source
-              record.builder_item = fake_record.builder_item
-              record.builder_carried_count = 0
-              record.builder_state = fake_record.builder_state
-            elseif kind == "miner" then
-              record.role_target = fake_record.role_target
-              record.mining_resource_info = fake_record.mining_resource_info
-              record.role_state = fake_record.role_state
-            end
-            team_mates[#team_mates + 1] = record
-            storage.not_alone_team_mates[player.index] = team_mates
-          end
+    -- Claim the work before spawning so stored team mates stay put when idle.
+    local job = {entity = habitat, kind = kind}
+    if inventory.get_item_count(item_name) > 0
+      and assign_job(job, habitat.surface, habitat.force, position_table(habitat.position)) then
+      local team_mates = storage.not_alone_team_mates[player.index] or {}
+      local record = create_team_mate(player, kind, #team_mates + 1, habitat.position)
+      if record and inventory.remove({name = item_name, count = 1}) == 1 then
+        job.entity = nil
+        job.kind = nil
+        for key, value in pairs(job) do
+          record[key] = value
         end
+        record.habitat = habitat
+        team_mates[#team_mates + 1] = record
+        storage.not_alone_team_mates[player.index] = team_mates
+      elseif record then
+        record.entity.destroy()
       end
     end
   end
@@ -1731,18 +1628,7 @@ local function rescue_immobile_team_mate(record)
 end
 
 local function update_team_mate(record, player)
-  migrate_builder_item(record)
   local character = record.entity
-  if record.docked_habitat then
-    if not record.docked_habitat.valid then
-      destroy_route_renderings(record)
-      return false
-    end
-    if record.kind == "builder" or record.kind == "miner" then
-      return wake_docked_team_mate(record)
-    end
-    return true
-  end
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
     return false
@@ -1894,16 +1780,15 @@ function poc.on_selected_area(event)
   local owned_team_mates = {}
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     if record.entity.valid then
-      owned_team_mates[record.entity.unit_number] = get_team_mate_id(record)
+      owned_team_mates[record.entity.unit_number] = true
     end
   end
 
   local selected = {}
   local selected_count = 0
   for _, entity in pairs(event.entities) do
-    local team_mate_id = entity.valid and owned_team_mates[entity.unit_number]
-    if team_mate_id then
-      selected[team_mate_id] = true
+    if entity.valid and owned_team_mates[entity.unit_number] then
+      selected[entity.unit_number] = true
       selected_count = selected_count + 1
     end
   end
@@ -1950,7 +1835,7 @@ local function order_selected_team_mates(event, append)
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
     if entity.valid
-      and selected[get_team_mate_id(record)]
+      and selected[record.entity.unit_number]
       and entity.surface_index == event.surface.index then
       local manual_destinations = get_manual_destinations(record)
       if not append then
@@ -1993,7 +1878,7 @@ function poc.on_roboport_built(event)
   -- New coverage may reveal marked resources to miners still looking for ore.
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
-      if record.kind == "miner" and record.role_state == "find-ore"
+      if record.kind == "miner" and not record.miner_state
         and record.entity.valid and record.entity.surface == entity.surface then
         assign_miner_job(record)
       end
@@ -2037,7 +1922,7 @@ function poc.on_update(event)
       if selected and next(selected) then
         local active_ids = {}
         for _, record in pairs(active_team_mates) do
-          active_ids[get_team_mate_id(record)] = true
+          active_ids[record.entity.unit_number] = true
         end
         for team_mate_id in pairs(selected) do
           if not active_ids[team_mate_id] then
