@@ -38,6 +38,42 @@ logistics_hub.robot_slots_count = 0
 logistics_hub.material_slots_count = 3
 logistics_hub.construction_radius = 0
 
+-- Rides along with a deployed team mate so it is a real member of the
+-- network. Zero radius with a connection distance so it joins a Habitat's
+-- logistic area without contributing any coverage of its own.
+local team_mate_member = table.deepcopy(logistics_hub)
+team_mate_member.name = "not-alone-team-mate-member"
+team_mate_member.localised_name = {"entity-name.not-alone-team-mate"}
+team_mate_member.minable = nil
+team_mate_member.material_slots_count = 0
+team_mate_member.logistics_radius = 0
+team_mate_member.logistics_connection_distance = 1
+team_mate_member.radar_range = 0
+team_mate_member.selectable_in_game = false
+team_mate_member.draw_logistic_radius_visualization = false
+team_mate_member.draw_construction_radius_visualization = false
+team_mate_member.collision_box = nil
+team_mate_member.collision_mask = {layers = {}}
+team_mate_member.selection_box = nil
+team_mate_member.flags = {
+	"placeable-off-grid",
+	"not-on-map",
+	"not-blueprintable",
+	"not-deconstructable",
+	"not-flammable",
+	"hide-alt-info",
+	"not-selectable-in-game",
+	"not-upgradable",
+	"not-in-kill-statistics",
+	"not-in-made-in"
+}
+team_mate_member.hidden = true
+for _, key in pairs({"base", "base_patch", "frozen_patch", "base_animation",
+	"door_animation_up", "door_animation_down", "recharging_animation",
+	"water_reflection", "integration_patch"}) do
+	team_mate_member[key] = nil
+end
+
 local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
 logistics_hub_item.name = "not-alone-logistics-hub"
 logistics_hub_item.localised_name = {"item-name.not-alone-logistics-hub"}
@@ -94,28 +130,6 @@ end
 local miner_item = make_team_mate_item("miner", "__base__/graphics/icons/iron-ore.png", "a[miner]")
 local builder_item = make_team_mate_item("builder", "__base__/graphics/icons/construction-robot.png", "b[builder]")
 local soldier_item = make_team_mate_item("soldier", "__base__/graphics/icons/submachine-gun.png", "c[soldier]")
-
-local mining_marker_tool = {
-	type = "selection-tool",
-	name = "not-alone-mining-tool",
-	icon = "__base__/graphics/icons/coal.png",
-	flags = {"not-stackable", "spawnable"},
-	subgroup = "tool",
-	order = "c[automated-construction]-y[not-alone-mining-tool]",
-	stack_size = 1,
-	select = {
-		border_color = {1, 0.6, 0},
-		mode = {"any-entity"},
-		entity_type_filters = {"resource"},
-		cursor_box_type = "entity"
-	},
-	alt_select = {
-		border_color = {1, 0.2, 0.2},
-		mode = {"any-entity"},
-		entity_type_filters = {"resource"},
-		cursor_box_type = "entity"
-	}
-}
 
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
@@ -312,6 +326,7 @@ data:extend({
 	logistics_hub,
 	logistics_hub_item,
 	logistics_hub_recipe,
+	team_mate_member,
 	miner_item,
 	builder_item,
 	soldier_item,
@@ -319,6 +334,5 @@ data:extend({
 	team_mate,
 	hidden_team_mate,
 	mining_sound,
-	command_tool,
-	mining_marker_tool
+	command_tool
 })

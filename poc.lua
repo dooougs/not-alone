@@ -25,11 +25,13 @@ local BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
+local NETWORK_MEMBER_NAME = "not-alone-team-mate-member"
+-- Moving a roboport re-evaluates networks, so only follow in coarse steps.
+local NETWORK_MEMBER_FOLLOW_DISTANCE = 4
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
-local MINING_TOOL_NAME = "not-alone-mining-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
 local ITEM_NAME_BY_KIND = {
@@ -112,6 +114,40 @@ local function destroy_route_renderings(record)
     end
   end
   record.route_render_ids = {}
+end
+
+local function destroy_network_member(record)
+  if record.network_member and record.network_member.valid then
+    record.network_member.destroy()
+  end
+  record.network_member = nil
+end
+
+local function update_network_member(record)
+  local team_mate = record.entity
+  local member = record.network_member
+  if member and member.valid then
+    if distance_squared(member.position, team_mate.position)
+      <= NETWORK_MEMBER_FOLLOW_DISTANCE * NETWORK_MEMBER_FOLLOW_DISTANCE then
+      return
+    end
+    if member.teleport(team_mate.position) then
+      return
+    end
+    member.destroy()
+  end
+
+  member = team_mate.surface.create_entity({
+    name = NETWORK_MEMBER_NAME,
+    position = team_mate.position,
+    force = team_mate.force,
+    create_build_effect_smoke = false
+  })
+  if member then
+    member.destructible = false
+    member.operable = false
+    record.network_member = member
+  end
 end
 
 local function get_manual_destinations(record)
@@ -417,12 +453,19 @@ local function destroy_mark_rendering(mark)
   end
 end
 
+-- Resource entities have no unit_number, so mark them by tile position.
+local function resource_mark_key(resource)
+  local position = resource.position
+  return math.floor(position.x) .. "," .. math.floor(position.y)
+end
+
 local function mark_resource_for_mining(resource)
   local marks = get_marked_resources(resource.surface.index)
-  if marks[resource.unit_number] then
+  local key = resource_mark_key(resource)
+  if marks[key] then
     return
   end
-  marks[resource.unit_number] = {
+  marks[key] = {
     entity = resource,
     render_id = rendering.draw_rectangle({
       color = MARK_COLOR,
@@ -438,17 +481,18 @@ end
 
 local function unmark_resource_for_mining(resource)
   local marks = get_marked_resources(resource.surface.index)
-  local mark = marks[resource.unit_number]
+  local key = resource_mark_key(resource)
+  local mark = marks[key]
   if mark then
     destroy_mark_rendering(mark)
-    marks[resource.unit_number] = nil
+    marks[key] = nil
   end
 end
 
 local function is_resource_marked(resource)
   local marks = storage.not_alone_marked_resources
     and storage.not_alone_marked_resources[resource.surface.index]
-  return marks and marks[resource.unit_number] ~= nil
+  return marks and marks[resource_mark_key(resource)] ~= nil
 end
 
 local function cleanup_marked_resources(surface_index)
@@ -457,10 +501,10 @@ local function cleanup_marked_resources(surface_index)
   if not marks then
     return
   end
-  for unit_number, mark in pairs(marks) do
+  for key, mark in pairs(marks) do
     if not mark.entity.valid or mark.entity.amount <= 0 then
       destroy_mark_rendering(mark)
-      marks[unit_number] = nil
+      marks[key] = nil
     end
   end
 end
@@ -1279,6 +1323,7 @@ dock_team_mate = function(record)
   -- inactive state in the mod is "an item sitting in a Habitat".
   update_mining_animation(record, false)
   destroy_route_renderings(record)
+  destroy_network_member(record)
   if record.builder_cargo and record.builder_cargo.valid then
     record.builder_cargo.destroy()
   end
@@ -1631,10 +1676,12 @@ local function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
+    destroy_network_member(record)
     return false
   end
 
   rescue_immobile_team_mate(record)
+  update_network_member(record)
   update_building_requesters(record)
 
   local manual_destinations = get_manual_destinations(record)
@@ -1720,6 +1767,11 @@ function poc.on_configuration_changed()
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
+  for _, surface in pairs(game.surfaces) do
+    for _, member in pairs(surface.find_entities_filtered({name = NETWORK_MEMBER_NAME})) do
+      member.destroy()
+    end
+  end
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
@@ -1739,6 +1791,7 @@ function poc.on_player_removed(event)
   if team_mates then
     for _, record in pairs(team_mates) do
       destroy_route_renderings(record)
+      destroy_network_member(record)
       if record.builder_cargo and record.builder_cargo.valid then
         if not record.builder_cargo.is_empty() and record.entity.valid then
           record.entity.surface.spill_inventory({
@@ -1760,19 +1813,6 @@ function poc.on_player_removed(event)
 end
 
 function poc.on_selected_area(event)
-  if event.item == MINING_TOOL_NAME then
-    local marked_count = 0
-    for _, entity in pairs(event.entities) do
-      if entity.valid and entity.type == "resource" then
-        mark_resource_for_mining(entity)
-        marked_count = marked_count + 1
-      end
-    end
-    local player = game.get_player(event.player_index)
-    player.print({"not-alone.resources-marked", marked_count})
-    return
-  end
-
   if event.item ~= COMMAND_TOOL_NAME then
     return
   end
@@ -1799,19 +1839,54 @@ function poc.on_selected_area(event)
   player.print({"not-alone.team-mates-selected", selected_count})
 end
 
-function poc.on_alt_selected_area(event)
-  if event.item ~= MINING_TOOL_NAME then
-    return
+local function deconstruction_planner_accepts(stack, resource_name)
+  if not stack or not stack.valid_for_read then
+    return true
   end
-  local unmarked_count = 0
-  for _, entity in pairs(event.entities) do
-    if entity.valid and entity.type == "resource" and is_resource_marked(entity) then
-      unmark_resource_for_mining(entity)
-      unmarked_count = unmarked_count + 1
+  if stack.trees_and_rocks_only then
+    return false
+  end
+  local filters = stack.entity_filters
+  if not filters or #filters == 0 then
+    return true
+  end
+  local listed = false
+  for _, filter in pairs(filters) do
+    -- The filter entries are prototype names, or prototypes on some versions.
+    if filter == resource_name or (type(filter) == "table" and filter.name == resource_name) then
+      listed = true
+      break
     end
   end
-  local player = game.get_player(event.player_index)
-  player.print({"not-alone.resources-unmarked", unmarked_count})
+  if stack.entity_filter_mode == defines.deconstruction_item.entity_filter_mode.whitelist then
+    return listed
+  end
+  return not listed
+end
+
+function poc.on_deconstructed_area(event)
+  local changed_count = 0
+  for _, resource in pairs(event.surface.find_entities_filtered({
+    area = event.area,
+    type = "resource"
+  })) do
+    if deconstruction_planner_accepts(event.stack, resource.name) then
+      if not event.alt then
+        mark_resource_for_mining(resource)
+        changed_count = changed_count + 1
+      elseif is_resource_marked(resource) then
+        unmark_resource_for_mining(resource)
+        changed_count = changed_count + 1
+      end
+    end
+  end
+  if changed_count > 0 then
+    local player = game.get_player(event.player_index)
+    player.print({
+      event.alt and "not-alone.resources-unmarked" or "not-alone.resources-marked",
+      changed_count
+    })
+  end
 end
 
 local function order_selected_team_mates(event, append)
@@ -1940,7 +2015,7 @@ function poc.register()
   script.on_event(defines.events.on_player_created, poc.on_player_created)
   script.on_event(defines.events.on_player_removed, poc.on_player_removed)
   script.on_event(defines.events.on_player_selected_area, poc.on_selected_area)
-  script.on_event(defines.events.on_player_alt_selected_area, poc.on_alt_selected_area)
+  script.on_event(defines.events.on_player_deconstructed_area, poc.on_deconstructed_area)
   script.on_event(defines.events.on_player_reverse_selected_area, poc.on_reverse_selected_area)
   script.on_event(
     defines.events.on_player_alt_reverse_selected_area,
