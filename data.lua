@@ -35,7 +35,7 @@ logistics_hub.recharge_minimum = "0J"
 logistics_hub.charging_energy = "0W"
 logistics_hub.charging_offsets = {}
 logistics_hub.robot_slots_count = 0
-logistics_hub.material_slots_count = 1
+logistics_hub.material_slots_count = 3
 logistics_hub.construction_radius = 0
 
 local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
@@ -56,43 +56,66 @@ local logistics_hub_recipe = {
 	}
 }
 
-local team_mate_item = table.deepcopy(data.raw["repair-tool"]["repair-pack"])
-team_mate_item.name = "not-alone-team-mate"
-team_mate_item.localised_name = {"item-name.not-alone-team-mate"}
-team_mate_item.localised_description = {"item-description.not-alone-team-mate"}
-team_mate_item.icon = "__base__/graphics/icons/light-armor.png"
-team_mate_item.subgroup = "tool"
-team_mate_item.order = "z[not-alone]-a[team-mate]"
-team_mate_item.stack_size = 20
-
-local team_mate_logistics_member = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
-team_mate_logistics_member.name = "not-alone-team-mate-logistics-member"
-team_mate_logistics_member.localised_name = {"entity-name.not-alone-team-mate-logistics-member"}
-team_mate_logistics_member.flags = {"not-on-map", "not-blueprintable", "not-deconstructable"}
-team_mate_logistics_member.collision_box = {{0, 0}, {0, 0}}
-team_mate_logistics_member.selection_box = {{0, 0}, {0, 0}}
-team_mate_logistics_member.selectable_in_game = false
-team_mate_logistics_member.inventory_size = 1
-team_mate_logistics_member.trash_inventory_size = 0
-team_mate_logistics_member.max_logistic_slots = 0
-team_mate_logistics_member.minable = nil
-team_mate_logistics_member.corpse = nil
-team_mate_logistics_member.dying_explosion = nil
-team_mate_logistics_member.picture = {
+local building_logistics_requester = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
+building_logistics_requester.name = "not-alone-building-logistics-requester"
+building_logistics_requester.localised_name = {"entity-name.not-alone-building-logistics-requester"}
+building_logistics_requester.flags = {"not-on-map", "not-blueprintable", "not-deconstructable"}
+building_logistics_requester.collision_box = {{0, 0}, {0, 0}}
+building_logistics_requester.selection_box = {{0, 0}, {0, 0}}
+building_logistics_requester.selectable_in_game = false
+building_logistics_requester.inventory_size = 20
+building_logistics_requester.trash_inventory_size = 0
+building_logistics_requester.max_logistic_slots = 20
+building_logistics_requester.minable = nil
+building_logistics_requester.corpse = nil
+building_logistics_requester.dying_explosion = nil
+building_logistics_requester.picture = {
 	filename = "__core__/graphics/empty.png",
 	width = 1,
 	height = 1
 }
-team_mate_logistics_member.robot_door = nil
-team_mate_logistics_member.circuit_connector = nil
-team_mate_logistics_member.circuit_wire_max_distance = 0
-team_mate_logistics_member.render_not_in_network_icon = false
+building_logistics_requester.robot_door = nil
+building_logistics_requester.circuit_connector = nil
+building_logistics_requester.circuit_wire_max_distance = 0
+building_logistics_requester.render_not_in_network_icon = false
 
-local building_logistics_requester = table.deepcopy(team_mate_logistics_member)
-building_logistics_requester.name = "not-alone-building-logistics-requester"
-building_logistics_requester.localised_name = {"entity-name.not-alone-building-logistics-requester"}
-building_logistics_requester.inventory_size = 20
-building_logistics_requester.max_logistic_slots = 20
+local function make_team_mate_item(kind, icon, order_suffix)
+	local item = table.deepcopy(data.raw["repair-tool"]["repair-pack"])
+	item.name = "not-alone-" .. kind
+	item.localised_name = {"item-name.not-alone-" .. kind}
+	item.localised_description = {"item-description.not-alone-" .. kind}
+	item.icon = icon
+	item.subgroup = "tool"
+	item.order = "z[not-alone]-" .. order_suffix
+	item.stack_size = 20
+	return item
+end
+
+local miner_item = make_team_mate_item("miner", "__base__/graphics/icons/iron-ore.png", "a[miner]")
+local builder_item = make_team_mate_item("builder", "__base__/graphics/icons/construction-robot.png", "b[builder]")
+local soldier_item = make_team_mate_item("soldier", "__base__/graphics/icons/submachine-gun.png", "c[soldier]")
+
+local mining_marker_tool = {
+	type = "selection-tool",
+	name = "not-alone-mining-tool",
+	icon = "__base__/graphics/icons/coal.png",
+	flags = {"not-stackable", "spawnable"},
+	subgroup = "tool",
+	order = "c[automated-construction]-y[not-alone-mining-tool]",
+	stack_size = 1,
+	select = {
+		border_color = {1, 0.6, 0},
+		mode = {"any-entity"},
+		entity_type_filters = {"resource"},
+		cursor_box_type = "entity"
+	},
+	alt_select = {
+		border_color = {1, 0.2, 0.2},
+		mode = {"any-entity"},
+		entity_type_filters = {"resource"},
+		cursor_box_type = "entity"
+	}
+}
 
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
@@ -285,55 +308,17 @@ local command_tool = {
 	}
 }
 
-local iron_miner_token = {
-	type = "item",
-	name = "not-alone-iron-miner-token",
-	icon = "__base__/graphics/icons/iron-plate.png",
-	flags = {"not-stackable"},
-	subgroup = "tool",
-	order = "z[not-alone]-a[iron-miner]",
-	stack_size = 1
-}
-
-local iron_miner_recipe = {
-	type = "recipe",
-	name = "not-alone-iron-miner-token",
-	enabled = false,
-	ingredients = {
-		{type = "item", name = "iron-plate", amount = 5}
-	},
-	results = {
-		{type = "item", name = "not-alone-iron-miner-token", amount = 1}
-	}
-}
-
-local mining_roles_technology = {
-	type = "technology",
-	name = "not-alone-iron-miner",
-	icon = "__base__/graphics/technology/steel-processing.png",
-	icon_size = 256,
-	effects = {
-		{type = "unlock-recipe", recipe = "not-alone-iron-miner-token"}
-	},
-	unit = {
-		count = 50,
-		ingredients = {{"automation-science-pack", 1}},
-		time = 15
-	}
-}
-
 data:extend({
 	logistics_hub,
 	logistics_hub_item,
 	logistics_hub_recipe,
-	team_mate_item,
-	team_mate_logistics_member,
+	miner_item,
+	builder_item,
+	soldier_item,
 	building_logistics_requester,
 	team_mate,
 	hidden_team_mate,
 	mining_sound,
 	command_tool,
-	iron_miner_token,
-	iron_miner_recipe,
-	mining_roles_technology
+	mining_marker_tool
 })
