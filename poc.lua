@@ -582,8 +582,9 @@ local function update_miner(record, player)
     if remaining_amount > 0 then
       resource.amount = remaining_amount
     else
-      resource.deplete()
+      -- deplete() invalidates the entity, so drop the mark while it is alive.
       unmark_resource_for_mining(resource)
+      resource.deplete()
     end
     record.carried_count = (record.carried_count or 0) + 1
     create_mining_particles(
