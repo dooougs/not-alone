@@ -88,6 +88,8 @@ Date: 2026-08-28
     - Made Builders collect manually marked loose ground items while preserving stack quality and metadata.
     - Prevented Builders repeatedly collecting and respilling single items when no storage could accept them.
     - Fixed Builders freezing in place after dropping cargo that no storage could accept.
+    - Made Builders release marked targets they cannot physically reach so other Builders can take them.
     - Required Builders to reach loose stacks and the edge of solid targets before deconstructing them.
+    - Refreshed building requester proxies from Habitat networks even when no team mate is active.
     - Made miners drop carried resources when changed to another role without resetting same-role work.
     - Fixed a crash when a stored Builder's Habitat was destroyed before its next update.

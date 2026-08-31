@@ -66,7 +66,10 @@ They walk to each marked entity, mine it, and carry the entity and its contents 
 without losing item quality. If no storage can accept deconstruction cargo, every resulting loose
 item is automatically marked for collection and left in full stacks until storage becomes
 available. Builders also collect loose ground items marked manually within the same coverage when
-network storage can accept them. They must stand over a loose stack before picking it up and move
+network storage can accept them. Collected deconstruction cargo is delivered to logistic storage
+chests, so at least one storage chest must be inside the network for cleanup to progress. A Builder
+that cannot physically path to a marked target releases it for other Builders and retries it later.
+They must stand over a loose stack before picking it up and move
 adjacent to the collision box of marked resources, belts, trees, rocks, and buildings before mining
 them.
 Cancelled orders and jobs claimed by native robots are released. Idle Builders enter a Habitat
@@ -91,9 +94,9 @@ compatible fuel through an attached logistic requester. These are normal network
 vanilla logistic robots and team mates can both service them. Delivered items are transferred from
 the requester into the building's input or fuel inventory. If a destination changes or fills while
 a team mate delivery is in progress, the team mate returns the cargo to logistic storage. Fluid
-ingredients are not carried. Each team mate has an invisible logistic interface that follows it,
-making it an engine-recognized member of the current network without changing its player-shaped
-unit movement.
+ingredients are not carried. Buildings receive an invisible requester while they are inside Habitat
+or roboport logistics coverage; deployed team mates themselves remain player-shaped units, not
+native logistic robots or containers.
 
 Team mate actions use a fixed priority: manual routes, nearby enemy combat, assigned job roles,
 and then default logistics. Higher-priority actions pause logistics. If a team mate is carrying
@@ -102,8 +105,9 @@ resuming the role.
 
 The logistic-network GUI is enabled from the start. A Habitat consumes no power, stores no robots,
 and cannot charge robots; it creates logistic-network coverage and has one material slot for a
-single stack of 20 team mate items. Additional Habitats are available from the start and cost 5
-wood. Habitats are never placed automatically.
+single stack of 20 team mate items. Stored team mates are real items in that slot, so Factorio
+includes them in network item totals until they are deployed. Additional Habitats are available from
+the start and cost 5 wood. Habitats are never placed automatically.
 
 Scouts progressively generate hidden chunks ahead for native pathfinding without revealing the
 destination in advance. A route ends when a team mate reaches its final waypoint; team mates are

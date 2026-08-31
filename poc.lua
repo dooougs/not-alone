@@ -417,11 +417,10 @@ local function update_building_requester(requester_record, network)
   return true
 end
 
-local function update_building_requesters(record)
-  local entity = record.entity
-  local network = entity.surface.find_logistic_network_by_position(
-    position_table(entity.position),
-    entity.force
+local function update_building_requesters_for_network(surface, force, position, network)
+  network = network or surface.find_logistic_network_by_position(
+    position_table(position),
+    force
   )
   if not network then
     return
@@ -429,7 +428,7 @@ local function update_building_requesters(record)
 
   storage.not_alone_building_requesters = storage.not_alone_building_requesters or {}
   storage.not_alone_building_requester_ticks = storage.not_alone_building_requester_ticks or {}
-  local network_key = entity.surface.index .. ":" .. entity.force.index
+  local network_key = surface.index .. ":" .. force.index
     .. ":" .. network.network_id
   if storage.not_alone_building_requester_ticks[network_key] == game.tick then
     return
@@ -437,24 +436,24 @@ local function update_building_requesters(record)
   storage.not_alone_building_requester_ticks[network_key] = game.tick
 
   local requesters = storage.not_alone_building_requesters
-  local destinations = entity.surface.find_entities_filtered({
+  local destinations = surface.find_entities_filtered({
     type = LOGISTICS_DESTINATION_TYPES,
-    force = entity.force,
-    position = entity.position,
+    force = force,
+    position = position,
     radius = LOGISTICS_SEARCH_RADIUS
   })
   for _, target in pairs(destinations) do
-    local target_network = entity.surface.find_logistic_network_by_position(
+    local target_network = surface.find_logistic_network_by_position(
       position_table(target.position),
-      entity.force
+      force
     )
     if target_network == network and target.unit_number then
       local requester_record = requesters[target.unit_number]
       if not requester_record or not requester_record.requester.valid then
-        local requester = entity.surface.create_entity({
+        local requester = surface.create_entity({
           name = BUILDING_REQUESTER_NAME,
           position = target.position,
-          force = entity.force,
+          force = force,
           create_build_effect_smoke = false
         })
         if requester then
@@ -478,6 +477,14 @@ local function update_building_requesters(record)
       requesters[unit_number] = nil
     end
   end
+end
+
+local function update_building_requesters(record)
+  update_building_requesters_for_network(
+    record.entity.surface,
+    record.entity.force,
+    record.entity.position
+  )
 end
 
 local function get_reserved_delivery_count(target, item_name)
@@ -957,6 +964,7 @@ end
 
 local function enable_logistics_network_gui(force)
   force.unlock_logistic_network = true
+  force.character_logistic_requests = true
 end
 
 local function remove_legacy_role_gui(player)
@@ -1231,6 +1239,27 @@ local function find_builder_job(record, surface, force, position)
   return nearest_ghost, nearest_source, nearest_item_name
 end
 
+local BUILDER_UNREACHABLE_RETRY_TICKS = 7200
+
+local function builder_target_is_unreachable(record, target)
+  local unreachable = record.builder_unreachable
+  if not unreachable then
+    return false
+  end
+  local kept = {}
+  local found = false
+  for _, entry in pairs(unreachable) do
+    if entry.entity.valid and game.tick - entry.tick < BUILDER_UNREACHABLE_RETRY_TICKS then
+      kept[#kept + 1] = entry
+      if entry.entity == target then
+        found = true
+      end
+    end
+  end
+  record.builder_unreachable = kept[1] and kept or nil
+  return found
+end
+
 local function find_builder_deconstruction_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -1277,6 +1306,7 @@ local function find_builder_deconstruction_target(record, surface, force, positi
         if (target.minable or can_collect)
           and (not can_collect or network_can_store(target.stack))
           and target.is_registered_for_deconstruction(force)
+          and not builder_target_is_unreachable(record, target)
           and (habitat_cell and cell.is_in_logistic_range(target.position)
             or not habitat_cell and cell.is_in_construction_range(target.position))
           and not builder_target_is_claimed(target, record)
@@ -1639,7 +1669,11 @@ local function update_builder(record)
       record.builder_deconstruction_started = nil
       record.builder_target = nil
       record.builder_state = nil
+      record.builder_approach_position = nil
+      record.builder_approach_stalls = nil
     elseif builder_is_at_target(record, target) then
+      record.builder_approach_position = nil
+      record.builder_approach_stalls = nil
       if target.type == "item-entity" then
         local cargo = get_builder_cargo(record)
         local transferred = cargo[1].transfer_stack(target.stack)
@@ -1668,6 +1702,30 @@ local function update_builder(record)
         end
       end
     else
+      local position = record.entity.position
+      if record.builder_approach_position
+        and distance_squared(position, record.builder_approach_position) < 0.01 then
+        record.builder_approach_stalls = (record.builder_approach_stalls or 0) + 1
+        if record.builder_approach_stalls >= 30 then
+          -- This builder cannot path to the target; release the claim so
+          -- other builders may take it, and skip it for a while ourselves.
+          record.builder_unreachable = record.builder_unreachable or {}
+          record.builder_unreachable[#record.builder_unreachable + 1] = {
+            entity = target,
+            tick = game.tick
+          }
+          record.builder_deconstruction_started = nil
+          record.builder_target = nil
+          record.builder_state = nil
+          record.builder_approach_position = nil
+          record.builder_approach_stalls = nil
+          stop_team_mate(record)
+          return true
+        end
+      else
+        record.builder_approach_position = position_table(position)
+        record.builder_approach_stalls = 0
+      end
       move_team_mate(record, builder_target_destination(record, target), 0.2)
     end
     return true
@@ -2466,6 +2524,17 @@ function poc.on_update(event)
       storage.not_alone_open_habitats[player_index] = nil
     elseif get_habitat_team_mate_count(habitat) ~= open_habitat.team_mate_count then
       open_habitat_roster(player, habitat)
+    end
+  end
+
+  for _, surface in pairs(game.surfaces) do
+    for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
+      update_building_requesters_for_network(
+        surface,
+        habitat.force,
+        habitat.position,
+        habitat.logistic_network
+      )
     end
   end
 
