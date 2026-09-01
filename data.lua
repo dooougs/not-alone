@@ -103,10 +103,16 @@ local logistics_hub_recipe = {
 local building_logistics_requester = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
 building_logistics_requester.name = "not-alone-building-logistics-requester"
 building_logistics_requester.localised_name = {"entity-name.not-alone-building-logistics-requester"}
-building_logistics_requester.flags = {"not-on-map", "not-blueprintable", "not-deconstructable"}
+building_logistics_requester.flags = {
+	"not-on-map",
+	"not-blueprintable",
+	"not-deconstructable",
+	"not-selectable-in-game"
+}
 building_logistics_requester.collision_box = {{0, 0}, {0, 0}}
 building_logistics_requester.selection_box = {{0, 0}, {0, 0}}
 building_logistics_requester.selectable_in_game = false
+building_logistics_requester.allow_copy_paste = false
 building_logistics_requester.inventory_size = 20
 building_logistics_requester.trash_inventory_size = 0
 building_logistics_requester.max_logistic_slots = 20
