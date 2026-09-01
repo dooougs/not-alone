@@ -29,6 +29,8 @@ local NETWORK_MEMBER_NAME = "not-alone-team-mate-member"
 local NETWORK_MEMBER_FOLLOW_DISTANCE = 1
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
+local INVENTORY_ICON_SCALE = 0.5
+local INVENTORY_ICON_SPACING = 0.65
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
@@ -113,6 +115,85 @@ local function destroy_route_renderings(record)
     end
   end
   record.route_render_ids = {}
+end
+
+local function destroy_inventory_renderings(record)
+  for _, render_id in pairs(record.inventory_render_ids or {}) do
+    local render_object = rendering.get_object_by_id(render_id)
+    if render_object then
+      render_object.destroy()
+    end
+  end
+  record.inventory_render_ids = {}
+  record.inventory_render_signature = nil
+end
+
+local function get_carried_items(record)
+  local counts = {}
+  if record.kind == "miner" and record.mining_resource_info
+    and (record.carried_count or 0) > 0 then
+    counts[record.mining_resource_info.item_name] = record.carried_count
+  end
+  if record.kind == "builder" and record.builder_item
+    and (record.builder_carried_count or 0) > 0 then
+    counts[record.builder_item.name] = (counts[record.builder_item.name] or 0)
+      + record.builder_carried_count
+  end
+  if record.kind == "builder" and record.builder_cargo and record.builder_cargo.valid then
+    for _, item in pairs(record.builder_cargo.get_contents()) do
+      counts[item.name] = (counts[item.name] or 0) + item.count
+    end
+  end
+
+  local items = {}
+  for name, count in pairs(counts) do
+    items[#items + 1] = {name = name, count = count}
+  end
+  table.sort(items, function(left, right) return left.name < right.name end)
+  return items
+end
+
+local function update_inventory_renderings(record)
+  local items = get_carried_items(record)
+  local signature_parts = {}
+  for _, item in pairs(items) do
+    signature_parts[#signature_parts + 1] = item.name .. ":" .. item.count
+  end
+  local signature = table.concat(signature_parts, ",")
+  local first_object = record.inventory_render_ids and record.inventory_render_ids[1]
+    and rendering.get_object_by_id(record.inventory_render_ids[1])
+  if record.inventory_render_signature == signature
+    and (signature == "" or first_object) then
+    return
+  end
+
+  destroy_inventory_renderings(record)
+  record.inventory_render_signature = signature
+  local start_x = -((#items - 1) * INVENTORY_ICON_SPACING) / 2
+  for index, item in ipairs(items) do
+    local offset = {start_x + (index - 1) * INVENTORY_ICON_SPACING, -1.9}
+    local icon = rendering.draw_sprite({
+      sprite = "item." .. item.name,
+      target = {entity = record.entity, offset = offset},
+      surface = record.entity.surface,
+      x_scale = INVENTORY_ICON_SCALE,
+      y_scale = INVENTORY_ICON_SCALE,
+      only_in_alt_mode = true,
+      render_layer = "entity-info-icon"
+    })
+    local count = rendering.draw_text({
+      text = tostring(item.count),
+      target = {entity = record.entity, offset = {offset[1] + 0.2, offset[2] + 0.2}},
+      surface = record.entity.surface,
+      color = {1, 1, 1},
+      alignment = "center",
+      vertical_alignment = "middle",
+      scale = 0.7,
+      only_in_alt_mode = true
+    })
+    record.inventory_render_ids[#record.inventory_render_ids + 1] = icon.id
+    record.inventory_render_ids[#record.inventory_render_ids + 1] = count.id
+  end
 end
 
 local function destroy_network_member(record)
@@ -1313,6 +1394,7 @@ dock_at_habitat = function(record)
     return true
   end
   destroy_route_renderings(record)
+  destroy_inventory_renderings(record)
   destroy_network_member(record)
   if record.builder_cargo and record.builder_cargo.valid then
     record.builder_cargo.destroy()
@@ -1664,11 +1746,13 @@ local function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
+    destroy_inventory_renderings(record)
     destroy_network_member(record)
     return false
   end
 
   rescue_immobile_team_mate(record)
+  update_inventory_renderings(record)
   update_network_member(record)
   update_building_requesters(record)
 
@@ -1779,6 +1863,7 @@ function poc.on_player_removed(event)
   if team_mates then
     for _, record in pairs(team_mates) do
       destroy_route_renderings(record)
+      destroy_inventory_renderings(record)
       destroy_network_member(record)
       if record.builder_cargo and record.builder_cargo.valid then
         if not record.builder_cargo.is_empty() and record.entity.valid then
