@@ -514,6 +514,24 @@ local function cleanup_marked_resources(surface_index)
   end
 end
 
+local function get_resource_claimant(resource)
+  local claimant
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, other_record in pairs(team_mates) do
+      if other_record.kind == "miner"
+        and other_record.miner_target == resource
+        and (other_record.miner_state == "move-to-ore"
+          or other_record.miner_state == "mine")
+        and other_record.entity and other_record.entity.valid
+        and (not claimant
+          or other_record.entity.unit_number < claimant.entity.unit_number) then
+        claimant = other_record
+      end
+    end
+  end
+  return claimant
+end
+
 local function find_marked_resource(record, surface, force, position)
   surface = surface or record.entity.surface
   force = force or record.entity.force
@@ -530,6 +548,7 @@ local function find_marked_resource(record, surface, force, position)
       for _, mark in pairs(marks) do
         local resource = mark.entity
         if resource.valid and resource.amount > 0
+          and not get_resource_claimant(resource)
           and cell.is_in_logistic_range(resource.position) then
           local current_distance = distance_squared(position, resource.position)
           if not nearest_distance or current_distance < nearest_distance then
@@ -558,8 +577,10 @@ local function update_miner(record, player)
   update_mining_animation(record, record.miner_state == "mine")
 
   if record.miner_state == "move-to-ore" then
-    if not record.miner_target or not record.miner_target.valid then
+    if not record.miner_target or not record.miner_target.valid
+      or get_resource_claimant(record.miner_target) ~= record then
       record.miner_state = nil
+      record.miner_target = nil
     elseif distance_squared(record.entity.position, record.miner_target.position) <= 4 then
       record.miner_state = "mine"
       record.next_mining_tick = game.tick + math.random(get_mining_interval(player))
@@ -576,7 +597,8 @@ local function update_miner(record, player)
       return true
     end
     local resource = record.miner_target
-    if not resource or not resource.valid or resource.amount <= 0 then
+    if not resource or not resource.valid or resource.amount <= 0
+      or get_resource_claimant(resource) ~= record then
       record.miner_state = nil
       record.miner_target = nil
       return true
