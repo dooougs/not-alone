@@ -1185,10 +1185,37 @@ local function size_builder_cargo_for_target(record, target)
   return record.builder_cargo
 end
 
+local function find_builder_cargo_action(record, cargo)
+  for slot = 1, #cargo do
+    local stack = cargo[slot]
+    if stack.valid_for_read then
+      local item = {name = stack.name, quality = stack.quality.name}
+      local delivery_info = {item_name = item.name, inventory = defines.inventory.chest}
+      local consumer = find_requesting_consumer(record, delivery_info)
+      if consumer and consumer.valid
+        and consumer_accepts_item(consumer, delivery_info, 1) then
+        return item, consumer, consumer.get_inventory(defines.inventory.chest)
+      end
+    end
+  end
+
+  for slot = 1, #cargo do
+    local stack = cargo[slot]
+    if stack.valid_for_read then
+      local item = {name = stack.name, quality = stack.quality.name}
+      local source = find_logistics_return_source(record, item)
+      local inventory = get_logistics_source_inventory(source)
+      if inventory then
+        return item, source, inventory
+      end
+    end
+  end
+  return nil, nil, nil
+end
+
 local function return_builder_cargo(record)
   local cargo = record.builder_cargo
   if not cargo or not cargo.valid or cargo.is_empty() then
-    record.builder_return_source = nil
     if record.kind == "builder" and record.builder_deconstruction_started
       and record.builder_target and record.builder_target.valid
       and record.builder_target.to_be_deconstructed() then
@@ -1202,65 +1229,29 @@ local function return_builder_cargo(record)
     return false
   end
 
-  local stack
-  for slot = 1, #cargo do
-    if cargo[slot].valid_for_read then
-      stack = cargo[slot]
-      break
-    end
-  end
-  if not stack then
-    return false
-  end
-  local item = {name = stack.name, quality = stack.quality.name}
-  -- Prefer delivering harvested items to a building requester that wants them
-  -- (e.g. a furnace set to smelt them) before returning them to storage.
-  local delivery_info = {item_name = item.name, inventory = defines.inventory.chest}
-  local consumer = find_requesting_consumer(record, delivery_info)
-  if consumer and consumer.valid and consumer_accepts_item(consumer, delivery_info, 1) then
-    if distance_squared(record.entity.position, consumer.position) <= 4 then
-      local moved = consumer.get_inventory(defines.inventory.chest).insert({
-        name = item.name,
-        quality = item.quality,
-        count = cargo.get_item_count(item)
-      })
-      if moved > 0 then
-        cargo.remove({name = item.name, quality = item.quality, count = moved})
-      end
-    else
-      move_team_mate(record, consumer.position, 2)
-    end
-    return true
-  end
-
-  local source_inventory = get_logistics_source_inventory(record.builder_return_source)
-  if not source_inventory or not source_inventory.can_insert(stack) then
-    record.builder_return_source = find_logistics_return_source(record, item)
-    source_inventory = get_logistics_source_inventory(record.builder_return_source)
-  end
-  if not source_inventory then
-    record.builder_return_source = nil
+  local item, destination, inventory = find_builder_cargo_action(record, cargo)
+  if not destination then
     stop_team_mate(record)
     return true
   end
-  if distance_squared(record.entity.position, record.builder_return_source.position) <= 4 then
-    source_inventory.transfer_from_inventory(cargo)
-    if cargo.is_empty() then
-      record.builder_return_source = nil
-      if record.kind == "builder" and record.builder_deconstruction_started
-        and record.builder_target and record.builder_target.valid
-        and record.builder_target.to_be_deconstructed() then
-        record.builder_state = "move-to-deconstruction"
-      else
-        record.builder_deconstruction_started = nil
-        if record.kind == "builder" then
-          record.builder_state = nil
-        end
+
+  if distance_squared(record.entity.position, destination.position) <= 4 then
+    local count = math.min(
+      cargo.get_item_count(item),
+      inventory.get_insertable_count(item)
+    )
+    if count > 0 then
+      local inserted = inventory.insert({
+        name = item.name,
+        quality = item.quality,
+        count = count
+      })
+      if inserted > 0 then
+        cargo.remove({name = item.name, quality = item.quality, count = inserted})
       end
-      return false
     end
   else
-    move_team_mate(record, record.builder_return_source.position, 2)
+    move_team_mate(record, destination.position, 2)
   end
   return true
 end
