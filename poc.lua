@@ -59,7 +59,7 @@ local RECIPE_ENTITY_TYPES = {
   ["furnace"] = true,
   ["rocket-silo"] = true
 }
-local wait_at_habitat
+local dock_at_habitat
 local stop_team_mate
 local move_team_mate
 local update_mining_animation
@@ -674,7 +674,7 @@ local function update_miner(record, player)
   if assign_miner_job(record) then
     return true
   end
-  return wait_at_habitat(record)
+  return dock_at_habitat(record)
 end
 
 update_mining_animation = function(record, should_show)
@@ -1281,7 +1281,7 @@ local function return_builder_material(record)
   return true
 end
 
-wait_at_habitat = function(record)
+dock_at_habitat = function(record)
   local habitat = find_nearest_habitat(record)
   if not habitat then
     stop_team_mate(record)
@@ -1294,7 +1294,18 @@ wait_at_habitat = function(record)
 
   stop_team_mate(record)
   update_mining_animation(record, false)
-  return true
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory
+    or inventory.insert({name = ITEM_NAME_BY_KIND[record.kind], count = 1}) ~= 1 then
+    return true
+  end
+  destroy_route_renderings(record)
+  destroy_network_member(record)
+  if record.builder_cargo and record.builder_cargo.valid then
+    record.builder_cargo.destroy()
+  end
+  record.entity.destroy()
+  return false
 end
 
 local function builder_is_at_target(record, target)
@@ -1455,7 +1466,7 @@ local function update_builder(record)
   if assign_builder_job(record) then
     return true
   end
-  return wait_at_habitat(record)
+  return dock_at_habitat(record)
 end
 
 local function create_team_mate(player, kind, index, spawn_center)
@@ -1503,6 +1514,15 @@ local function find_any_player_for_force(force)
   return force.players and force.players[1]
 end
 
+local function assign_job(record, surface, force, position)
+  if record.kind == "miner" then
+    return assign_miner_job(record, surface, force, position)
+  elseif record.kind == "builder" then
+    return assign_builder_job(record, surface, force, position)
+  end
+  return false
+end
+
 local function auto_deploy_from_habitat(habitat)
   local player = find_any_player_for_force(habitat.force)
   if not player or not player.valid then
@@ -1516,19 +1536,23 @@ local function auto_deploy_from_habitat(habitat)
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   for _, kind in pairs(TEAM_MATE_KINDS) do
     local item_name = ITEM_NAME_BY_KIND[kind]
-    while inventory.get_item_count(item_name) > 0 do
+    local job = {entity = habitat, kind = kind}
+    if inventory.get_item_count(item_name) > 0
+      and assign_job(job, habitat.surface, habitat.force, position_table(habitat.position)) then
       local team_mates = storage.not_alone_team_mates[player.index] or {}
       local record = create_team_mate(player, kind, #team_mates + 1, habitat.position)
       if record and inventory.remove({name = item_name, count = 1}) == 1 then
+        job.entity = nil
+        job.kind = nil
+        for key, value in pairs(job) do
+          record[key] = value
+        end
         record.habitat = habitat
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
       elseif record then
         destroy_network_member(record)
         record.entity.destroy()
-        break
-      else
-        break
       end
     end
   end
@@ -1690,7 +1714,7 @@ local function update_team_mate(record, player)
   elseif record.kind == "builder" then
     return update_builder(record)
   end
-  return wait_at_habitat(record)
+  return dock_at_habitat(record)
 end
 
 function poc.on_init()
