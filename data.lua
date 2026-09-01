@@ -25,7 +25,7 @@ end
 local logistics_hub = table.deepcopy(data.raw.roboport.roboport)
 logistics_hub.name = "not-alone-logistics-hub"
 logistics_hub.localised_name = {"entity-name.not-alone-logistics-hub"}
-logistics_hub.icon = "__base__/graphics/icons/roboport.png"
+logistics_hub.icon = "__base__/graphics/icons/beacon.png"
 logistics_hub.minable = {mining_time = 0.1, result = "not-alone-logistics-hub"}
 logistics_hub.fast_replaceable_group = nil
 logistics_hub.next_upgrade = nil
@@ -37,6 +37,13 @@ logistics_hub.charging_offsets = {}
 logistics_hub.robot_slots_count = 0
 logistics_hub.material_slots_count = 3
 logistics_hub.construction_radius = 0
+
+local beacon_animations = data.raw["beacon"]["beacon"].graphics_set.animation_list
+logistics_hub.base = table.deepcopy(beacon_animations[1].animation)
+logistics_hub.base_animation = table.deepcopy(beacon_animations[2].animation)
+logistics_hub.base_patch = nil
+logistics_hub.door_animation_up = nil
+logistics_hub.door_animation_down = nil
 
 -- Rides along with a deployed team mate so it is a real member of the
 -- network. Zero radius with a connection distance so it joins a Habitat's
@@ -67,7 +74,8 @@ team_mate_member.flags = {
 	"not-in-kill-statistics",
 	"not-in-made-in"
 }
-team_mate_member.hidden = true
+team_mate_member.hidden = nil
+team_mate_member.hidden_in_factoriopedia = true
 for _, key in pairs({"base", "base_patch", "frozen_patch", "base_animation",
 	"door_animation_up", "door_animation_down", "recharging_animation",
 	"water_reflection", "integration_patch"}) do

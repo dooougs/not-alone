@@ -26,8 +26,7 @@ local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 local NETWORK_MEMBER_NAME = "not-alone-team-mate-member"
--- Moving a roboport re-evaluates networks, so only follow in coarse steps.
-local NETWORK_MEMBER_FOLLOW_DISTANCE = 4
+local NETWORK_MEMBER_FOLLOW_DISTANCE = 1
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
 local TEAM_MATE_NAME = "not-alone-team-mate"
@@ -60,7 +59,7 @@ local RECIPE_ENTITY_TYPES = {
   ["furnace"] = true,
   ["rocket-silo"] = true
 }
-local dock_team_mate
+local wait_at_habitat
 local stop_team_mate
 local move_team_mate
 local update_mining_animation
@@ -127,14 +126,20 @@ local function update_network_member(record)
   local team_mate = record.entity
   local member = record.network_member
   if member and member.valid then
-    if distance_squared(member.position, team_mate.position)
+    local destination_network = team_mate.surface.find_logistic_network_by_position(
+      position_table(team_mate.position),
+      team_mate.force
+    )
+    if destination_network and member.logistic_network ~= destination_network then
+      member.destroy()
+    elseif distance_squared(member.position, team_mate.position)
       <= NETWORK_MEMBER_FOLLOW_DISTANCE * NETWORK_MEMBER_FOLLOW_DISTANCE then
       return
-    end
-    if member.teleport(team_mate.position) then
+    elseif member.teleport(team_mate.position) then
       return
+    else
+      member.destroy()
     end
-    member.destroy()
   end
 
   member = team_mate.surface.create_entity({
@@ -611,7 +616,7 @@ local function update_miner(record, player)
       record.miner_target = consumer
       record.miner_state = "move-to-consumer"
     else
-      record.miner_state = "store-cargo"
+      stop_team_mate(record)
     end
     return true
   end
@@ -659,37 +664,9 @@ local function update_miner(record, player)
     return true
   end
 
-  if record.miner_state == "store-cargo" then
-    local item_name = record.mining_resource_info.item_name
-    local source = record.miner_target
-    if not get_logistics_source_inventory(source) then
-      source = find_logistics_return_source(record, item_name)
-      record.miner_target = source
-    end
-    if not source then
-      record.entity.surface.spill_item_stack({
-        position = position_table(record.entity.position),
-        stack = {name = item_name, count = record.carried_count},
-        drop_full_stack = true
-      })
-      record.carried_count = 0
-      record.miner_state = nil
-    elseif distance_squared(record.entity.position, source.position) <= 4 then
-      record.carried_count = record.carried_count - get_logistics_source_inventory(source).insert({
-        name = item_name,
-        count = record.carried_count
-      })
-      record.miner_target = nil
-      record.miner_state = record.carried_count > 0 and "store-cargo" or nil
-    else
-      move_team_mate(record, source.position, 2)
-    end
-    return true
-  end
-
-  -- Idle: carry on delivering leftovers, take new work, or go back in the box.
   if (record.carried_count or 0) > 0 then
     record.miner_state = "find-consumer"
+    stop_team_mate(record)
     return true
   end
   record.carried_count = 0
@@ -697,7 +674,7 @@ local function update_miner(record, player)
   if assign_miner_job(record) then
     return true
   end
-  return dock_team_mate(record)
+  return wait_at_habitat(record)
 end
 
 update_mining_animation = function(record, should_show)
@@ -896,12 +873,10 @@ move_team_mate = function(record, destination, stopping_distance)
   record.command_target = nil
 end
 
-local function find_nearest_habitat(record, require_space)
+local function find_nearest_habitat(record)
   local team_mate = record.entity
   local nearest_habitat = nil
   local nearest_distance = nil
-  local nearest_available_habitat = nil
-  local nearest_available_distance = nil
   for _, habitat in pairs(team_mate.surface.find_entities_filtered({
     name = LOGISTICS_HUB_NAME,
     force = team_mate.force
@@ -911,15 +886,9 @@ local function find_nearest_habitat(record, require_space)
       nearest_habitat = habitat
       nearest_distance = distance
     end
-    local inventory = get_habitat_inventory(habitat)
-    if inventory and inventory.get_insertable_count(ITEM_NAME_BY_KIND[record.kind]) > 0
-      and (not nearest_available_distance or distance < nearest_available_distance) then
-      nearest_available_habitat = habitat
-      nearest_available_distance = distance
-    end
   end
-  record.habitat = require_space and nearest_available_habitat or nearest_habitat
-  return record.habitat or nearest_habitat
+  record.habitat = nearest_habitat
+  return nearest_habitat
 end
 
 local function move_team_mate_toward_destination(record, destination)
@@ -1212,6 +1181,27 @@ local function return_builder_cargo(record)
   end
 
   local stack = cargo[1]
+  -- Prefer delivering harvested items to a building requester that wants them
+  -- (e.g. a furnace set to smelt them) before returning them to storage.
+  local delivery_info = {item_name = stack.name, inventory = defines.inventory.chest}
+  local consumer = find_requesting_consumer(record, delivery_info)
+  if consumer and consumer.valid and consumer_accepts_item(consumer, delivery_info, 1) then
+    if distance_squared(record.entity.position, consumer.position) <= 4 then
+      local want = {name = stack.name, quality = stack.quality.name}
+      local moved = consumer.get_inventory(defines.inventory.chest).insert({
+        name = stack.name,
+        quality = stack.quality.name,
+        count = cargo.get_item_count(want)
+      })
+      if moved > 0 then
+        cargo.remove({name = stack.name, quality = stack.quality.name, count = moved})
+      end
+    else
+      move_team_mate(record, consumer.position, 2)
+    end
+    return true
+  end
+
   local source_inventory = get_logistics_source_inventory(record.builder_return_source)
   if not source_inventory or not source_inventory.can_insert(stack) then
     record.builder_return_source = find_logistics_return_source(record, {
@@ -1221,18 +1211,9 @@ local function return_builder_cargo(record)
     source_inventory = get_logistics_source_inventory(record.builder_return_source)
   end
   if not source_inventory then
-    record.entity.surface.spill_inventory({
-      position = position_table(record.entity.position),
-      inventory = cargo,
-      force = record.entity.force,
-      drop_full_stack = true
-    })
-    record.builder_deconstruction_started = nil
     record.builder_return_source = nil
-    if record.kind == "builder" then
-      record.builder_state = nil
-    end
-    return false
+    stop_team_mate(record)
+    return true
   end
   if distance_squared(record.entity.position, record.builder_return_source.position) <= 4 then
     source_inventory.transfer_from_inventory(cargo)
@@ -1271,18 +1252,9 @@ local function return_builder_material(record)
     inventory = get_logistics_source_inventory(record.builder_source)
   end
   if not inventory then
-    record.entity.surface.spill_item_stack({
-      position = position_table(record.entity.position),
-      stack = {
-        name = record.builder_item.name,
-        quality = record.builder_item.quality,
-        count = 1
-      }
-    })
-    record.builder_item = nil
-    record.builder_carried_count = 0
-    record.builder_state = nil
-    return false
+    record.builder_source = nil
+    stop_team_mate(record)
+    return true
   end
   if distance_squared(record.entity.position, record.builder_source.position) <= 4 then
     local inserted = inventory.insert({
@@ -1303,8 +1275,8 @@ local function return_builder_material(record)
   return true
 end
 
-dock_team_mate = function(record)
-  local habitat = find_nearest_habitat(record, true)
+wait_at_habitat = function(record)
+  local habitat = find_nearest_habitat(record)
   if not habitat then
     stop_team_mate(record)
     return true
@@ -1315,23 +1287,8 @@ dock_team_mate = function(record)
   end
 
   stop_team_mate(record)
-  local inventory = get_habitat_inventory(habitat)
-  if not inventory or inventory.insert({name = ITEM_NAME_BY_KIND[record.kind], count = 1}) ~= 1 then
-    return true
-  end
-
-  -- Stored team mates are just items; the record is dropped so the only
-  -- inactive state in the mod is "an item sitting in a Habitat".
   update_mining_animation(record, false)
-  destroy_route_renderings(record)
-  destroy_network_member(record)
-  if record.builder_cargo and record.builder_cargo.valid then
-    record.builder_cargo.destroy()
-  end
-  if record.entity.valid then
-    record.entity.destroy()
-  end
-  return false
+  return true
 end
 
 local function builder_is_at_target(record, target)
@@ -1492,7 +1449,7 @@ local function update_builder(record)
   if assign_builder_job(record) then
     return true
   end
-  return dock_team_mate(record)
+  return wait_at_habitat(record)
 end
 
 local function create_team_mate(player, kind, index, spawn_center)
@@ -1529,17 +1486,8 @@ local function create_team_mate(player, kind, index, spawn_center)
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
   local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
+  update_network_member(record)
   return record
-end
-
-local function assign_job(record, surface, force, position)
-  if record.kind == "miner" then
-    return assign_miner_job(record, surface, force, position)
-  end
-  if record.kind == "builder" then
-    return assign_builder_job(record, surface, force, position)
-  end
-  return false
 end
 
 local function find_any_player_for_force(force)
@@ -1562,23 +1510,19 @@ local function auto_deploy_from_habitat(habitat)
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   for _, kind in pairs(TEAM_MATE_KINDS) do
     local item_name = ITEM_NAME_BY_KIND[kind]
-    -- Claim the work before spawning so stored team mates stay put when idle.
-    local job = {entity = habitat, kind = kind}
-    if inventory.get_item_count(item_name) > 0
-      and assign_job(job, habitat.surface, habitat.force, position_table(habitat.position)) then
+    while inventory.get_item_count(item_name) > 0 do
       local team_mates = storage.not_alone_team_mates[player.index] or {}
       local record = create_team_mate(player, kind, #team_mates + 1, habitat.position)
       if record and inventory.remove({name = item_name, count = 1}) == 1 then
-        job.entity = nil
-        job.kind = nil
-        for key, value in pairs(job) do
-          record[key] = value
-        end
         record.habitat = habitat
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
       elseif record then
+        destroy_network_member(record)
         record.entity.destroy()
+        break
+      else
+        break
       end
     end
   end
@@ -1740,7 +1684,7 @@ local function update_team_mate(record, player)
   elseif record.kind == "builder" then
     return update_builder(record)
   end
-  return dock_team_mate(record)
+  return wait_at_habitat(record)
 end
 
 function poc.on_init()
