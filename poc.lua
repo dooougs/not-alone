@@ -1180,21 +1180,30 @@ local function return_builder_cargo(record)
     return false
   end
 
-  local stack = cargo[1]
+  local stack
+  for slot = 1, #cargo do
+    if cargo[slot].valid_for_read then
+      stack = cargo[slot]
+      break
+    end
+  end
+  if not stack then
+    return false
+  end
+  local item = {name = stack.name, quality = stack.quality.name}
   -- Prefer delivering harvested items to a building requester that wants them
   -- (e.g. a furnace set to smelt them) before returning them to storage.
-  local delivery_info = {item_name = stack.name, inventory = defines.inventory.chest}
+  local delivery_info = {item_name = item.name, inventory = defines.inventory.chest}
   local consumer = find_requesting_consumer(record, delivery_info)
   if consumer and consumer.valid and consumer_accepts_item(consumer, delivery_info, 1) then
     if distance_squared(record.entity.position, consumer.position) <= 4 then
-      local want = {name = stack.name, quality = stack.quality.name}
       local moved = consumer.get_inventory(defines.inventory.chest).insert({
-        name = stack.name,
-        quality = stack.quality.name,
-        count = cargo.get_item_count(want)
+        name = item.name,
+        quality = item.quality,
+        count = cargo.get_item_count(item)
       })
       if moved > 0 then
-        cargo.remove({name = stack.name, quality = stack.quality.name, count = moved})
+        cargo.remove({name = item.name, quality = item.quality, count = moved})
       end
     else
       move_team_mate(record, consumer.position, 2)
@@ -1204,10 +1213,7 @@ local function return_builder_cargo(record)
 
   local source_inventory = get_logistics_source_inventory(record.builder_return_source)
   if not source_inventory or not source_inventory.can_insert(stack) then
-    record.builder_return_source = find_logistics_return_source(record, {
-      name = stack.name,
-      quality = stack.quality.name
-    })
+    record.builder_return_source = find_logistics_return_source(record, item)
     source_inventory = get_logistics_source_inventory(record.builder_return_source)
   end
   if not source_inventory then
