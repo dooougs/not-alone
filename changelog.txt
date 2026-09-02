@@ -1,4 +1,19 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.6
+Date: 2026-09-02
+  Changes:
+    - Corrected Factoriopedia team mate icons to use the tinted in-game torso icons.
+    - Corrected Factoriopedia team mate previews to use player-style role and armor animations.
+
+---------------------------------------------------------------------------------------------------
+Version: 0.1.5
+Date: 2026-09-02
+  Changes:
+    - Added a compact Team mates panel beside the logistics network interface with deployed, docked, and activity counts.
+    - Matched the Team mates panel to native Factorio logistics UI styling and corrected its Remote view placement.
+    - Made hidden building requesters display the localized name of their actual target building.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.4
 Date: 2026-09-02
   Changes:

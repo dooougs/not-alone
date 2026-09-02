@@ -300,22 +300,24 @@ local TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
 
 local function destroy_team_mate_panel(player)
   local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
+    or player.gui.screen[TEAM_MATE_PANEL_NAME]
   if panel then
     panel.destroy()
   end
 end
 
 local function update_team_mate_panel(player)
-  if player.opened_gui_type ~= defines.gui_type.logistic then
+  local logistics_open = player.opened_gui_type == defines.gui_type.logistic
+    or storage.not_alone_logistics_gui_open
+      and storage.not_alone_logistics_gui_open[player.index]
+  if not logistics_open then
     destroy_team_mate_panel(player)
     return
   end
 
   local network = player.opened
-  if not network or network.object_name ~= "LuaLogisticNetwork" then
-    destroy_team_mate_panel(player)
-    return
-  end
+  local selected_network = network and network.object_name == "LuaLogisticNetwork"
+    and network or nil
 
   local counts = {}
   local statuses = {}
@@ -329,9 +331,9 @@ local function update_team_mate_panel(player)
     for _, record in pairs(team_mates) do
       if record.entity and record.entity.valid
         and record.entity.surface == surface
-        and surface.find_closest_logistic_network_by_position(
+        and (not selected_network or surface.find_closest_logistic_network_by_position(
           position_table(record.entity.position), player.force
-        ) == network then
+        ) == selected_network) then
         local count = counts[record.kind]
         if count then
           count.deployed = count.deployed + 1
@@ -352,7 +354,7 @@ local function update_team_mate_panel(player)
     name = LOGISTICS_HUB_NAME,
     force = player.force
   })) do
-    if habitat.logistic_network == network then
+    if not selected_network or habitat.logistic_network == selected_network then
       local inventory = get_habitat_inventory(habitat)
       for _, kind in pairs(TEAM_MATE_KINDS) do
         counts[kind].docked = counts[kind].docked
@@ -361,21 +363,29 @@ local function update_team_mate_panel(player)
     end
   end
 
-  local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
+  local panel = player.gui.screen[TEAM_MATE_PANEL_NAME]
   if not panel then
-    panel = player.gui.relative.add({
+    destroy_team_mate_panel(player)
+    -- Default frame + caption gives the same heading font as "Logistic
+    -- networks"; a list-box gives the same row styling as the network list.
+    panel = player.gui.screen.add({
       type = "frame",
       name = TEAM_MATE_PANEL_NAME,
-      direction = "vertical",
-      anchor = {
-        gui = defines.relative_gui_type.logistic_gui,
-        position = defines.relative_gui_position.right
-      }
+      caption = "Team mates",
+      direction = "vertical"
     })
-    panel.style.width = 190
-    panel.add({type = "label", name = "title", caption = "Team mates"})
+    panel.style.width = 260
+    local scale = player.display_scale
+    panel.location = {x = math.floor(537 * scale), y = math.floor(38 * scale)}
+    local rows = panel.add({
+      type = "list-box",
+      name = "rows",
+      ignored_by_interaction = true
+    })
+    rows.style.horizontally_stretchable = true
   end
 
+  local rows = {}
   for _, kind in pairs(TEAM_MATE_KINDS) do
     local count = counts[kind]
     local status_parts = {}
@@ -390,12 +400,30 @@ local function update_team_mate_panel(player)
     if #status_parts > 0 then
       caption = caption .. " (" .. table.concat(status_parts, ", ") .. ")"
     end
-    local label = panel[kind]
-    if not label then
-      label = panel.add({type = "label", name = kind, caption = caption})
-    else
-      label.caption = caption
-    end
+    rows[#rows + 1] = caption
+  end
+  panel.rows.items = rows
+end
+
+function poc.on_gui_opened(event)
+  if event.gui_type ~= defines.gui_type.logistic then
+    return
+  end
+  storage.not_alone_logistics_gui_open = storage.not_alone_logistics_gui_open or {}
+  storage.not_alone_logistics_gui_open[event.player_index] = true
+  local player = game.get_player(event.player_index)
+  if player then
+    update_team_mate_panel(player)
+  end
+end
+
+function poc.on_gui_closed(event)
+  if storage.not_alone_logistics_gui_open then
+    storage.not_alone_logistics_gui_open[event.player_index] = nil
+  end
+  local player = game.get_player(event.player_index)
+  if player then
+    destroy_team_mate_panel(player)
   end
 end
 
@@ -3317,6 +3345,8 @@ function poc.register()
     defines.events.on_player_alt_reverse_selected_area,
     poc.on_alt_reverse_selected_area
   )
+  script.on_event(defines.events.on_gui_opened, poc.on_gui_opened)
+  script.on_event(defines.events.on_gui_closed, poc.on_gui_closed)
   script.on_event(defines.events.on_built_entity, poc.on_roboport_built)
   script.on_event(defines.events.on_robot_built_entity, poc.on_roboport_built)
   script.on_event(defines.events.script_raised_built, poc.on_roboport_built)

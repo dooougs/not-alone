@@ -256,6 +256,29 @@ local function tint_unit_masks(unit, tint)
 	end
 end
 
+local function set_team_mate_pedia_visuals(unit, tint, sheet)
+	unit.icon = TEAM_MATE_ICON
+	unit.icon_size = TEAM_MATE_ICON_SIZE
+	unit.icons = {
+		{icon = TEAM_MATE_ICON, icon_size = TEAM_MATE_ICON_SIZE, tint = tint}
+	}
+	unit.run_animation = {
+		layers = {
+			table.deepcopy(sheet.running),
+			table.deepcopy(sheet.running_mask),
+			table.deepcopy(sheet.running_shadow)
+		}
+	}
+	unit.attack_parameters.animation = {
+		layers = {
+			table.deepcopy(sheet.idle_gun),
+			table.deepcopy(sheet.idle_gun_mask),
+			table.deepcopy(sheet.idle_gun_shadow)
+		}
+	}
+	tint_unit_masks(unit, tint)
+end
+
 local hidden_team_mate = table.deepcopy(team_mate)
 hidden_team_mate.name = "not-alone-team-mate-hidden"
 hidden_team_mate.hidden_in_factoriopedia = true
@@ -373,21 +396,7 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
 	unit.name = "not-alone-team-mate-" .. weapon.suffix
 	unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
 	local sheet = character_animations[weapon.sheet] or character_animations.level1
-	unit.run_animation = {
-		layers = {
-			table.deepcopy(sheet.running),
-			table.deepcopy(sheet.running_mask),
-			table.deepcopy(sheet.running_shadow)
-		}
-	}
-	unit.attack_parameters.animation = {
-		layers = {
-			table.deepcopy(sheet.idle_gun),
-			table.deepcopy(sheet.idle_gun_mask),
-			table.deepcopy(sheet.idle_gun_shadow)
-		}
-	}
-	tint_unit_masks(unit, KIND_TINT.soldier)
+	set_team_mate_pedia_visuals(unit, KIND_TINT.soldier, sheet)
 	local gun = data.raw.gun[weapon.gun]
 	local ammo = data.raw.ammo[weapon.ammo]
 	if gun and ammo then
@@ -442,7 +451,7 @@ fists_unit.name = "not-alone-team-mate-fists"
 fists_unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
 fists_unit.hidden_in_factoriopedia = nil
 fists_unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-soldier"}
-tint_unit_masks(fists_unit, KIND_TINT.soldier)
+set_team_mate_pedia_visuals(fists_unit, KIND_TINT.soldier, character_animations.level1)
 local fist_params = fists_unit.attack_parameters
 fist_params.range = 1.5
 fist_params.cooldown = 35
@@ -509,7 +518,13 @@ for _, base_unit in pairs(soldier_units) do
 			armored_unit.attack_parameters.animation = table.deepcopy(
 				visual.set.idle_with_gun
 			)
-			tint_unit_masks(armored_unit, KIND_TINT.soldier)
+				armored_unit.icon = TEAM_MATE_ICON
+				armored_unit.icon_size = TEAM_MATE_ICON_SIZE
+				armored_unit.icons = {
+					{icon = TEAM_MATE_ICON, icon_size = TEAM_MATE_ICON_SIZE,
+						tint = KIND_TINT.soldier}
+				}
+				tint_unit_masks(armored_unit, KIND_TINT.soldier)
 			soldier_prototypes[#soldier_prototypes + 1] = armored_unit
 		end
 	end
@@ -562,7 +577,7 @@ for _, kind in pairs({"miner", "builder", "carrier"}) do
 	unit.localised_name = {"entity-name.not-alone-team-mate-" .. kind}
 	unit.hidden_in_factoriopedia = nil
 	unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-" .. kind}
-	tint_unit_masks(unit, KIND_TINT[kind])
+	set_team_mate_pedia_visuals(unit, KIND_TINT[kind], character_animations.level1)
 	soldier_prototypes[#soldier_prototypes + 1] = unit
 end
 data:extend(soldier_prototypes)
