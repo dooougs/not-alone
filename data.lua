@@ -41,9 +41,9 @@ logistics_hub.construction_radius = 0
 
 local habitat_picture = {
 	filename = "__not-alone__/graphics/entity/habitat.png",
-	width = 1254,
-	height = 1254,
-	scale = 0.13,
+	width = 256,
+	height = 256,
+	scale = 0.5,
 	shift = {0, -0.3}
 }
 logistics_hub.base = habitat_picture
@@ -138,22 +138,34 @@ building_logistics_requester.circuit_connector = nil
 building_logistics_requester.circuit_wire_max_distance = 0
 building_logistics_requester.render_not_in_network_icon = false
 
-local function make_team_mate_item(kind, icon, order_suffix)
+-- Colors must match KIND_COLOR in poc.lua.
+local TEAM_MATE_ICON = "__core__/graphics/player-force-icon.png"
+local TEAM_MATE_ICON_SIZE = 32
+
+local function make_team_mate_item(kind, tint, order_suffix)
 	local item = table.deepcopy(data.raw["repair-tool"]["repair-pack"])
 	item.name = "not-alone-" .. kind
 	item.localised_name = {"item-name.not-alone-" .. kind}
 	item.localised_description = {"item-description.not-alone-" .. kind}
-	item.icon = icon
+	item.icon = nil
+	item.icon_size = nil
+	item.icons = {
+		{
+			icon = TEAM_MATE_ICON,
+			icon_size = TEAM_MATE_ICON_SIZE,
+			tint = tint
+		}
+	}
 	item.subgroup = "tool"
 	item.order = "z[not-alone]-" .. order_suffix
 	item.stack_size = 20
 	return item
 end
 
-local miner_item = make_team_mate_item("miner", "__base__/graphics/icons/iron-ore.png", "a[miner]")
-local builder_item = make_team_mate_item("builder", "__base__/graphics/icons/construction-robot.png", "b[builder]")
-local soldier_item = make_team_mate_item("soldier", "__base__/graphics/icons/submachine-gun.png", "c[soldier]")
-local carrier_item = make_team_mate_item("carrier", "__base__/graphics/icons/logistic-robot.png", "d[carrier]")
+local miner_item = make_team_mate_item("miner", {r = 0.92, g = 0.42, b = 0.04, a = 1}, "a[miner]")
+local builder_item = make_team_mate_item("builder", {r = 0.87, g = 0.72, b = 0.2, a = 1}, "b[builder]")
+local soldier_item = make_team_mate_item("soldier", {r = 0.72, g = 0.08, b = 0.08, a = 1}, "c[soldier]")
+local carrier_item = make_team_mate_item("carrier", {r = 0.2, g = 0.55, b = 0.85, a = 1}, "d[carrier]")
 
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"

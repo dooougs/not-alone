@@ -128,6 +128,35 @@ local function destroy_route_renderings(record)
   record.route_render_ids = {}
 end
 
+-- LuaEntity.color only recolors character, car, spider-vehicle, lamp, corpse,
+-- rolling-stock, train-stop, or simple-entity-with-owner entities - our team
+-- mates are type "unit", so a role-color marker is rendered here instead.
+local function destroy_color_marker(record)
+  if record.color_marker_render_id then
+    local render_object = rendering.get_object_by_id(record.color_marker_render_id)
+    if render_object then
+      render_object.destroy()
+    end
+    record.color_marker_render_id = nil
+  end
+end
+
+local function create_color_marker(record)
+  destroy_color_marker(record)
+  local color = KIND_COLOR[record.kind]
+  if not color then
+    return
+  end
+  record.color_marker_render_id = rendering.draw_circle({
+    color = color,
+    filled = true,
+    radius = 0.18,
+    target = {entity = record.entity, offset = {0, 0.35}},
+    surface = record.entity.surface,
+    render_layer = "entity-info-icon"
+  }).id
+end
+
 local function destroy_inventory_renderings(record)
   for _, render_id in pairs(record.inventory_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -1470,6 +1499,7 @@ dock_at_habitat = function(record)
   destroy_route_renderings(record)
   destroy_inventory_renderings(record)
   destroy_network_member(record)
+  destroy_color_marker(record)
   if record.builder_cargo and record.builder_cargo.valid then
     -- Should be empty already (see update_builder's cargo-priority guard);
     -- spill anything left into the habitat rather than deleting it.
@@ -1687,6 +1717,7 @@ local function create_team_mate(player, kind, index, spawn_center)
   local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
   update_network_member(record)
+  create_color_marker(record)
   return record
 end
 
@@ -1984,6 +2015,7 @@ local function update_team_mate(record, player)
     destroy_route_renderings(record)
     destroy_inventory_renderings(record)
     destroy_network_member(record)
+    destroy_color_marker(record)
     return false
   end
 
@@ -2103,6 +2135,7 @@ function poc.on_player_removed(event)
       destroy_route_renderings(record)
       destroy_inventory_renderings(record)
       destroy_network_member(record)
+      destroy_color_marker(record)
       if record.builder_cargo and record.builder_cargo.valid then
         if not record.builder_cargo.is_empty() and record.entity.valid then
           record.entity.surface.spill_inventory({
