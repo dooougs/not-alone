@@ -105,28 +105,6 @@ building_logistics_requester.circuit_wire_max_distance = 0
 building_logistics_requester.render_not_in_network_icon = false
 building_logistics_requester.hidden_in_factoriopedia = true
 
-local furnace_logistics_provider = table.deepcopy(data.raw["logistic-container"]["passive-provider-chest"])
-furnace_logistics_provider.name = "not-alone-furnace-logistics-provider"
-furnace_logistics_provider.localised_name = {"entity-name.not-alone-furnace-logistics-provider"}
-furnace_logistics_provider.flags = {
-	"not-on-map",
-	"not-blueprintable",
-	"not-deconstructable",
-	"not-selectable-in-game"
-}
-furnace_logistics_provider.collision_box = {{0, 0}, {0, 0}}
-furnace_logistics_provider.selection_box = {{0, 0}, {0, 0}}
-furnace_logistics_provider.selectable_in_game = false
-furnace_logistics_provider.allow_copy_paste = false
-furnace_logistics_provider.minable = nil
-furnace_logistics_provider.corpse = nil
-furnace_logistics_provider.picture = {
-	filename = "__core__/graphics/empty.png",
-	width = 1,
-	height = 1
-}
-furnace_logistics_provider.hidden_in_factoriopedia = true
-
 local building_requester_variants = {}
 local requester_target_types = {
 	"stone-furnace", "steel-furnace", "electric-furnace",
@@ -672,7 +650,6 @@ local command_tool = {
 }
 
 data:extend({
-	furnace_logistics_provider,
 	logistics_hub,
 	logistics_hub_item,
 	logistics_hub_recipe,
