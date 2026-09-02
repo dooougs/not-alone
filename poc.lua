@@ -169,6 +169,12 @@ local CRASH_SHIP_NAME = "crash-site-spaceship"
 local CRASH_SHIP_MAX_CREW = 10
 local CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER = 5
 local CRASH_SHIP_LOCAL_TARGET = 3
+local FURNACE_PROVIDER_SCAN_INTERVAL = 60
+local FURNACE_ENTITY_NAMES = {
+  ["stone-furnace"] = true,
+  ["steel-furnace"] = true,
+  ["electric-furnace"] = true
+}
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -193,6 +199,7 @@ local dock_at_habitat
 local stop_team_mate
 local move_team_mate
 local update_mining_animation
+local ensure_furnace_provider
 
 local function distance_squared(first, second)
   local delta_x = first.x - second.x
@@ -452,15 +459,109 @@ local function destroy_color_marker(record)
   end
 end
 
+local function get_render_object(render_id)
+  return render_id and rendering.get_object_by_id(render_id) or nil
+end
+
 local function destroy_inventory_renderings(record)
   for _, render_id in pairs(record.inventory_render_ids or {}) do
-    local render_object = rendering.get_object_by_id(render_id)
+    local render_object = get_render_object(render_id)
     if render_object then
       render_object.destroy()
     end
   end
   record.inventory_render_ids = {}
   record.inventory_render_signature = nil
+  for _, render_id in pairs(record.builder_target_render_ids or {}) do
+    local render_object = get_render_object(render_id)
+    if render_object then
+      render_object.destroy()
+    end
+  end
+  record.builder_target_render_ids = {}
+end
+
+local function update_builder_target_renderings(record)
+  if record.kind ~= "builder" or not record.builder_target
+    or not record.builder_target.valid or not record.builder_item then
+    for _, render_id in pairs(record.builder_target_render_ids or {}) do
+      local render_object = get_render_object(render_id)
+      if render_object then
+        render_object.destroy()
+      end
+    end
+    record.builder_target_render_ids = {}
+    record.builder_target_render_signature = nil
+    return
+  end
+
+  local plan = record.builder_plan or {}
+  local plan_count = math.max(1, #plan)
+  local plan_index = math.min(record.builder_plan_index or plan_count, plan_count)
+  local progress = (plan_index - 1) / plan_count
+  local action = plan[record.builder_plan_index]
+  if record.builder_state == "crafting" and action and action.craft_ticks then
+    local elapsed = action.craft_ticks - math.max(
+      0,
+      (record.builder_craft_ready_tick or game.tick) - game.tick
+    )
+    progress = progress + math.min(1, elapsed / action.craft_ticks) / plan_count
+  elseif record.builder_state == "move-to-ghost" then
+    progress = 1
+  end
+  progress = math.max(0, math.min(1, progress))
+
+  local signature = record.builder_item.name .. ":" .. string.format("%.3f", progress)
+  if record.builder_target_render_signature == signature
+    and record.builder_target_render_ids
+    and get_render_object(record.builder_target_render_ids[1]) then
+    return
+  end
+
+  for _, render_id in pairs(record.builder_target_render_ids or {}) do
+    local render_object = get_render_object(render_id)
+    if render_object then
+      render_object.destroy()
+    end
+  end
+  record.builder_target_render_ids = {}
+  record.builder_target_render_signature = signature
+
+  local target_icon = rendering.draw_sprite({
+    sprite = "item." .. record.builder_item.name,
+    target = {entity = record.entity, offset = {1.25, -1.9}},
+    surface = record.entity.surface,
+    x_scale = INVENTORY_ICON_SCALE,
+    y_scale = INVENTORY_ICON_SCALE,
+    only_in_alt_mode = true,
+    render_layer = "entity-info-icon"
+  })
+  local bar_background = rendering.draw_rectangle({
+    color = {r = 0.08, g = 0.08, b = 0.08, a = 0.9},
+    filled = true,
+    left_top = {record.entity.position.x + 0.55, record.entity.position.y - 2.65},
+    right_bottom = {record.entity.position.x + 1.95, record.entity.position.y - 2.4},
+    surface = record.entity.surface,
+    only_in_alt_mode = true,
+    draw_on_ground = false
+  })
+  local bar_fill = rendering.draw_rectangle({
+    color = KIND_COLOR.builder,
+    filled = true,
+    left_top = {record.entity.position.x + 0.55, record.entity.position.y - 2.65},
+    right_bottom = {
+      record.entity.position.x + 0.55 + 1.4 * progress,
+      record.entity.position.y - 2.4
+    },
+    surface = record.entity.surface,
+    only_in_alt_mode = true,
+    draw_on_ground = false
+  })
+  record.builder_target_render_ids = {
+    target_icon.id,
+    bar_background.id,
+    bar_fill.id
+  }
 end
 
 local function get_carried_items(record)
@@ -593,6 +694,9 @@ local function get_logistics_source_inventory(source)
   if not source or not source.valid
     or not LOGISTICS_SOURCE_MODES[source.prototype.logistic_mode] then
     return nil
+  end
+  if source.type == "proxy-container" then
+    return source.get_inventory(defines.inventory.proxy_main)
   end
   return source.get_inventory(defines.inventory.chest)
 end
@@ -1934,7 +2038,7 @@ end
 
 local function get_recipe_product(recipe, item_name)
   for _, product in pairs(recipe.products or {}) do
-    if product.type == "item" and product.name == item_name then
+    if (not product.type or product.type == "item") and product.name == item_name then
       return product
     end
   end
@@ -1955,10 +2059,10 @@ local function get_recipes_by_product()
   end
   recipes_by_product = {}
   for _, recipe in pairs(prototypes.recipe) do
-    if recipe.enabled and not recipe.hidden_from_player_crafting
+    if not recipe.hidden_from_player_crafting
       and recipe.allow_as_intermediate ~= false then
       for _, product in pairs(recipe.products or {}) do
-        if product.type == "item" then
+        if not product.type or product.type == "item" then
           local list = recipes_by_product[product.name] or {}
           list[#list + 1] = recipe
           recipes_by_product[product.name] = list
@@ -2018,7 +2122,7 @@ local function plan_builder_item(network, item, force, available, visiting, acti
     local recipe_actions = {}
     local possible = true
     for _, ingredient in pairs(recipe.ingredients or {}) do
-      if ingredient.type ~= "item" then
+      if ingredient.type and ingredient.type ~= "item" then
         possible = false
         break
       end
@@ -2062,7 +2166,11 @@ end
 local function find_builder_plan(network, item, force, contents)
   local available = {}
   for _, stack in pairs(contents or network.get_contents()) do
-    if stack.quality == item.quality or not item.quality then
+    local stack_quality = stack.quality
+    if type(stack_quality) ~= "string" then
+      stack_quality = stack_quality.name
+    end
+    if stack_quality == (item.quality or "normal") then
       available[stack.name] = (available[stack.name] or 0) + stack.count
     end
   end
@@ -2098,10 +2206,8 @@ local function find_builder_job(record, surface, force, position)
   end
 
   local contents = network.get_contents()
-  local nearest_ghost = nil
-  local nearest_source = nil
-  local nearest_item_name = nil
-  local nearest_distance = nil
+  local ghosts = {}
+  local seen_ghosts = {}
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
       for _, ghost in pairs(surface.find_entities_filtered({
@@ -2110,25 +2216,30 @@ local function find_builder_job(record, surface, force, position)
         position = cell.owner.position,
         radius = cell.logistic_radius * 1.5
       })) do
-        -- Distance check first: planning is the expensive step, so only
-        -- plan for candidates closer than the best plannable ghost so far.
-        local distance = distance_squared(position, ghost.position)
-        if (not nearest_distance or distance < nearest_distance)
-          and cell.is_in_logistic_range(ghost.position)
+        if cell.is_in_logistic_range(ghost.position)
+          and not seen_ghosts[ghost.unit_number]
           and not builder_target_is_claimed(ghost, record) then
-          local item = get_ghost_item(ghost)
-          local plan = item and find_builder_plan(network, item, force, contents)
-          if plan then
-            nearest_ghost = ghost
-            nearest_source = plan
-            nearest_item_name = item
-            nearest_distance = distance
-          end
+          seen_ghosts[ghost.unit_number] = true
+          ghosts[#ghosts + 1] = ghost
         end
       end
     end
   end
-  return nearest_ghost, nearest_source, nearest_item_name
+  table.sort(ghosts, function(left, right)
+    return distance_squared(position, left.position)
+      < distance_squared(position, right.position)
+  end)
+
+  for _, ghost in ipairs(ghosts) do
+    local item = get_ghost_item(ghost)
+    local plan = item and find_builder_plan(network, item, force, contents)
+    if plan then
+      return ghost, plan, item
+    end
+    storage.not_alone_pending_builder_ghosts = storage.not_alone_pending_builder_ghosts or {}
+    storage.not_alone_pending_builder_ghosts[ghost.unit_number] = ghost
+  end
+  return nil, nil, nil
 end
 
 local BUILDER_UNREACHABLE_RETRY_TICKS = 7200
@@ -2227,6 +2338,9 @@ local function assign_builder_job(record, surface, force, position)
 
   target = find_builder_deconstruction_target(record, surface, force, position)
   if target then
+    record.builder_plan = nil
+    record.builder_plan_index = nil
+    record.builder_craft_ready_tick = nil
     record.builder_target = target
     record.builder_source = nil
     record.builder_item = nil
@@ -2512,7 +2626,8 @@ local function update_builder(record)
   -- Never let cargo go undelivered: whatever the state machine was doing,
   -- unspent deconstruction cargo always takes priority over new jobs or
   -- docking, so it can never be silently lost or abandoned mid-route.
-  if record.builder_state ~= "return-deconstruction"
+  if not record.builder_plan
+    and record.builder_state ~= "return-deconstruction"
     and record.builder_cargo and record.builder_cargo.valid
     and not record.builder_cargo.is_empty() then
     record.builder_state = "return-deconstruction"
@@ -2539,7 +2654,7 @@ local function update_builder(record)
     end
     for _, ingredient in pairs(action.ingredients or {}) do
       local count = math.ceil((ingredient.amount or 1) * action.batches)
-      if ingredient.type ~= "item"
+      if ingredient.type and ingredient.type ~= "item"
         or cargo.get_item_count({name = ingredient.name, quality = "normal"}) < count then
         record.builder_state = nil
         record.builder_plan = nil
@@ -3179,6 +3294,7 @@ local function update_team_mate(record, player)
     end
   end
   update_inventory_renderings(record)
+  update_builder_target_renderings(record)
   update_building_requesters(record)
 
   local manual_destinations = get_manual_destinations(record)
@@ -3249,7 +3365,15 @@ function poc.on_init()
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_starter_inventory_pending = {}
   storage.not_alone_marked_resources = {}
+  storage.not_alone_furnace_providers = {}
   configure_freeplay_starter_inventory()
+  for _, surface in pairs(game.surfaces) do
+    for furnace_name in pairs(FURNACE_ENTITY_NAMES) do
+      for _, furnace in pairs(surface.find_entities_filtered({name = furnace_name})) do
+        ensure_furnace_provider(furnace)
+      end
+    end
+  end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
     queue_starter_inventory(player.index)
@@ -3266,6 +3390,19 @@ function poc.on_configuration_changed()
   end
   storage.not_alone_building_requesters = nil
   storage.not_alone_building_requester_ticks = nil
+  for _, provider in pairs(storage.not_alone_furnace_providers or {}) do
+    if provider.valid then
+      provider.destroy()
+    end
+  end
+  storage.not_alone_furnace_providers = {}
+  for _, surface in pairs(game.surfaces) do
+    for furnace_name in pairs(FURNACE_ENTITY_NAMES) do
+      for _, furnace in pairs(surface.find_entities_filtered({name = furnace_name})) do
+        ensure_furnace_provider(furnace)
+      end
+    end
+  end
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
@@ -3443,9 +3580,109 @@ function poc.on_alt_reverse_selected_area(event)
   order_selected_team_mates(event, true)
 end
 
+local function destroy_furnace_provider(furnace)
+  if not furnace or not FURNACE_ENTITY_NAMES[furnace.name]
+    or not furnace.unit_number then
+    return
+  end
+  local providers = storage.not_alone_furnace_providers
+  local provider = providers and providers[furnace.unit_number]
+  if provider and provider.valid then
+    local inventory = provider.get_inventory(defines.inventory.chest)
+    if inventory and not inventory.is_empty() then
+      furnace.surface.spill_inventory({
+        position = position_table(furnace.position),
+        inventory = inventory
+      })
+    end
+    provider.destroy()
+  end
+  if providers then
+    providers[furnace.unit_number] = nil
+  end
+end
+
+function poc.on_furnace_removed(event)
+  local entity = event.entity
+  if entity and entity.valid then
+    destroy_furnace_provider(entity)
+  end
+end
+
+ensure_furnace_provider = function(furnace)
+  if not furnace or not furnace.valid or not FURNACE_ENTITY_NAMES[furnace.name]
+    or not furnace.unit_number then
+    return
+  end
+  storage.not_alone_furnace_providers = storage.not_alone_furnace_providers or {}
+  local providers = storage.not_alone_furnace_providers
+  local provider = providers[furnace.unit_number]
+  if provider and provider.valid and provider.type ~= "logistic-container" then
+    provider.destroy()
+    provider = nil
+  end
+  if not provider or not provider.valid then
+    provider = furnace.surface.create_entity({
+      name = "not-alone-furnace-logistics-provider",
+      position = furnace.position,
+      force = furnace.force,
+      create_build_effect_smoke = false
+    })
+    if provider then
+      provider.destructible = false
+      provider.operable = false
+      providers[furnace.unit_number] = provider
+    end
+  end
+  if provider then
+    local furnace_output = furnace.get_inventory(defines.inventory.crafter_output)
+    local provider_inventory = provider.get_inventory(defines.inventory.chest)
+    if furnace_output and provider_inventory then
+      for _, item in pairs(furnace_output.get_contents()) do
+        local moved = provider_inventory.insert({
+          name = item.name,
+          quality = item.quality,
+          count = item.count
+        })
+        if moved > 0 then
+          furnace_output.remove({
+            name = item.name,
+            quality = item.quality,
+            count = moved
+          })
+        end
+      end
+    end
+  end
+end
+
+local function ensure_furnace_providers()
+  storage.not_alone_furnace_providers = storage.not_alone_furnace_providers or {}
+  local furnace_names = {}
+  for name in pairs(FURNACE_ENTITY_NAMES) do
+    if prototypes.entity[name] then
+      furnace_names[#furnace_names + 1] = name
+    end
+  end
+  local furnace_count = 0
+  for _, surface in pairs(game.surfaces) do
+    for _, furnace in pairs(surface.find_entities_filtered({name = furnace_names})) do
+      furnace_count = furnace_count + 1
+      ensure_furnace_provider(furnace)
+    end
+  end
+end
+
 function poc.on_roboport_built(event)
   local entity = event.entity
-  if not entity or not entity.valid or entity.type ~= "roboport" then
+  if not entity or not entity.valid then
+    return
+  end
+  if FURNACE_ENTITY_NAMES[entity.name] then
+    ensure_furnace_provider(entity)
+    return
+  end
+  if entity.type ~= "roboport" then
     return
   end
   -- New coverage may reveal marked resources to miners still looking for ore.
@@ -3460,6 +3697,10 @@ function poc.on_roboport_built(event)
 end
 
 function poc.on_update(event)
+  if game.tick >= (storage.not_alone_next_furnace_provider_scan or 0) then
+    storage.not_alone_next_furnace_provider_scan = game.tick + FURNACE_PROVIDER_SCAN_INTERVAL
+    ensure_furnace_providers()
+  end
   queue_starter_inventory_migration()
   for player_index in pairs(storage.not_alone_starter_inventory_pending or {}) do
     if ensure_starter_inventory(game.get_player(player_index)) then
@@ -3721,6 +3962,15 @@ function poc.register()
   script.on_event(defines.events.on_entity_died, poc.on_habitat_removed, habitat_filters)
   script.on_event(defines.events.on_player_mined_entity, poc.on_habitat_removed, habitat_filters)
   script.on_event(defines.events.on_robot_mined_entity, poc.on_habitat_removed, habitat_filters)
+  local furnace_filters = {}
+  for furnace_name in pairs(FURNACE_ENTITY_NAMES) do
+    furnace_filters[#furnace_filters + 1] = {filter = "name", name = furnace_name}
+  end
+  script.on_event(defines.events.on_entity_died, poc.on_furnace_removed, furnace_filters)
+  script.on_event(defines.events.on_player_mined_entity, poc.on_furnace_removed, furnace_filters)
+  script.on_event(defines.events.on_robot_mined_entity, poc.on_furnace_removed, furnace_filters)
+  script.on_event(defines.events.on_pre_player_mined_item, poc.on_furnace_removed, furnace_filters)
+  script.on_event(defines.events.on_robot_pre_mined, poc.on_furnace_removed, furnace_filters)
   local damage_filters = {}
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}
