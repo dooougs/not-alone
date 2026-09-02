@@ -54,6 +54,17 @@ local KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-flamethrower-mech"] = "soldier",
   ["not-alone-team-mate-rocket-mech"] = "soldier"
 }
+for _, entity_name in pairs({
+  "not-alone-team-mate-fists",
+  "not-alone-team-mate-smg",
+  "not-alone-team-mate-shotgun",
+  "not-alone-team-mate-combat-shotgun",
+  "not-alone-team-mate-flamethrower",
+  "not-alone-team-mate-rocket"
+}) do
+  KIND_BY_ENTITY_NAME[entity_name .. "-armor-heavy"] = "soldier"
+  KIND_BY_ENTITY_NAME[entity_name .. "-armor-power"] = "soldier"
+end
 local TEAM_MATE_NAMES = {TEAM_MATE_NAME}
 for entity_name in pairs(KIND_BY_ENTITY_NAME) do
   -- Mech variants only exist when Space Age provides mech armor.
@@ -138,6 +149,12 @@ local SOLDIER_ARMORS = {
   {item = "power-armor", mitigation = 0.65},
   {item = "power-armor-mk2", mitigation = 0.8},
   {item = "mech-armor", mitigation = 0.9, flying = true}
+}
+local SOLDIER_ARMOR_ENTITY_SUFFIX = {
+  [2] = "-armor-heavy",
+  [3] = "-armor-heavy",
+  [4] = "-armor-power",
+  [5] = "-armor-power"
 }
 -- Other crews crashed here too: derelict ships seeded from the map seed,
 -- rare overall, but one is always placed inside the initially charted area
@@ -1294,7 +1311,8 @@ local function find_soldier_target(record, surface, force, position)
     end
   end
 
-  -- Clear the covered enemy units first; only then move on to enemy bases.
+  -- Clear the covered enemy units first; then target spawners, turrets, and
+  -- worms (worms are turret-type entities) as enemy bases.
   if not nearest_enemy then
     for _, cell in pairs(network.cells) do
       if cell.valid and cell.owner.valid then
@@ -1333,7 +1351,9 @@ local function attack_with_team_mate(record, enemy)
   record.entity.commandable.set_command({
     type = defines.command.attack,
     target = enemy,
-    distraction = defines.distraction.none
+    -- Fight back when bodyblocked or bitten on the way to a distant target;
+    -- ignoring all distractions froze whole squads mid-march.
+    distraction = defines.distraction.by_enemy
   })
   record.command_kind = "attack"
   record.command_destination = nil
@@ -1409,15 +1429,24 @@ local function ensure_soldier_entity(record, weapon)
   local armor = record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor]
   if armor and armor.flying and prototypes.entity[wanted .. "-mech"] then
     wanted = wanted .. "-mech"
+  else
+    local suffix = record.soldier_armor
+      and SOLDIER_ARMOR_ENTITY_SUFFIX[record.soldier_armor]
+    if suffix and prototypes.entity[wanted .. suffix] then
+      wanted = wanted .. suffix
+    end
   end
   return replace_team_mate_entity(record, wanted)
 end
 
 -- Best owned weapon's ammo first, then that weapon's best ammo tier.
-local function find_soldier_ammo_source(record)
+-- only_empty restricts the search to weapons with dry ammo pools so
+-- preparation cannot loop on topping up an already stocked weapon.
+local function find_soldier_ammo_source(record, only_empty)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
-    if record.soldier_weapons and record.soldier_weapons[weapon.kind] then
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind]
+      and (not only_empty or get_soldier_ammo_count(record, weapon) == 0) then
       for _, ammo_name in ipairs(weapon.ammo) do
         if prototypes.item[ammo_name] then
           local source = find_logistics_item_source(record, ammo_name)
@@ -1525,8 +1554,8 @@ local function try_soldier_armor_pickup(record)
   return false
 end
 
-local function start_soldier_restock(record)
-  local source, ammo_name = find_soldier_ammo_source(record)
+local function start_soldier_restock(record, only_empty)
+  local source, ammo_name = find_soldier_ammo_source(record, only_empty)
   if not source then
     return false
   end
@@ -1630,34 +1659,43 @@ local function update_soldier(record)
     return true
   end
 
-  -- Keep the body in sync with the gear so a mech-armored Soldier hovers
-  -- even while idle, and prepare before choosing a target: weapons first,
-  -- then ammunition. This prevents a nearby base from sending a newly
-  -- deployed Soldier into combat with fists while usable gear is waiting
-  -- in logistics storage.
-  if not ensure_soldier_entity(record, select_soldier_weapon(record)) then
-    return true
-  end
-  if try_soldier_weapon_pickup(record) then
-    return true
-  end
-  if soldier_needs_ammo(record) and start_soldier_restock(record) then
-    return true
-  end
-  if try_soldier_armor_pickup(record) then
-    return true
+  local target
+  local active_target = record.command_kind == "attack"
+    and record.command_target and record.command_target.valid
+  if active_target then
+    -- Keep pursuing a target found inside the network while closing on it.
+    target = record.command_target
+  else
+    -- Prepare before choosing a target: weapons first, then ammunition. This
+    -- prevents a newly deployed Soldier from fighting with fists while gear
+    -- is waiting in logistics storage.
+    if try_soldier_weapon_pickup(record) then
+      return true
+    end
+    if soldier_needs_ammo(record) and start_soldier_restock(record, true) then
+      return true
+    end
+    if try_soldier_armor_pickup(record) then
+      return true
+    end
+
+    target = find_soldier_target(record)
+    if not target then
+      local nearby = record.entity.surface.find_nearest_enemy({
+        position = record.entity.position,
+        max_distance = ENGAGEMENT_RADIUS,
+        force = record.entity.force
+      })
+      if nearby and nearby.valid then
+        target = nearby
+      end
+    end
   end
 
-  local target = find_soldier_target(record)
-  if not target then
-    local nearby = record.entity.surface.find_nearest_enemy({
-      position = record.entity.position,
-      max_distance = ENGAGEMENT_RADIUS,
-      force = record.entity.force
-    })
-    if nearby and nearby.valid then
-      target = nearby
-    end
+  -- Keep the body in sync with the gear so a mech-armored Soldier hovers
+  -- even while idle.
+  if not ensure_soldier_entity(record, select_soldier_weapon(record)) then
+    return true
   end
 
   if target then
@@ -1672,9 +1710,17 @@ local function update_soldier(record)
     end
     attack_with_team_mate(record, target)
     -- Fighting burns ammo over time; the engine cannot report each shot.
+    -- Only count rounds while actually in firing range - the march to a
+    -- distant battle must not drain the magazine before arrival.
     if weapon and game.tick >= (record.soldier_next_ammo_tick or 0) then
-      consume_soldier_ammo(record, weapon)
-      record.soldier_next_ammo_tick = game.tick + SOLDIER_AMMO_TICKS_PER_ROUND
+      local params = record.entity.prototype.attack_parameters
+      local firing_range = ((params and params.range) or ENGAGEMENT_RADIUS) + 2
+      if target.valid
+        and distance_squared(record.entity.position, target.position)
+          <= firing_range * firing_range then
+        consume_soldier_ammo(record, weapon)
+        record.soldier_next_ammo_tick = game.tick + SOLDIER_AMMO_TICKS_PER_ROUND
+      end
     end
     return true
   end
@@ -2616,10 +2662,23 @@ end
 
 local function rescue_immobile_team_mate(record)
   local entity = record.entity
-  if record.command_kind ~= "move" then
+  if record.command_kind ~= "move" and record.command_kind ~= "attack" then
     record.stall_position = nil
     record.stall_count = nil
     return
+  end
+  -- Standing still while firing at an in-range target is not a stall.
+  if record.command_kind == "attack" then
+    local target = record.command_target
+    if target and target.valid then
+      local params = entity.prototype.attack_parameters
+      local range = ((params and params.range) or ENGAGEMENT_RADIUS) + 2
+      if distance_squared(entity.position, target.position) <= range * range then
+        record.stall_position = nil
+        record.stall_count = nil
+        return
+      end
+    end
   end
   if record.stall_position
     and distance_squared(entity.position, record.stall_position) < 0.01 then
@@ -2629,6 +2688,7 @@ local function rescue_immobile_team_mate(record)
       record.move_failures = 2
       record.command_kind = nil
       record.command_destination = nil
+      record.command_target = nil
     end
   else
     record.stall_position = position_table(entity.position)
