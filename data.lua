@@ -458,6 +458,38 @@ fist_params.ammo_type = {
 soldier_prototypes[#soldier_prototypes + 1] = fists_unit
 soldier_units[#soldier_units + 1] = fists_unit
 
+local armor_animation_sets = {}
+for _, entry in pairs(data.raw.character.character.animations or {}) do
+	for _, armor_name in pairs(entry.armors or {}) do
+		if armor_name == "heavy-armor" or armor_name == "modular-armor" then
+			armor_animation_sets.heavy = entry
+		elseif armor_name == "power-armor" or armor_name == "power-armor-mk2" then
+			armor_animation_sets.power = entry
+		end
+	end
+end
+
+local armor_visuals = {
+	{suffix = "armor-heavy", set = armor_animation_sets.heavy},
+	{suffix = "armor-power", set = armor_animation_sets.power}
+}
+for _, base_unit in pairs(soldier_units) do
+	for _, visual in pairs(armor_visuals) do
+		if visual.set then
+			local armored_unit = table.deepcopy(base_unit)
+			armored_unit.name = base_unit.name .. "-" .. visual.suffix
+			armored_unit.hidden_in_factoriopedia = true
+			armored_unit.factoriopedia_description = nil
+			armored_unit.run_animation = table.deepcopy(visual.set.running)
+			armored_unit.attack_parameters.animation = table.deepcopy(
+				visual.set.idle_with_gun
+			)
+			tint_unit_masks(armored_unit, KIND_TINT.soldier)
+			soldier_prototypes[#soldier_prototypes + 1] = armored_unit
+		end
+	end
+end
+
 -- Space Age mech armor lets a Soldier hover: each combat variant gains a
 -- "-mech" twin using the mech suit's flying animation that ignores ground
 -- collision entirely.
@@ -492,6 +524,7 @@ soldier_prototypes[#soldier_prototypes + 1] = {
 	type = "recipe",
 	name = "not-alone-soldier",
 	enabled = true,
+	hidden = true,
 	ingredients = {
 		{type = "item", name = "iron-plate", amount = 5}
 	},
@@ -519,6 +552,13 @@ local team_mate_filter_names = {
 }
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	table.insert(team_mate_filter_names, "not-alone-team-mate-" .. weapon.suffix)
+end
+for _, suffix in pairs({"armor-heavy", "armor-power"}) do
+	for _, weapon in pairs(SOLDIER_WEAPONS) do
+		table.insert(team_mate_filter_names,
+			"not-alone-team-mate-" .. weapon.suffix .. "-" .. suffix)
+	end
+	table.insert(team_mate_filter_names, "not-alone-team-mate-fists-" .. suffix)
 end
 for _, name in pairs(mech_unit_names) do
 	table.insert(team_mate_filter_names, name)
