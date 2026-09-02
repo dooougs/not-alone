@@ -77,34 +77,40 @@ local KIND_COLOR = {
 }
 -- Soldier arsenal, ordered worst to best. Soldiers fight with the best owned
 -- weapon that still has ammo, and restock the best ammo tier listed first.
+-- Either the crafted kit or the vanilla gun item arms the tier.
 local SOLDIER_WEAPONS = {
   {
     kind = "smg",
     item = "not-alone-soldier-smg",
+    gun = "submachine-gun",
     entity = "not-alone-team-mate-smg",
     ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
   },
   {
     kind = "shotgun",
     item = "not-alone-soldier-shotgun",
+    gun = "shotgun",
     entity = "not-alone-team-mate-shotgun",
     ammo = {"piercing-shotgun-shell", "shotgun-shell"}
   },
   {
     kind = "combat-shotgun",
     item = "not-alone-soldier-combat-shotgun",
+    gun = "combat-shotgun",
     entity = "not-alone-team-mate-combat-shotgun",
     ammo = {"piercing-shotgun-shell", "shotgun-shell"}
   },
   {
     kind = "flamethrower",
     item = "not-alone-soldier-flamethrower",
+    gun = "flamethrower",
     entity = "not-alone-team-mate-flamethrower",
     ammo = {"flamethrower-ammo"}
   },
   {
     kind = "rocket",
     item = "not-alone-soldier-rocket",
+    gun = "rocket-launcher",
     entity = "not-alone-team-mate-rocket",
     ammo = {"explosive-rocket", "rocket"}
   }
@@ -126,11 +132,14 @@ local SOLDIER_ARMORS = {
   {item = "power-armor-mk2", mitigation = 0.8}
 }
 -- Other crews crashed here too: derelict ships seeded from the map seed,
--- common near the landing site and thinning out with distance.
+-- rare overall, but one is always placed inside the initially charted area
+-- so the player has a visible lead to investigate.
 local CRASH_SHIP_NAME = "crash-site-spaceship"
-local CRASH_SHIP_BASE_CHANCE = 0.2
+local CRASH_SHIP_BASE_CHANCE = 0.002
 local CRASH_SHIP_FALLOFF_CHUNKS = 8
 local CRASH_SHIP_MAX_CREW = 10
+local CRASH_SHIP_STARTER_MIN_CHUNKS = 2
+local CRASH_SHIP_STARTER_MAX_CHUNKS = 5
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -1361,19 +1370,76 @@ local function find_soldier_ammo_source(record)
   return nil
 end
 
+local function find_soldier_weapon_source(record, weapon)
+  for _, item_name in pairs({weapon.item, weapon.gun}) do
+    if item_name and prototypes.item[item_name] then
+      local source = find_logistics_item_source(record, item_name)
+      if source then
+        return source, item_name
+      end
+    end
+  end
+  return nil
+end
+
 local function assign_soldier_job(record, surface, force, position)
   -- Even an unarmed Soldier will deploy and punch.
-  return find_soldier_target(record, surface, force, position) ~= nil
+  if find_soldier_target(record, surface, force, position) then
+    return true
+  end
+  -- No enemies in range: still deploy when there is gear worth collecting.
+  -- Pre-deploy records own nothing yet, so peek at the Habitat locker the
+  -- deployed Soldier would inherit.
+  local locker
+  local habitat = record.entity
+  if habitat and habitat.unit_number and storage.not_alone_soldier_lockers then
+    local lockers = storage.not_alone_soldier_lockers[habitat.unit_number]
+    locker = lockers and lockers[#lockers]
+  end
+  local owned_weapons = record.soldier_weapons or (locker and locker.weapons)
+  local owned_armor = record.soldier_armor or (locker and locker.armor)
+  local owned_ammo = record.soldier_ammo or (locker and locker.ammo)
+  for rank = #SOLDIER_WEAPONS, 1, -1 do
+    local weapon = SOLDIER_WEAPONS[rank]
+    if not (owned_weapons and owned_weapons[weapon.kind])
+      and find_soldier_weapon_source(record, weapon) then
+      return true
+    end
+  end
+  for tier = #SOLDIER_ARMORS, (owned_armor or 0) + 1, -1 do
+    local armor = SOLDIER_ARMORS[tier]
+    if prototypes.item[armor.item] and find_logistics_item_source(record, armor.item) then
+      return true
+    end
+  end
+  for rank = #SOLDIER_WEAPONS, 1, -1 do
+    local weapon = SOLDIER_WEAPONS[rank]
+    if owned_weapons and owned_weapons[weapon.kind] then
+      local total = 0
+      for _, ammo_name in pairs(weapon.ammo) do
+        total = total + ((owned_ammo and owned_ammo[ammo_name]) or 0)
+      end
+      if total == 0 then
+        for _, ammo_name in ipairs(weapon.ammo) do
+          if prototypes.item[ammo_name] and find_logistics_item_source(record, ammo_name) then
+            return true
+          end
+        end
+      end
+    end
+  end
+  return false
 end
 
 local function try_soldier_weapon_pickup(record)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
     if not (record.soldier_weapons and record.soldier_weapons[weapon.kind]) then
-      local source = find_logistics_item_source(record, weapon.item)
+      local source, item_name = find_soldier_weapon_source(record, weapon)
       if source then
         record.soldier_state = "pickup-weapon"
         record.soldier_pickup_kind = weapon.kind
+        record.soldier_pickup_item = item_name
         record.soldier_pickup_source = source
         return true
       end
@@ -1441,20 +1507,23 @@ local function update_soldier(record)
   if record.soldier_state == "pickup-weapon" then
     local source = record.soldier_pickup_source
     local weapon = SOLDIER_WEAPON_BY_KIND[record.soldier_pickup_kind]
+    local pickup_item = record.soldier_pickup_item or (weapon and weapon.item)
     local inventory = get_logistics_source_inventory(source)
     if not source or not source.valid or not inventory or not weapon
-      or inventory.get_item_count(weapon.item) == 0 then
+      or inventory.get_item_count(pickup_item) == 0 then
       record.soldier_state = nil
       record.soldier_pickup_source = nil
       record.soldier_pickup_kind = nil
+      record.soldier_pickup_item = nil
     elseif distance_squared(record.entity.position, source.position) <= 4 then
-      if inventory.remove({name = weapon.item, count = 1}) == 1 then
+      if inventory.remove({name = pickup_item, count = 1}) == 1 then
         record.soldier_weapons = record.soldier_weapons or {}
         record.soldier_weapons[weapon.kind] = true
       end
       record.soldier_state = nil
       record.soldier_pickup_source = nil
       record.soldier_pickup_kind = nil
+      record.soldier_pickup_item = nil
       stop_team_mate(record)
     else
       move_team_mate(record, source.position, 2)
@@ -2865,9 +2934,39 @@ function poc.on_entity_damaged(event)
   end
 end
 
+local function spawn_crash_ship(surface, area, rng)
+  local ship_target = {
+    x = area.left_top.x + rng(4, 28),
+    y = area.left_top.y + rng(4, 28)
+  }
+  local position = surface.find_non_colliding_position(CRASH_SHIP_NAME, ship_target, 12, 1)
+  if not position then
+    return false
+  end
+  local ship = surface.create_entity({
+    name = CRASH_SHIP_NAME,
+    position = position,
+    force = "neutral"
+  })
+  if not ship then
+    return false
+  end
+  local inventory = ship.get_inventory(defines.inventory.chest)
+  if inventory then
+    local crew_counts = {}
+    for _ = 1, rng(1, CRASH_SHIP_MAX_CREW) do
+      local kind = TEAM_MATE_KINDS[rng(1, #TEAM_MATE_KINDS)]
+      crew_counts[kind] = (crew_counts[kind] or 0) + 1
+    end
+    for kind, count in pairs(crew_counts) do
+      inventory.insert({name = ITEM_NAME_BY_KIND[kind], count = count})
+    end
+  end
+  return true
+end
+
 -- Other crews crash-landed here too. Seeded purely from the map seed and
--- chunk position so the same map always yields the same wreck field, denser
--- near the crash site and trailing off with distance.
+-- chunk position so the same map always yields the same wreck field.
 function poc.on_chunk_generated(event)
   local surface = event.surface
   if not surface.valid or surface.platform then
@@ -2881,38 +2980,23 @@ function poc.on_chunk_generated(event)
   local mixed = (seed + (chunk.x + 2048) * 40093 + (chunk.y + 2048) * 92821) % 4294967291
   local rng = game.create_random_generator(mixed > 0 and mixed or 1)
   local distance_chunks = math.sqrt(chunk.x * chunk.x + chunk.y * chunk.y)
-  local chance = CRASH_SHIP_BASE_CHANCE / (1 + distance_chunks / CRASH_SHIP_FALLOFF_CHUNKS)
+  -- Guarantee one wreck inside the initially charted area so the player
+  -- always spots a lead worth investigating.
+  if not storage.not_alone_starter_ship_placed
+    and distance_chunks >= CRASH_SHIP_STARTER_MIN_CHUNKS
+    and distance_chunks <= CRASH_SHIP_STARTER_MAX_CHUNKS then
+    if spawn_crash_ship(surface, event.area, rng) then
+      storage.not_alone_starter_ship_placed = true
+    end
+    return
+  end
+  local chance = CRASH_SHIP_BASE_CHANCE * math.exp(
+    -distance_chunks / CRASH_SHIP_FALLOFF_CHUNKS
+  )
   if rng() >= chance then
     return
   end
-  local ship_target = {
-    x = event.area.left_top.x + rng(4, 28),
-    y = event.area.left_top.y + rng(4, 28)
-  }
-  local position = surface.find_non_colliding_position(CRASH_SHIP_NAME, ship_target, 12, 1)
-  if not position then
-    return
-  end
-  local ship = surface.create_entity({
-    name = CRASH_SHIP_NAME,
-    position = position,
-    force = "neutral"
-  })
-  if not ship then
-    return
-  end
-  local inventory = ship.get_inventory(defines.inventory.chest)
-  if not inventory then
-    return
-  end
-  local crew_counts = {}
-  for _ = 1, rng(1, CRASH_SHIP_MAX_CREW) do
-    local kind = TEAM_MATE_KINDS[rng(1, #TEAM_MATE_KINDS)]
-    crew_counts[kind] = (crew_counts[kind] or 0) + 1
-  end
-  for kind, count in pairs(crew_counts) do
-    inventory.insert({name = ITEM_NAME_BY_KIND[kind], count = count})
-  end
+  spawn_crash_ship(surface, event.area, rng)
 end
 
 function poc.register()
