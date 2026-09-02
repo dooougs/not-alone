@@ -36,7 +36,9 @@ logistics_hub.recharge_minimum = "0J"
 logistics_hub.charging_energy = "0W"
 logistics_hub.charging_offsets = {}
 logistics_hub.robot_slots_count = 0
-logistics_hub.material_slots_count = 3
+-- Room for a stack of every team mate kind plus spillover, so docking
+-- never stalls with a "full" habitat.
+logistics_hub.material_slots_count = 8
 logistics_hub.construction_radius = 0
 
 local habitat_picture = {
