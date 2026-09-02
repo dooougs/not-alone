@@ -1,8 +1,8 @@
 local poc = {}
 
 local INITIAL_HABITAT_COUNT = 1
-local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 0}
-local STARTER_INVENTORY_VERSION = 4
+local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 0, carrier = 10}
+local STARTER_INVENTORY_VERSION = 5
 local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
 local COMMAND_REFRESH_DISTANCE = 2
@@ -10,6 +10,7 @@ local CHUNK_SIZE = 32
 local SCOUT_WAYPOINT_DISTANCE = 64
 local SCOUT_GENERATION_RADIUS = 2
 local MINER_CAPACITY = 50
+local CARRIER_CAPACITY = 50
 local RESOURCE_MINING_TIME = 1
 local NORMAL_CHARACTER_MINING_SPEED = 0.5
 local LOGISTICS_SEARCH_RADIUS = 128
@@ -38,10 +39,11 @@ local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
 local ITEM_NAME_BY_KIND = {
   miner = "not-alone-miner",
   builder = "not-alone-builder",
-  soldier = "not-alone-soldier"
+  soldier = "not-alone-soldier",
+  carrier = "not-alone-carrier"
 }
-local TEAM_MATE_KINDS = {"miner", "builder", "soldier"}
-local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier"}
+local TEAM_MATE_KINDS = {"miner", "builder", "soldier", "carrier"}
+local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier", carrier = "Carrier"}
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -144,6 +146,11 @@ local function get_carried_items(record)
       counts[item.name] = (counts[item.name] or 0) + item.count
     end
   end
+  if record.kind == "carrier" and record.carrier_item
+    and (record.carrier_carried_count or 0) > 0 then
+    counts[record.carrier_item.name] = (counts[record.carrier_item.name] or 0)
+      + record.carrier_carried_count
+  end
 
   local items = {}
   for name, count in pairs(counts) do
@@ -241,12 +248,16 @@ local function get_manual_destinations(record)
   return record.manual_destinations
 end
 
+local function get_consumer_inventory(consumer, mining_role)
+  if consumer.name == BUILDING_REQUESTER_NAME
+    or LOGISTICS_SOURCE_MODES[consumer.prototype.logistic_mode] then
+    return consumer.get_inventory(defines.inventory.chest)
+  end
+  return consumer.get_inventory(mining_role.inventory)
+end
+
 local function consumer_accepts_item(consumer, mining_role, count)
-  local inventory = consumer.get_inventory(
-    consumer.name == BUILDING_REQUESTER_NAME
-      and defines.inventory.chest
-      or mining_role.inventory
-  )
+  local inventory = get_consumer_inventory(consumer, mining_role)
   return inventory and inventory.get_insertable_count(mining_role.item_name) >= count
 end
 
@@ -693,6 +704,7 @@ local function update_miner(record, player)
 
   if record.miner_state == "move-to-ore" then
     if not record.miner_target or not record.miner_target.valid
+      or not is_resource_marked(record.miner_target)
       or get_resource_claimant(record.miner_target) ~= record then
       record.miner_state = nil
       record.miner_target = nil
@@ -713,6 +725,7 @@ local function update_miner(record, player)
     end
     local resource = record.miner_target
     if not resource or not resource.valid or resource.amount <= 0
+      or not is_resource_marked(resource)
       or get_resource_claimant(resource) ~= record then
       record.miner_state = nil
       record.miner_target = nil
@@ -749,6 +762,7 @@ local function update_miner(record, player)
 
   if record.miner_state == "find-consumer" then
     local consumer = find_requesting_consumer(record, record.mining_resource_info)
+      or find_logistics_return_source(record, record.mining_resource_info.item_name)
     if consumer then
       record.miner_target = consumer
       record.miner_state = "move-to-consumer"
@@ -779,11 +793,7 @@ local function update_miner(record, player)
       record.miner_state = "find-consumer"
       return true
     end
-    local inventory = consumer.get_inventory(
-      consumer.name == BUILDING_REQUESTER_NAME
-        and defines.inventory.chest
-        or record.mining_resource_info.inventory
-    )
+    local inventory = get_consumer_inventory(consumer, record.mining_resource_info)
     if inventory then
       local insertable = math.min(
         inventory.get_insertable_count(record.mining_resource_info.item_name),
@@ -1452,6 +1462,11 @@ dock_at_habitat = function(record)
   destroy_inventory_renderings(record)
   destroy_network_member(record)
   if record.builder_cargo and record.builder_cargo.valid then
+    -- Should be empty already (see update_builder's cargo-priority guard);
+    -- spill anything left into the habitat rather than deleting it.
+    for _, item in pairs(record.builder_cargo.get_contents()) do
+      inventory.insert(item)
+    end
     record.builder_cargo.destroy()
   end
   record.entity.destroy()
@@ -1486,6 +1501,15 @@ local function builder_target_destination(record, target)
 end
 
 local function update_builder(record)
+  -- Never let cargo go undelivered: whatever the state machine was doing,
+  -- unspent deconstruction cargo always takes priority over new jobs or
+  -- docking, so it can never be silently lost or abandoned mid-route.
+  if record.builder_state ~= "return-deconstruction"
+    and record.builder_cargo and record.builder_cargo.valid
+    and not record.builder_cargo.is_empty() then
+    record.builder_state = "return-deconstruction"
+  end
+
   if record.builder_state == "return-deconstruction" then
     return_builder_cargo(record)
     return true
@@ -1664,11 +1688,136 @@ local function find_any_player_for_force(force)
   return force.players and force.players[1]
 end
 
+-- Mirrors how logistic robots resolve a delivery: find any network item with
+-- an unmet requester demand, then find the nearest chest currently holding it.
+local function find_carrier_job(record, surface, force, position)
+  local team_mate = record.entity
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local network = surface.find_logistic_network_by_position(position, force)
+  if not network then
+    return nil, nil, nil
+  end
+
+  for _, item in pairs(network.get_contents()) do
+    local item_id = {name = item.name, quality = item.quality}
+    local drop_point = network.select_drop_point({
+      stack = {name = item.name, quality = item.quality, count = 1},
+      members = "requester"
+    })
+    local consumer = drop_point and drop_point.owner
+    local consumer_inventory = consumer and consumer.valid
+      and consumer.get_inventory(defines.inventory.chest)
+    if consumer_inventory and consumer_inventory.get_insertable_count(item_id) > 0 then
+      local pickup_point = network.select_pickup_point({
+        name = item_id,
+        position = position,
+        include_buffers = true
+      })
+      local source = pickup_point and pickup_point.owner
+      local source_inventory = get_logistics_source_inventory(source)
+      if source_inventory and source_inventory.get_item_count(item_id) > 0 then
+        return source, consumer, item_id
+      end
+    end
+  end
+  return nil, nil, nil
+end
+
+local function assign_carrier_job(record, surface, force, position)
+  local source, target, item = find_carrier_job(record, surface, force, position)
+  if not source then
+    return false
+  end
+  record.carrier_source = source
+  record.carrier_target = target
+  record.carrier_item = item
+  record.carrier_carried_count = 0
+  record.carrier_state = "move-to-source"
+  return true
+end
+
+local function update_carrier(record)
+  if record.carrier_state == "move-to-source" then
+    local source = record.carrier_source
+    local inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not inventory
+      or inventory.get_item_count(record.carrier_item) == 0 then
+      record.carrier_state = nil
+      record.carrier_source = nil
+      record.carrier_target = nil
+      record.carrier_item = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      local removed = inventory.remove({
+        name = record.carrier_item.name,
+        quality = record.carrier_item.quality,
+        count = CARRIER_CAPACITY
+      })
+      if removed > 0 then
+        record.carrier_carried_count = removed
+        record.carrier_state = "move-to-target"
+      else
+        record.carrier_state = nil
+        record.carrier_source = nil
+        record.carrier_target = nil
+        record.carrier_item = nil
+      end
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
+
+  if record.carrier_state == "move-to-target" then
+    local target = record.carrier_target
+    local target_inventory = target and target.valid
+      and target.get_inventory(defines.inventory.chest)
+    if not target_inventory
+      or target_inventory.get_insertable_count(record.carrier_item) == 0 then
+      -- No longer wanted: return it to network storage instead of stranding it.
+      target = find_logistics_return_source(record, record.carrier_item)
+      record.carrier_target = target
+      target_inventory = target and get_logistics_source_inventory(target)
+    end
+    if not target then
+      record.carrier_state = nil
+      record.carrier_source = nil
+      record.carrier_item = nil
+      record.carrier_carried_count = 0
+    elseif distance_squared(record.entity.position, target.position) <= 4 then
+      local inserted = target_inventory.insert({
+        name = record.carrier_item.name,
+        quality = record.carrier_item.quality,
+        count = record.carrier_carried_count
+      })
+      record.carrier_carried_count = record.carrier_carried_count - inserted
+      stop_team_mate(record)
+      if record.carrier_carried_count <= 0 then
+        record.carrier_state = nil
+        record.carrier_source = nil
+        record.carrier_target = nil
+        record.carrier_item = nil
+      end
+    else
+      move_team_mate(record, target.position, 2)
+    end
+    return true
+  end
+
+  if assign_carrier_job(record) then
+    return true
+  end
+  return dock_at_habitat(record)
+end
+
 local function assign_job(record, surface, force, position)
   if record.kind == "miner" then
     return assign_miner_job(record, surface, force, position)
   elseif record.kind == "builder" then
     return assign_builder_job(record, surface, force, position)
+  elseif record.kind == "carrier" then
+    return assign_carrier_job(record, surface, force, position)
   end
   return false
 end
@@ -1865,6 +2014,8 @@ local function update_team_mate(record, player)
     return update_miner(record, player)
   elseif record.kind == "builder" then
     return update_builder(record)
+  elseif record.kind == "carrier" then
+    return update_carrier(record)
   end
   return dock_at_habitat(record)
 end

@@ -25,7 +25,8 @@ end
 local logistics_hub = table.deepcopy(data.raw.roboport.roboport)
 logistics_hub.name = "not-alone-logistics-hub"
 logistics_hub.localised_name = {"entity-name.not-alone-logistics-hub"}
-logistics_hub.icon = "__base__/graphics/icons/beacon.png"
+logistics_hub.icon = "__not-alone__/graphics/icons/habitat.png"
+logistics_hub.icon_size = 64
 logistics_hub.minable = {mining_time = 0.1, result = "not-alone-logistics-hub"}
 logistics_hub.fast_replaceable_group = nil
 logistics_hub.next_upgrade = nil
@@ -38,9 +39,15 @@ logistics_hub.robot_slots_count = 0
 logistics_hub.material_slots_count = 3
 logistics_hub.construction_radius = 0
 
-local beacon_animations = data.raw["beacon"]["beacon"].graphics_set.animation_list
-logistics_hub.base = table.deepcopy(beacon_animations[1].animation)
-logistics_hub.base_animation = table.deepcopy(beacon_animations[2].animation)
+local habitat_picture = {
+	filename = "__not-alone__/graphics/entity/habitat.png",
+	width = 1254,
+	height = 1254,
+	scale = 0.13,
+	shift = {0, -0.3}
+}
+logistics_hub.base = habitat_picture
+logistics_hub.base_animation = nil
 logistics_hub.base_patch = nil
 logistics_hub.door_animation_up = nil
 logistics_hub.door_animation_down = nil
@@ -85,6 +92,8 @@ end
 local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
 logistics_hub_item.name = "not-alone-logistics-hub"
 logistics_hub_item.localised_name = {"item-name.not-alone-logistics-hub"}
+logistics_hub_item.icon = "__not-alone__/graphics/icons/habitat.png"
+logistics_hub_item.icon_size = 64
 logistics_hub_item.place_result = "not-alone-logistics-hub"
 logistics_hub_item.order = "c[signal]-a[not-alone-logistics-hub]"
 
@@ -144,6 +153,7 @@ end
 local miner_item = make_team_mate_item("miner", "__base__/graphics/icons/iron-ore.png", "a[miner]")
 local builder_item = make_team_mate_item("builder", "__base__/graphics/icons/construction-robot.png", "b[builder]")
 local soldier_item = make_team_mate_item("soldier", "__base__/graphics/icons/submachine-gun.png", "c[soldier]")
+local carrier_item = make_team_mate_item("carrier", "__base__/graphics/icons/logistic-robot.png", "d[carrier]")
 
 local team_mate = table.deepcopy(data.raw["unit"]["small-biter"])
 team_mate.name = "not-alone-team-mate"
@@ -344,6 +354,7 @@ data:extend({
 	miner_item,
 	builder_item,
 	soldier_item,
+	carrier_item,
 	building_logistics_requester,
 	team_mate,
 	hidden_team_mate,
