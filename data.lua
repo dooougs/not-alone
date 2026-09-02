@@ -105,6 +105,31 @@ building_logistics_requester.circuit_wire_max_distance = 0
 building_logistics_requester.render_not_in_network_icon = false
 building_logistics_requester.hidden_in_factoriopedia = true
 
+local building_requester_variants = {}
+local requester_target_types = {
+	"stone-furnace", "steel-furnace", "electric-furnace",
+	"assembling-machine-1", "assembling-machine-2", "assembling-machine-3",
+	"lab", "boiler", "burner-generator", "rocket-silo"
+}
+for _, target_name in pairs(requester_target_types) do
+	local target = data.raw.furnace[target_name]
+		or data.raw["assembling-machine"][target_name]
+		or data.raw.lab[target_name]
+		or data.raw.boiler[target_name]
+		or data.raw["burner-generator"][target_name]
+		or data.raw["rocket-silo"][target_name]
+	if target then
+		local variant = table.deepcopy(building_logistics_requester)
+		variant.name = "not-alone-building-logistics-requester-" .. target_name
+		variant.localised_name = target.localised_name
+		variant.icon = target.icon
+		variant.icon_size = target.icon_size
+		variant.icons = target.icons
+		variant.hidden_in_factoriopedia = true
+		building_requester_variants[#building_requester_variants + 1] = variant
+	end
+end
+
 -- Colors must match KIND_COLOR in poc.lua. The light-armor torso icon,
 -- tinted per role, echoes the look of basic armour.
 local TEAM_MATE_ICON = "__base__/graphics/icons/light-armor.png"
@@ -606,6 +631,7 @@ data:extend({
 	soldier_item,
 	carrier_item,
 	building_logistics_requester,
+	table.unpack(building_requester_variants),
 	team_mate,
 	hidden_team_mate,
 	mining_sound,

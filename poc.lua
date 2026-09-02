@@ -75,6 +75,7 @@ end
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
+local BUILDING_REQUESTER_PREFIX = BUILDING_REQUESTER_NAME .. "-"
 local ITEM_NAME_BY_KIND = {
   miner = "not-alone-miner",
   builder = "not-alone-builder",
@@ -295,6 +296,109 @@ local function update_habitat_crew_display(habitat)
   end
 end
 
+local TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
+
+local function destroy_team_mate_panel(player)
+  local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
+  if panel then
+    panel.destroy()
+  end
+end
+
+local function update_team_mate_panel(player)
+  if player.opened_gui_type ~= defines.gui_type.logistic then
+    destroy_team_mate_panel(player)
+    return
+  end
+
+  local network = player.opened
+  if not network or network.object_name ~= "LuaLogisticNetwork" then
+    destroy_team_mate_panel(player)
+    return
+  end
+
+  local counts = {}
+  local statuses = {}
+  for _, kind in pairs(TEAM_MATE_KINDS) do
+    counts[kind] = {deployed = 0, docked = 0}
+    statuses[kind] = {}
+  end
+
+  local surface = player.surface
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.entity and record.entity.valid
+        and record.entity.surface == surface
+        and surface.find_closest_logistic_network_by_position(
+          position_table(record.entity.position), player.force
+        ) == network then
+        local count = counts[record.kind]
+        if count then
+          count.deployed = count.deployed + 1
+          local status = record.command_kind == "attack" and "fighting"
+            or record.command_kind == "move" and "travelling"
+            or record.miner_state and "mining"
+            or record.builder_state and "building"
+            or record.carrier_state and "hauling"
+            or record.soldier_state and "arming"
+            or "idle"
+          statuses[record.kind][status] = (statuses[record.kind][status] or 0) + 1
+        end
+      end
+    end
+  end
+
+  for _, habitat in pairs(surface.find_entities_filtered({
+    name = LOGISTICS_HUB_NAME,
+    force = player.force
+  })) do
+    if habitat.logistic_network == network then
+      local inventory = get_habitat_inventory(habitat)
+      for _, kind in pairs(TEAM_MATE_KINDS) do
+        counts[kind].docked = counts[kind].docked
+          + (inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0)
+      end
+    end
+  end
+
+  local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
+  if not panel then
+    panel = player.gui.relative.add({
+      type = "frame",
+      name = TEAM_MATE_PANEL_NAME,
+      direction = "vertical",
+      anchor = {
+        gui = defines.relative_gui_type.logistic_gui,
+        position = defines.relative_gui_position.right
+      }
+    })
+    panel.style.width = 190
+    panel.add({type = "label", name = "title", caption = "Team mates"})
+  end
+
+  for _, kind in pairs(TEAM_MATE_KINDS) do
+    local count = counts[kind]
+    local status_parts = {}
+    for status, amount in pairs(statuses[kind]) do
+      status_parts[#status_parts + 1] = status .. " " .. amount
+    end
+    table.sort(status_parts)
+    local caption = string.format(
+      "%s  %d out / %d docked",
+      KIND_LABEL[kind], count.deployed, count.docked
+    )
+    if #status_parts > 0 then
+      caption = caption .. " (" .. table.concat(status_parts, ", ") .. ")"
+    end
+    local label = panel[kind]
+    if not label then
+      label = panel.add({type = "label", name = kind, caption = caption})
+    else
+      label.caption = caption
+    end
+  end
+end
+
 local function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -415,6 +519,7 @@ end
 
 local function get_consumer_inventory(consumer, mining_role)
   if consumer.name == BUILDING_REQUESTER_NAME
+    or consumer.name:sub(1, #BUILDING_REQUESTER_PREFIX) == BUILDING_REQUESTER_PREFIX
     or LOGISTICS_SOURCE_MODES[consumer.prototype.logistic_mode] then
     return consumer.get_inventory(defines.inventory.chest)
   end
@@ -439,7 +544,9 @@ local function find_requesting_consumer(record, mining_role)
     members = "requester"
   })
   local requester = requester_point and requester_point.owner
-  if requester and requester.valid and requester.name == BUILDING_REQUESTER_NAME then
+  if requester and requester.valid
+    and (requester.name == BUILDING_REQUESTER_NAME
+      or requester.name:sub(1, #BUILDING_REQUESTER_PREFIX) == BUILDING_REQUESTER_PREFIX) then
     return requester
   end
   return nil
@@ -687,8 +794,12 @@ local function update_building_requesters_for_network(surface, force, position, 
     if target_network == network and target.unit_number then
       local requester_record = requesters[target.unit_number]
       if not requester_record or not requester_record.requester.valid then
+        local requester_name = BUILDING_REQUESTER_NAME .. "-" .. target.name
+        if not prototypes.entity[requester_name] then
+          requester_name = BUILDING_REQUESTER_NAME
+        end
         local requester = surface.create_entity({
-          name = BUILDING_REQUESTER_NAME,
+          name = requester_name,
           position = target.position,
           force = force,
           create_build_effect_smoke = false
@@ -3004,6 +3115,10 @@ function poc.on_update(event)
     if ensure_starter_inventory(game.get_player(player_index)) then
       storage.not_alone_starter_inventory_pending[player_index] = nil
     end
+  end
+
+  for _, player in pairs(game.connected_players) do
+    update_team_mate_panel(player)
   end
 
   for _, surface in pairs(game.surfaces) do
