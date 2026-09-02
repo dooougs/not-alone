@@ -4,6 +4,12 @@ local INITIAL_HABITAT_COUNT = 1
 local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
 local STARTER_INVENTORY_VERSION = 5
 local UPDATE_INTERVAL = 10
+-- Idle units and empty habitats re-scan the whole network for work; doing
+-- that every update dominated frame time, so retries run on cooldowns.
+local IDLE_JOB_SEARCH_INTERVAL = 60
+local HABITAT_DEPLOY_RETRY_INTERVAL = 120
+local BUILDING_REQUESTER_UPDATE_INTERVAL = 60
+local ORPHAN_RECONCILE_INTERVAL = 600
 local ENGAGEMENT_RADIUS = 16
 local COMMAND_REFRESH_DISTANCE = 2
 local CHUNK_SIZE = 32
@@ -613,46 +619,60 @@ local function item_is_fuel_for(item_name, burner)
     and burner.fuel_categories[item_prototype.fuel_category]
 end
 
+-- Scanning every storage chest and team mate repeats identically for every
+-- burner in the same network on the same tick; memoize the candidate names.
+local fuel_candidate_cache = {}
+
+local function get_network_fuel_candidates(network, force)
+  local cached = fuel_candidate_cache[network.network_id]
+  if cached and cached.tick == game.tick then
+    return cached.items
+  end
+  local items = {}
+  for _, source in pairs(network.storages) do
+    local inventory = get_logistics_source_inventory(source)
+    if inventory then
+      for _, item in pairs(inventory.get_contents()) do
+        local prototype = prototypes.item[item.name]
+        if prototype and prototype.fuel_category then
+          items[#items + 1] = item.name
+        end
+      end
+    end
+  end
+  -- Fuel carried by team mates exists in no chest yet but is en route.
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.entity.valid and record.entity.force == force then
+        local resource_info = record.kind == "miner" and record.mining_resource_info
+        if resource_info then
+          items[#items + 1] = resource_info.item_name
+        end
+        if record.kind == "builder" then
+          if record.builder_item and (record.builder_carried_count or 0) > 0 then
+            items[#items + 1] = record.builder_item.name
+          end
+          if record.builder_cargo and record.builder_cargo.valid then
+            for _, item in pairs(record.builder_cargo.get_contents()) do
+              items[#items + 1] = item.name
+            end
+          end
+        end
+      end
+    end
+  end
+  fuel_candidate_cache[network.network_id] = {tick = game.tick, items = items}
+  return items
+end
+
 local function find_available_fuel(target, network)
   local burner = target.burner
   if not burner or not burner.inventory then
     return nil
   end
-
-  for _, source in pairs(network.storages) do
-    local inventory = get_logistics_source_inventory(source)
-    if inventory then
-      for _, item in pairs(inventory.get_contents()) do
-        if item_is_fuel_for(item.name, burner) then
-          return item.name
-        end
-      end
-    end
-  end
-
-  -- Fuel carried by team mates exists in no chest yet but is en route.
-  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
-    for _, record in pairs(team_mates) do
-      local resource_info = record.kind == "miner" and record.mining_resource_info
-      if resource_info and record.entity.valid
-        and record.entity.force == target.force
-        and item_is_fuel_for(resource_info.item_name, burner) then
-        return resource_info.item_name
-      end
-      if record.kind == "builder" and record.entity.valid
-        and record.entity.force == target.force then
-        if record.builder_item and (record.builder_carried_count or 0) > 0
-          and item_is_fuel_for(record.builder_item.name, burner) then
-          return record.builder_item.name
-        end
-        if record.builder_cargo and record.builder_cargo.valid then
-          for _, item in pairs(record.builder_cargo.get_contents()) do
-            if item_is_fuel_for(item.name, burner) then
-              return item.name
-            end
-          end
-        end
-      end
+  for _, item_name in ipairs(get_network_fuel_candidates(network, target.force)) do
+    if item_is_fuel_for(item_name, burner) then
+      return item_name
     end
   end
   return nil
@@ -799,7 +819,9 @@ local function update_building_requesters_for_network(surface, force, position, 
   storage.not_alone_building_requester_ticks = storage.not_alone_building_requester_ticks or {}
   local network_key = surface.index .. ":" .. force.index
     .. ":" .. network.network_id
-  if storage.not_alone_building_requester_ticks[network_key] == game.tick then
+  local last_update_tick = storage.not_alone_building_requester_ticks[network_key]
+  if last_update_tick
+    and game.tick - last_update_tick < BUILDING_REQUESTER_UPDATE_INTERVAL then
     return
   end
   storage.not_alone_building_requester_ticks[network_key] = game.tick
@@ -1169,8 +1191,12 @@ local function update_miner(record, player)
   end
   record.carried_count = 0
   record.mining_resource_info = nil
-  if assign_miner_job(record) then
-    return true
+  if game.tick >= (record.next_job_search_tick or 0) then
+    if assign_miner_job(record) then
+      record.next_job_search_tick = nil
+      return true
+    end
+    record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
   end
   return dock_at_habitat(record)
 end
@@ -1804,18 +1830,27 @@ local function update_soldier(record)
   else
     -- Prepare before choosing a target: weapons first, then ammunition. This
     -- prevents a newly deployed Soldier from fighting with fists while gear
-    -- is waiting in logistics storage.
-    if try_soldier_weapon_pickup(record) then
-      return true
+    -- is waiting in logistics storage. The full gear and network scan is
+    -- expensive, so idle Soldiers repeat it on a cooldown.
+    if game.tick >= (record.next_job_search_tick or 0) then
+      if try_soldier_weapon_pickup(record) then
+        record.next_job_search_tick = nil
+        return true
+      end
+      if soldier_needs_ammo(record) and start_soldier_restock(record, true) then
+        record.next_job_search_tick = nil
+        return true
+      end
+      if try_soldier_armor_pickup(record) then
+        record.next_job_search_tick = nil
+        return true
+      end
+      target = find_soldier_target(record)
+      if not target then
+        record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
+      end
     end
-    if soldier_needs_ammo(record) and start_soldier_restock(record, true) then
-      return true
-    end
-    if try_soldier_armor_pickup(record) then
-      return true
-    end
-
-    target = find_soldier_target(record)
+    -- Point-blank threats are engine-indexed and cheap: always check.
     if not target then
       local nearby = record.entity.surface.find_nearest_enemy({
         position = record.entity.position,
@@ -1862,7 +1897,9 @@ local function update_soldier(record)
   end
 
   -- No target and no preparation work: return to the Habitat.
-  if not select_soldier_weapon(record) and start_soldier_restock(record) then
+  if not select_soldier_weapon(record)
+    and game.tick >= (record.next_job_search_tick or 0)
+    and start_soldier_restock(record) then
     return true
   end
   return dock_at_habitat(record)
@@ -1882,6 +1919,9 @@ local function get_ghost_item(ghost)
 end
 
 local function find_builder_source(network, item, position)
+  if not network then
+    return nil
+  end
   local pickup_point = network.select_pickup_point({
     name = item,
     position = position,
@@ -1890,6 +1930,147 @@ local function find_builder_source(network, item, position)
   local source = pickup_point and pickup_point.owner
   local inventory = get_logistics_source_inventory(source)
   return inventory and inventory.get_item_count(item) > 0 and source or nil
+end
+
+local function get_recipe_product(recipe, item_name)
+  for _, product in pairs(recipe.products or {}) do
+    if product.type == "item" and product.name == item_name then
+      return product
+    end
+  end
+  return nil
+end
+
+local function get_product_amount(product)
+  return math.max(1, math.floor(product.amount or product.minimum or 1))
+end
+
+-- Prototypes never change mid-session; index hand-craftable recipes by
+-- product once instead of scanning every recipe per planner lookup.
+local recipes_by_product
+
+local function get_recipes_by_product()
+  if recipes_by_product then
+    return recipes_by_product
+  end
+  recipes_by_product = {}
+  for _, recipe in pairs(prototypes.recipe) do
+    if recipe.enabled and not recipe.hidden_from_player_crafting
+      and recipe.allow_as_intermediate ~= false then
+      for _, product in pairs(recipe.products or {}) do
+        if product.type == "item" then
+          local list = recipes_by_product[product.name] or {}
+          list[#list + 1] = recipe
+          recipes_by_product[product.name] = list
+        end
+      end
+    end
+  end
+  for _, list in pairs(recipes_by_product) do
+    table.sort(list, function(left, right)
+      return left.energy < right.energy
+    end)
+  end
+  return recipes_by_product
+end
+
+local function find_hand_crafting_recipe(item_name, force)
+  local recipes = {}
+  for _, recipe in ipairs(get_recipes_by_product()[item_name] or {}) do
+    local force_recipe = force.recipes[recipe.name]
+    if force_recipe and force_recipe.enabled then
+      recipes[#recipes + 1] = recipe
+    end
+  end
+  return recipes
+end
+
+local function plan_builder_item(network, item, force, available, visiting, actions)
+  local item_name = item.name
+  local needed = item.count or 1
+  local in_network = available[item_name] or 0
+  if in_network > 0 then
+    local fetched = math.min(in_network, needed)
+    available[item_name] = in_network - fetched
+    actions[#actions + 1] = {type = "fetch", item = {
+      name = item_name,
+      quality = item.quality or "normal"
+    }, count = fetched}
+    needed = needed - fetched
+    if needed == 0 then
+      return true
+    end
+  end
+
+  if visiting[item_name] then
+    return false
+  end
+  visiting[item_name] = true
+  local recipes = find_hand_crafting_recipe(item_name, force)
+  for _, recipe in ipairs(recipes) do
+    local recipe_available = {}
+    for name, count in pairs(available) do
+      recipe_available[name] = count
+    end
+    local product = get_recipe_product(recipe, item_name)
+    local output_count = get_product_amount(product)
+    local batches = math.ceil(needed / output_count)
+    local recipe_actions = {}
+    local possible = true
+    for _, ingredient in pairs(recipe.ingredients or {}) do
+      if ingredient.type ~= "item" then
+        possible = false
+        break
+      end
+      local ingredient_count = math.ceil((ingredient.amount or 1) * batches)
+      if not plan_builder_item(
+        network,
+        {name = ingredient.name, count = ingredient_count},
+        force,
+        recipe_available,
+        visiting,
+        recipe_actions
+      ) then
+        possible = false
+        break
+      end
+    end
+    if possible then
+      for name, count in pairs(recipe_available) do
+        available[name] = count
+      end
+      for _, action in pairs(recipe_actions) do
+        actions[#actions + 1] = action
+      end
+      actions[#actions + 1] = {
+        type = "craft",
+        recipe = recipe,
+        ingredients = recipe.ingredients,
+        batches = batches,
+        product = {name = item_name, quality = item.quality or "normal"},
+        count = output_count * batches,
+        craft_ticks = math.max(1, math.ceil(recipe.energy * 60 * batches))
+      }
+      visiting[item_name] = nil
+      return true
+    end
+  end
+  visiting[item_name] = nil
+  return false
+end
+
+local function find_builder_plan(network, item, force, contents)
+  local available = {}
+  for _, stack in pairs(contents or network.get_contents()) do
+    if stack.quality == item.quality or not item.quality then
+      available[stack.name] = (available[stack.name] or 0) + stack.count
+    end
+  end
+  local actions = {}
+  if plan_builder_item(network, item, force, available, {}, actions) then
+    return actions
+  end
+  return nil
 end
 
 local function builder_target_is_claimed(target, current_record)
@@ -1916,6 +2097,7 @@ local function find_builder_job(record, surface, force, position)
     return nil, nil, nil
   end
 
+  local contents = network.get_contents()
   local nearest_ghost = nil
   local nearest_source = nil
   local nearest_item_name = nil
@@ -1928,18 +2110,17 @@ local function find_builder_job(record, surface, force, position)
         position = cell.owner.position,
         radius = cell.logistic_radius * 1.5
       })) do
-        if cell.is_in_logistic_range(ghost.position)
+        -- Distance check first: planning is the expensive step, so only
+        -- plan for candidates closer than the best plannable ghost so far.
+        local distance = distance_squared(position, ghost.position)
+        if (not nearest_distance or distance < nearest_distance)
+          and cell.is_in_logistic_range(ghost.position)
           and not builder_target_is_claimed(ghost, record) then
           local item = get_ghost_item(ghost)
-          local source = item and find_builder_source(
-            network,
-            item,
-            position_table(ghost.position)
-          )
-          local distance = distance_squared(position, ghost.position)
-          if source and (not nearest_distance or distance < nearest_distance) then
+          local plan = item and find_builder_plan(network, item, force, contents)
+          if plan then
             nearest_ghost = ghost
-            nearest_source = source
+            nearest_source = plan
             nearest_item_name = item
             nearest_distance = distance
           end
@@ -2032,13 +2213,15 @@ local function find_builder_deconstruction_target(record, surface, force, positi
 end
 
 local function assign_builder_job(record, surface, force, position)
-  local target, source, item = find_builder_job(record, surface, force, position)
+  local target, plan, item = find_builder_job(record, surface, force, position)
   if target then
     record.builder_target = target
-    record.builder_source = source
+    record.builder_plan = plan
+    record.builder_plan_index = 1
     record.builder_item = item
     record.builder_carried_count = 0
-    record.builder_state = "move-to-source"
+    record.builder_source = nil
+    record.builder_state = "execute-plan"
     return true
   end
 
@@ -2057,6 +2240,30 @@ end
 local function get_builder_cargo(record)
   if not record.builder_cargo or not record.builder_cargo.valid then
     record.builder_cargo = game.create_inventory(BUILDER_CARGO_SLOTS)
+  end
+  return record.builder_cargo
+end
+
+local function size_builder_cargo_for_plan(record, plan)
+  local item_names = {}
+  for _, action in pairs(plan) do
+    if action.type == "fetch" then
+      item_names[action.item.name] = true
+    elseif action.type == "craft" then
+      item_names[action.product.name] = true
+    end
+  end
+  local required_slots = 0
+  for _ in pairs(item_names) do
+    required_slots = required_slots + 1
+  end
+  required_slots = math.max(1, required_slots)
+  local cargo = get_builder_cargo(record)
+  if cargo.is_empty() and #cargo < required_slots then
+    cargo.destroy()
+    record.builder_cargo = game.create_inventory(
+      math.min(required_slots, MAX_BUILDER_CARGO_SLOTS)
+    )
   end
   return record.builder_cargo
 end
@@ -2319,6 +2526,105 @@ local function update_builder(record)
     return_builder_material(record)
     return true
   end
+  if record.builder_state == "crafting" then
+    if game.tick < (record.builder_craft_ready_tick or 0) then
+      stop_team_mate(record)
+      return true
+    end
+    local action = record.builder_plan and record.builder_plan[record.builder_plan_index]
+    local cargo = action and get_builder_cargo(record)
+    if not action or action.type ~= "craft" then
+      record.builder_state = nil
+      return true
+    end
+    for _, ingredient in pairs(action.ingredients or {}) do
+      local count = math.ceil((ingredient.amount or 1) * action.batches)
+      if ingredient.type ~= "item"
+        or cargo.get_item_count({name = ingredient.name, quality = "normal"}) < count then
+        record.builder_state = nil
+        record.builder_plan = nil
+        return true
+      end
+    end
+    for _, ingredient in pairs(action.ingredients or {}) do
+      local count = math.ceil((ingredient.amount or 1) * action.batches)
+      cargo.remove({name = ingredient.name, quality = "normal", count = count})
+    end
+    cargo.insert({
+      name = action.product.name,
+      quality = action.product.quality,
+      count = action.count
+    })
+    record.builder_craft_ready_tick = nil
+    record.builder_plan_index = record.builder_plan_index + 1
+    record.builder_state = "execute-plan"
+    return true
+  end
+  if record.builder_state == "execute-plan" then
+    local action = record.builder_plan and record.builder_plan[record.builder_plan_index]
+    if not action then
+      local cargo = get_builder_cargo(record)
+      local product = record.builder_item
+      if product and cargo.get_item_count(product) > 0 then
+        cargo.remove({name = product.name, quality = product.quality, count = 1})
+        record.builder_carried_count = 1
+        record.builder_state = "move-to-ghost"
+      else
+        record.builder_state = nil
+        record.builder_plan = nil
+      end
+      return true
+    end
+    local cargo = size_builder_cargo_for_plan(record, record.builder_plan)
+    if action.type == "craft" then
+      record.builder_craft_ready_tick = game.tick + action.craft_ticks
+      record.builder_state = "crafting"
+      stop_team_mate(record)
+      return true
+    end
+    local source = record.builder_source
+    local inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not inventory
+      or inventory.get_item_count(action.item) < action.count then
+      source = find_builder_source(
+        record.entity.surface.find_closest_logistic_network_by_position(
+          position_table(record.entity.position), record.entity.force
+        ),
+        action.item,
+        position_table(record.entity.position)
+      )
+      record.builder_source = source
+      inventory = get_logistics_source_inventory(source)
+    end
+    if not source or not inventory then
+      record.builder_state = nil
+      record.builder_plan = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      local removed = inventory.remove({
+        name = action.item.name,
+        quality = action.item.quality,
+        count = action.count
+      })
+      if removed == action.count then
+        cargo.insert({
+          name = action.item.name,
+          quality = action.item.quality,
+          count = removed
+        })
+        record.builder_source = nil
+        record.builder_plan_index = record.builder_plan_index + 1
+      else
+        if removed > 0 then
+          inventory.insert({name = action.item.name, quality = action.item.quality, count = removed})
+        end
+        record.builder_state = nil
+        record.builder_plan = nil
+      end
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
   if record.builder_state == "move-to-source" then
     local inventory = get_logistics_source_inventory(record.builder_source)
     if not record.builder_target or not record.builder_target.valid
@@ -2353,9 +2659,17 @@ local function update_builder(record)
     elseif distance_squared(record.entity.position, record.builder_target.position) <= 16 then
       local _, revived_entity = record.builder_target.revive({raise_revive = true})
       if revived_entity then
+        local cargo = get_builder_cargo(record)
+        cargo.remove({
+          name = record.builder_item.name,
+          quality = record.builder_item.quality,
+          count = 1
+        })
         record.builder_item = nil
         record.builder_carried_count = 0
         record.builder_source = nil
+        record.builder_plan = nil
+        record.builder_plan_index = nil
         record.builder_target = nil
         record.builder_state = nil
       else
@@ -2438,8 +2752,12 @@ local function update_builder(record)
     return true
   end
 
-  if assign_builder_job(record) then
-    return true
+  if game.tick >= (record.next_job_search_tick or 0) then
+    if assign_builder_job(record) then
+      record.next_job_search_tick = nil
+      return true
+    end
+    record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
   end
   return dock_at_habitat(record)
 end
@@ -2665,8 +2983,12 @@ local function update_carrier(record)
     return true
   end
 
-  if assign_carrier_job(record) then
-    return true
+  if game.tick >= (record.next_job_search_tick or 0) then
+    if assign_carrier_job(record) then
+      record.next_job_search_tick = nil
+      return true
+    end
+    record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
   end
   return dock_at_habitat(record)
 end
@@ -2695,6 +3017,7 @@ local function auto_deploy_from_habitat(habitat)
   end
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
+  local deployed = false
   for _, kind in pairs(TEAM_MATE_KINDS) do
     local item_name = ITEM_NAME_BY_KIND[kind]
     local job = {entity = habitat, kind = kind}
@@ -2722,11 +3045,13 @@ local function auto_deploy_from_habitat(habitat)
         end
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
+        deployed = true
       elseif record then
         record.entity.destroy()
       end
     end
   end
+  return deployed
 end
 
 local function configure_freeplay_starter_inventory()
@@ -3157,11 +3482,26 @@ function poc.on_update(event)
         habitat.position,
         habitat.logistic_network
       )
-      auto_deploy_from_habitat(habitat)
+      -- Deploy scans re-run every role's full job search; back off when a
+      -- habitat had nothing to deploy.
+      storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
+      local deploy_ticks = storage.not_alone_habitat_deploy_ticks
+      if habitat.unit_number and game.tick >= (deploy_ticks[habitat.unit_number] or 0) then
+        if auto_deploy_from_habitat(habitat) then
+          deploy_ticks[habitat.unit_number] = nil
+        else
+          deploy_ticks[habitat.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
+        end
+      end
     end
   end
 
-  reconcile_orphaned_team_mates()
+  -- Orphans only appear after saves/migrations; a full multi-surface entity
+  -- scan every update is wasted work.
+  if game.tick >= (storage.not_alone_next_reconcile_tick or 0) then
+    storage.not_alone_next_reconcile_tick = game.tick + ORPHAN_RECONCILE_INTERVAL
+    reconcile_orphaned_team_mates()
+  end
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
