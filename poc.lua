@@ -34,9 +34,15 @@ local INVENTORY_ICON_SCALE = 0.5
 local INVENTORY_ICON_SPACING = 0.65
 local TEAM_MATE_NAME = "not-alone-team-mate"
 local TEAM_MATE_ENTITY_BY_KIND = {
+  miner = "not-alone-team-mate-miner",
+  builder = "not-alone-team-mate-builder",
+  carrier = "not-alone-team-mate-carrier",
   soldier = "not-alone-team-mate-fists"
 }
 local KIND_BY_ENTITY_NAME = {
+  ["not-alone-team-mate-miner"] = "miner",
+  ["not-alone-team-mate-builder"] = "builder",
+  ["not-alone-team-mate-carrier"] = "carrier",
   ["not-alone-team-mate-fists"] = "soldier",
   ["not-alone-team-mate-smg"] = "soldier",
   ["not-alone-team-mate-shotgun"] = "soldier",
@@ -110,6 +116,21 @@ end
 local SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
 local SOLDIER_AMMO_RESTOCK_COUNT = 20
 local SOLDIER_AMMO_TICKS_PER_ROUND = 30
+-- Armor tiers, worst to best; a Soldier wears the best suit it has found and
+-- shrugs off that fraction of every hit.
+local SOLDIER_ARMORS = {
+  {item = "light-armor", mitigation = 0.2},
+  {item = "heavy-armor", mitigation = 0.4},
+  {item = "modular-armor", mitigation = 0.5},
+  {item = "power-armor", mitigation = 0.65},
+  {item = "power-armor-mk2", mitigation = 0.8}
+}
+-- Other crews crashed here too: derelict ships seeded from the map seed,
+-- common near the landing site and thinning out with distance.
+local CRASH_SHIP_NAME = "crash-site-spaceship"
+local CRASH_SHIP_BASE_CHANCE = 0.2
+local CRASH_SHIP_FALLOFF_CHUNKS = 8
+local CRASH_SHIP_MAX_CREW = 10
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -122,6 +143,7 @@ local LOGISTICS_DESTINATION_TYPES = {
   "boiler",
   "burner-generator",
   "furnace",
+  "lab",
   "rocket-silo"
 }
 local RECIPE_ENTITY_TYPES = {
@@ -185,9 +207,8 @@ local function destroy_route_renderings(record)
   record.route_render_ids = {}
 end
 
--- LuaEntity.color only recolors character, car, spider-vehicle, lamp, corpse,
--- rolling-stock, train-stop, or simple-entity-with-owner entities - our team
--- mates are type "unit", so a role-color marker is rendered here instead.
+-- Role colors are baked into each kind's unit prototype (units ignore
+-- LuaEntity.color); this only cleans up markers left by older versions.
 local function destroy_color_marker(record)
   if record.color_marker_render_id then
     local render_object = rendering.get_object_by_id(record.color_marker_render_id)
@@ -196,25 +217,6 @@ local function destroy_color_marker(record)
     end
     record.color_marker_render_id = nil
   end
-end
-
-local function create_color_marker(record)
-  destroy_color_marker(record)
-  local color = KIND_COLOR[record.kind]
-  if not color then
-    return
-  end
-  -- A torso-only armor icon reads far more clearly at this scale than a
-  -- plain colored dot, while still sitting above the sprite's head.
-  record.color_marker_render_id = rendering.draw_sprite({
-    sprite = "item.light-armor",
-    tint = color,
-    x_scale = 0.5,
-    y_scale = 0.5,
-    target = {entity = record.entity, offset = {0, -1.6}},
-    surface = record.entity.surface,
-    render_layer = "entity-info-icon"
-  }).id
 end
 
 local function destroy_inventory_renderings(record)
@@ -409,6 +411,9 @@ local function get_logistics_target_inventory(target, inventory_kind)
   if inventory_kind == "requester" then
     return target.get_inventory(defines.inventory.chest)
   end
+  if inventory_kind == "lab" then
+    return target.get_inventory(defines.inventory.lab_input)
+  end
   return target.get_inventory(defines.inventory.crafter_input)
 end
 
@@ -478,6 +483,13 @@ local function inventory_kind_for_item(target, item_name)
       end
     end
   end
+  if target.type == "lab" then
+    for _, input_name in pairs(target.prototype.lab_inputs or {}) do
+      if input_name == item_name then
+        return "lab"
+      end
+    end
+  end
   return nil
 end
 
@@ -514,6 +526,22 @@ local function get_building_requests(target, network)
         count = missing_count,
         inventory_kind = "fuel"
       }
+    end
+  end
+
+  if target.type == "lab" then
+    local inventory = target.get_inventory(defines.inventory.lab_input)
+    if inventory then
+      for _, input_name in pairs(target.prototype.lab_inputs or {}) do
+        local missing_count = INGREDIENT_REQUEST_COUNT - inventory.get_item_count(input_name)
+        if missing_count > 0 and inventory.get_insertable_count(input_name) > 0 then
+          requests[#requests + 1] = {
+            item_name = input_name,
+            count = missing_count,
+            inventory_kind = "lab"
+          }
+        end
+      end
     end
   end
   return requests
@@ -973,7 +1001,7 @@ update_mining_animation = function(record, should_show)
   end
   if should_show then
     if not record.mining_hidden then
-      record.mining_color = record.entity.color
+      record.mining_color = KIND_COLOR[record.kind]
         or {r = 1, g = 1, b = 1, a = 1}
       local visible_entity = record.entity
       local hidden_entity = visible_entity.surface.create_entity({
@@ -1033,7 +1061,7 @@ update_mining_animation = function(record, should_show)
   if not should_show and record.mining_hidden then
     local hidden_entity = record.entity
     local visible_entity = hidden_entity.surface.create_entity({
-      name = TEAM_MATE_NAME,
+      name = TEAM_MATE_ENTITY_BY_KIND[record.kind] or TEAM_MATE_NAME,
       position = hidden_entity.position,
       force = hidden_entity.force,
       orientation = hidden_entity.orientation,
@@ -1276,9 +1304,9 @@ local function consume_soldier_ammo(record, weapon)
   end
 end
 
--- Swap the unit prototype to match the weapon in hand (nil means fists).
-local function ensure_soldier_entity(record, weapon)
-  local wanted = weapon and weapon.entity or SOLDIER_FISTS_ENTITY
+-- Swap the unit prototype in place, keeping the record, name tag, health,
+-- and network membership.
+local function replace_team_mate_entity(record, wanted)
   local old_entity = record.entity
   if old_entity.name == wanted then
     return true
@@ -1293,18 +1321,26 @@ local function ensure_soldier_entity(record, weapon)
     return false
   end
   local tag = old_entity.name_tag
+  local health = old_entity.health
   destroy_network_member(record)
   destroy_color_marker(record)
   destroy_inventory_renderings(record)
   old_entity.destroy()
-  replacement.name_tag = tag
+  if tag then
+    replacement.name_tag = tag
+  end
+  replacement.health = math.min(health, replacement.max_health)
   record.entity = replacement
   record.command_kind = nil
   record.command_destination = nil
   record.command_target = nil
   update_network_member(record)
-  create_color_marker(record)
   return true
+end
+
+-- Swap the unit prototype to match the weapon in hand (nil means fists).
+local function ensure_soldier_entity(record, weapon)
+  return replace_team_mate_entity(record, weapon and weapon.entity or SOLDIER_FISTS_ENTITY)
 end
 
 -- Best owned weapon's ammo first, then that weapon's best ammo tier.
@@ -1338,6 +1374,22 @@ local function try_soldier_weapon_pickup(record)
       if source then
         record.soldier_state = "pickup-weapon"
         record.soldier_pickup_kind = weapon.kind
+        record.soldier_pickup_source = source
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function try_soldier_armor_pickup(record)
+  for tier = #SOLDIER_ARMORS, (record.soldier_armor or 0) + 1, -1 do
+    local armor = SOLDIER_ARMORS[tier]
+    if prototypes.item[armor.item] then
+      local source = find_logistics_item_source(record, armor.item)
+      if source then
+        record.soldier_state = "pickup-armor"
+        record.soldier_pickup_armor = tier
         record.soldier_pickup_source = source
         return true
       end
@@ -1410,6 +1462,34 @@ local function update_soldier(record)
     return true
   end
 
+  if record.soldier_state == "pickup-armor" then
+    local source = record.soldier_pickup_source
+    local armor = SOLDIER_ARMORS[record.soldier_pickup_armor]
+    local inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not inventory or not armor
+      or inventory.get_item_count(armor.item) == 0 then
+      record.soldier_state = nil
+      record.soldier_pickup_source = nil
+      record.soldier_pickup_armor = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      if inventory.remove({name = armor.item, count = 1}) == 1 then
+        -- Trade in the old suit so it goes back to the network.
+        local old_armor = record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor]
+        if old_armor then
+          inventory.insert({name = old_armor.item, count = 1})
+        end
+        record.soldier_armor = record.soldier_pickup_armor
+      end
+      record.soldier_state = nil
+      record.soldier_pickup_source = nil
+      record.soldier_pickup_armor = nil
+      stop_team_mate(record)
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
+
   local target = find_soldier_target(record)
   if not target then
     local nearby = record.entity.surface.find_nearest_enemy({
@@ -1441,8 +1521,11 @@ local function update_soldier(record)
     return true
   end
 
-  -- Idle: collect new weapons, then top up ammo, then dock.
+  -- Idle: collect new weapons, then armor upgrades, then ammo, then dock.
   if try_soldier_weapon_pickup(record) then
+    return true
+  end
+  if try_soldier_armor_pickup(record) then
     return true
   end
   if not select_soldier_weapon(record) and start_soldier_restock(record) then
@@ -1827,12 +1910,14 @@ dock_at_habitat = function(record)
   -- Habitat's locker and is restored to the next Soldier deployed from it.
   if record.kind == "soldier" and habitat.unit_number
     and ((record.soldier_weapons and next(record.soldier_weapons))
-      or (record.soldier_ammo and next(record.soldier_ammo))) then
+      or (record.soldier_ammo and next(record.soldier_ammo))
+      or record.soldier_armor) then
     storage.not_alone_soldier_lockers = storage.not_alone_soldier_lockers or {}
     local lockers = storage.not_alone_soldier_lockers[habitat.unit_number] or {}
     lockers[#lockers + 1] = {
       weapons = record.soldier_weapons,
-      ammo = record.soldier_ammo
+      ammo = record.soldier_ammo,
+      armor = record.soldier_armor
     }
     storage.not_alone_soldier_lockers[habitat.unit_number] = lockers
   end
@@ -2052,12 +2137,10 @@ local function create_team_mate(player, kind, index, spawn_center)
     return nil
   end
 
-  character.color = KIND_COLOR[kind] or player.color
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
   local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
   update_network_member(record)
-  create_color_marker(record)
   return record
 end
 
@@ -2096,7 +2179,6 @@ local function reconcile_orphaned_team_mates()
           local record = {entity = entity, kind = kind}
           find_nearest_habitat(record)
           update_network_member(record)
-          create_color_marker(record)
           storage.not_alone_team_mates = storage.not_alone_team_mates or {}
           local team_mates = storage.not_alone_team_mates[player.index] or {}
           team_mates[#team_mates + 1] = record
@@ -2300,6 +2382,7 @@ local function auto_deploy_from_habitat(habitat)
             local locker = table.remove(lockers)
             record.soldier_weapons = locker.weapons
             record.soldier_ammo = locker.ammo
+            record.soldier_armor = locker.armor
           end
         end
         team_mates[#team_mates + 1] = record
@@ -2412,6 +2495,17 @@ local function update_team_mate(record, player)
   end
 
   rescue_immobile_team_mate(record)
+  destroy_color_marker(record)
+  -- Older saves deployed the untinted generic unit; swap in the role variant.
+  if not record.mining_hidden and record.kind ~= "soldier" then
+    local wanted = TEAM_MATE_ENTITY_BY_KIND[record.kind]
+    if wanted and character.name ~= wanted then
+      if not replace_team_mate_entity(record, wanted) then
+        return true
+      end
+      character = record.entity
+    end
+  end
   update_inventory_renderings(record)
   update_network_member(record)
   update_building_requesters(record)
@@ -2750,6 +2844,77 @@ function poc.on_update(event)
   end
 end
 
+-- A Soldier's armor absorbs part of every hit; units cannot wear real armor,
+-- so the mitigated fraction is healed straight back.
+function poc.on_entity_damaged(event)
+  local entity = event.entity
+  if not entity.valid or entity.health <= 0 then
+    return
+  end
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.entity == entity then
+        local armor = record.kind == "soldier" and record.soldier_armor
+          and SOLDIER_ARMORS[record.soldier_armor]
+        if armor then
+          entity.health = entity.health + event.final_damage_amount * armor.mitigation
+        end
+        return
+      end
+    end
+  end
+end
+
+-- Other crews crash-landed here too. Seeded purely from the map seed and
+-- chunk position so the same map always yields the same wreck field, denser
+-- near the crash site and trailing off with distance.
+function poc.on_chunk_generated(event)
+  local surface = event.surface
+  if not surface.valid or surface.platform then
+    return
+  end
+  local chunk = event.position
+  if (chunk.x == 0 and chunk.y == 0) or not prototypes.entity[CRASH_SHIP_NAME] then
+    return
+  end
+  local seed = surface.map_gen_settings.seed
+  local mixed = (seed + (chunk.x + 2048) * 40093 + (chunk.y + 2048) * 92821) % 4294967291
+  local rng = game.create_random_generator(mixed > 0 and mixed or 1)
+  local distance_chunks = math.sqrt(chunk.x * chunk.x + chunk.y * chunk.y)
+  local chance = CRASH_SHIP_BASE_CHANCE / (1 + distance_chunks / CRASH_SHIP_FALLOFF_CHUNKS)
+  if rng() >= chance then
+    return
+  end
+  local ship_target = {
+    x = event.area.left_top.x + rng(4, 28),
+    y = event.area.left_top.y + rng(4, 28)
+  }
+  local position = surface.find_non_colliding_position(CRASH_SHIP_NAME, ship_target, 12, 1)
+  if not position then
+    return
+  end
+  local ship = surface.create_entity({
+    name = CRASH_SHIP_NAME,
+    position = position,
+    force = "neutral"
+  })
+  if not ship then
+    return
+  end
+  local inventory = ship.get_inventory(defines.inventory.chest)
+  if not inventory then
+    return
+  end
+  local crew_counts = {}
+  for _ = 1, rng(1, CRASH_SHIP_MAX_CREW) do
+    local kind = TEAM_MATE_KINDS[rng(1, #TEAM_MATE_KINDS)]
+    crew_counts[kind] = (crew_counts[kind] or 0) + 1
+  end
+  for kind, count in pairs(crew_counts) do
+    inventory.insert({name = ITEM_NAME_BY_KIND[kind], count = count})
+  end
+end
+
 function poc.register()
   script.on_init(poc.on_init)
   script.on_configuration_changed(poc.on_configuration_changed)
@@ -2766,6 +2931,12 @@ function poc.register()
   script.on_event(defines.events.on_robot_built_entity, poc.on_roboport_built)
   script.on_event(defines.events.script_raised_built, poc.on_roboport_built)
   script.on_event(defines.events.script_raised_revive, poc.on_roboport_built)
+  script.on_event(defines.events.on_chunk_generated, poc.on_chunk_generated)
+  local damage_filters = {}
+  for _, name in pairs(TEAM_MATE_NAMES) do
+    damage_filters[#damage_filters + 1] = {filter = "name", name = name}
+  end
+  script.on_event(defines.events.on_entity_damaged, poc.on_entity_damaged, damage_filters)
   script.on_nth_tick(UPDATE_INTERVAL, poc.on_update)
 end
 

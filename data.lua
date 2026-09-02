@@ -46,6 +46,7 @@ local habitat_picture = {
 	scale = 0.5,
 	shift = {0, -0.3}
 }
+logistics_hub.factoriopedia_description = {"factoriopedia-description.not-alone-logistics-hub"}
 logistics_hub.base = habitat_picture
 logistics_hub.base_animation = nil
 logistics_hub.base_patch = nil
@@ -137,10 +138,12 @@ building_logistics_requester.robot_door = nil
 building_logistics_requester.circuit_connector = nil
 building_logistics_requester.circuit_wire_max_distance = 0
 building_logistics_requester.render_not_in_network_icon = false
+building_logistics_requester.hidden_in_factoriopedia = true
 
--- Colors must match KIND_COLOR in poc.lua.
-local TEAM_MATE_ICON = "__core__/graphics/player-force-icon.png"
-local TEAM_MATE_ICON_SIZE = 32
+-- Colors must match KIND_COLOR in poc.lua. The light-armor torso icon,
+-- tinted per role, echoes the look of basic armour.
+local TEAM_MATE_ICON = "__base__/graphics/icons/light-armor.png"
+local TEAM_MATE_ICON_SIZE = 64
 
 local function make_team_mate_item(kind, tint, order_suffix)
 	local item = table.deepcopy(data.raw["repair-tool"]["repair-pack"])
@@ -159,6 +162,7 @@ local function make_team_mate_item(kind, tint, order_suffix)
 	item.subgroup = "tool"
 	item.order = "z[not-alone]-" .. order_suffix
 	item.stack_size = 20
+	item.factoriopedia_description = {"factoriopedia-description.not-alone-" .. kind}
 	return item
 end
 
@@ -239,9 +243,32 @@ team_mate.ai_settings = {
 	destroy_when_commands_fail = false,
 	allow_try_return_to_spawner = false
 }
+-- Legacy generic unit; per-role variants below are the pedia-facing pages.
+team_mate.hidden_in_factoriopedia = true
+
+-- Units ignore LuaEntity.color at runtime, so each role gets its own
+-- prototype with the runtime-tint mask layers baked to the role color.
+local KIND_TINT = {
+	miner = {r = 0.92, g = 0.42, b = 0.04, a = 1},
+	builder = {r = 0.87, g = 0.72, b = 0.2, a = 1},
+	soldier = {r = 0.72, g = 0.08, b = 0.08, a = 1},
+	carrier = {r = 0.2, g = 0.55, b = 0.85, a = 1}
+}
+
+local function tint_unit_masks(unit, tint)
+	for _, animation in pairs({unit.run_animation, unit.attack_parameters.animation}) do
+		for _, layer in pairs(animation.layers or {}) do
+			if layer.apply_runtime_tint then
+				layer.apply_runtime_tint = nil
+				layer.tint = tint
+			end
+		end
+	end
+end
 
 local hidden_team_mate = table.deepcopy(team_mate)
 hidden_team_mate.name = "not-alone-team-mate-hidden"
+hidden_team_mate.hidden_in_factoriopedia = true
 local hidden_animation_layer = {
 	filename = "__core__/graphics/empty.png",
 	width = 1,
@@ -352,6 +379,8 @@ local soldier_prototypes = {}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	local unit = table.deepcopy(team_mate)
 	unit.name = "not-alone-team-mate-" .. weapon.suffix
+	unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
+	tint_unit_masks(unit, KIND_TINT.soldier)
 	local gun = data.raw.gun[weapon.gun]
 	local ammo = data.raw.ammo[weapon.ammo]
 	if gun and ammo then
@@ -372,8 +401,14 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
 	end
 	soldier_prototypes[#soldier_prototypes + 1] = unit
 
-	soldier_prototypes[#soldier_prototypes + 1] =
-		make_team_mate_item(weapon.kind, {r = 0.72, g = 0.08, b = 0.08, a = 1}, weapon.order)
+	local kit_item = make_team_mate_item(weapon.kind, KIND_TINT.soldier, weapon.order)
+	-- The kit shows the actual gun so the tiers are tellable apart at a glance.
+	if gun and gun.icon then
+		kit_item.icons = nil
+		kit_item.icon = gun.icon
+		kit_item.icon_size = gun.icon_size
+	end
+	soldier_prototypes[#soldier_prototypes + 1] = kit_item
 
 	local recipe = {
 		type = "recipe",
@@ -396,6 +431,10 @@ end
 -- The base Soldier is unarmed and punches at melee range, like a recruit.
 local fists_unit = table.deepcopy(team_mate)
 fists_unit.name = "not-alone-team-mate-fists"
+fists_unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
+fists_unit.hidden_in_factoriopedia = nil
+fists_unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-soldier"}
+tint_unit_masks(fists_unit, KIND_TINT.soldier)
 local fist_params = fists_unit.attack_parameters
 fist_params.range = 1.5
 fist_params.cooldown = 35
@@ -426,12 +465,25 @@ soldier_prototypes[#soldier_prototypes + 1] = {
 	},
 	results = {{type = "item", name = "not-alone-soldier", amount = 1}}
 }
+
+for _, kind in pairs({"miner", "builder", "carrier"}) do
+	local unit = table.deepcopy(team_mate)
+	unit.name = "not-alone-team-mate-" .. kind
+	unit.localised_name = {"entity-name.not-alone-team-mate-" .. kind}
+	unit.hidden_in_factoriopedia = nil
+	unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-" .. kind}
+	tint_unit_masks(unit, KIND_TINT[kind])
+	soldier_prototypes[#soldier_prototypes + 1] = unit
+end
 data:extend(soldier_prototypes)
 
 local team_mate_filter_names = {
 	"not-alone-team-mate",
 	"not-alone-team-mate-hidden",
-	"not-alone-team-mate-fists"
+	"not-alone-team-mate-fists",
+	"not-alone-team-mate-miner",
+	"not-alone-team-mate-builder",
+	"not-alone-team-mate-carrier"
 }
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	table.insert(team_mate_filter_names, "not-alone-team-mate-" .. weapon.suffix)
@@ -441,6 +493,7 @@ local command_tool = {
 	type = "selection-tool",
 	name = "not-alone-command-tool",
 	icon = "__base__/graphics/icons/spidertron-remote.png",
+	factoriopedia_description = {"factoriopedia-description.not-alone-command-tool"},
 	flags = {"not-stackable", "spawnable"},
 	subgroup = "tool",
 	order = "c[automated-construction]-z[not-alone-command-tool]",
