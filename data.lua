@@ -326,6 +326,117 @@ local mining_sound = {
 	}
 }
 
+-- Soldier weapon tiers: each variant borrows the vanilla gun's range and
+-- cadence plus the ammo's effect, keeping the ammo_category aligned so the
+-- force's weapon-damage and shooting-speed research applies automatically.
+local SOLDIER_WEAPONS = {
+	{suffix = "smg", kind = "soldier-smg", gun = "submachine-gun", ammo = "firearm-magazine", order = "e[soldier-smg]"},
+	{suffix = "shotgun", kind = "soldier-shotgun", gun = "shotgun", ammo = "shotgun-shell", order = "f[soldier-shotgun]"},
+	{suffix = "combat-shotgun", kind = "soldier-combat-shotgun", gun = "combat-shotgun", ammo = "piercing-shotgun-shell", order = "g[soldier-combat-shotgun]"},
+	{suffix = "flamethrower", kind = "soldier-flamethrower", gun = "flamethrower", ammo = "flamethrower-ammo", order = "h[soldier-flamethrower]"},
+	{suffix = "rocket", kind = "soldier-rocket", gun = "rocket-launcher", ammo = "rocket", order = "i[soldier-rocket]"}
+}
+
+local function find_unlocking_technology(recipe_name)
+	for _, technology in pairs(data.raw.technology) do
+		for _, effect in pairs(technology.effects or {}) do
+			if effect.type == "unlock-recipe" and effect.recipe == recipe_name then
+				return technology
+			end
+		end
+	end
+	return nil
+end
+
+local soldier_prototypes = {}
+for _, weapon in pairs(SOLDIER_WEAPONS) do
+	local unit = table.deepcopy(team_mate)
+	unit.name = "not-alone-team-mate-" .. weapon.suffix
+	local gun = data.raw.gun[weapon.gun]
+	local ammo = data.raw.ammo[weapon.ammo]
+	if gun and ammo then
+		-- Keep the unit-required animation/structure, swap in the gun's stats.
+		local params = unit.attack_parameters
+		params.range = gun.attack_parameters.range
+		params.cooldown = gun.attack_parameters.cooldown
+		params.min_range = gun.attack_parameters.min_range
+		params.ammo_category = ammo.ammo_category
+		local ammo_type = table.deepcopy(ammo.ammo_type)
+		if ammo_type and not ammo_type.action and ammo_type[1] then
+			ammo_type = ammo_type[1]
+		end
+		params.ammo_type = ammo_type
+		if gun.attack_parameters.sound then
+			params.sound = table.deepcopy(gun.attack_parameters.sound)
+		end
+	end
+	soldier_prototypes[#soldier_prototypes + 1] = unit
+
+	soldier_prototypes[#soldier_prototypes + 1] =
+		make_team_mate_item(weapon.kind, {r = 0.72, g = 0.08, b = 0.08, a = 1}, weapon.order)
+
+	local recipe = {
+		type = "recipe",
+		name = "not-alone-" .. weapon.kind,
+		enabled = true,
+		ingredients = {
+			{type = "item", name = weapon.gun, amount = 1},
+			{type = "item", name = weapon.ammo, amount = 5}
+		},
+		results = {{type = "item", name = "not-alone-" .. weapon.kind, amount = 1}}
+	}
+	local technology = find_unlocking_technology(weapon.gun)
+	if technology then
+		recipe.enabled = false
+		table.insert(technology.effects, {type = "unlock-recipe", recipe = recipe.name})
+	end
+	soldier_prototypes[#soldier_prototypes + 1] = recipe
+end
+
+-- The base Soldier is unarmed and punches at melee range, like a recruit.
+local fists_unit = table.deepcopy(team_mate)
+fists_unit.name = "not-alone-team-mate-fists"
+local fist_params = fists_unit.attack_parameters
+fist_params.range = 1.5
+fist_params.cooldown = 35
+fist_params.min_range = nil
+fist_params.ammo_category = "melee"
+fist_params.sound = nil
+fist_params.ammo_type = {
+	category = "melee",
+	target_type = "entity",
+	action = {
+		type = "direct",
+		action_delivery = {
+			type = "instant",
+			target_effects = {
+				{type = "damage", damage = {amount = 8, type = "physical"}}
+			}
+		}
+	}
+}
+soldier_prototypes[#soldier_prototypes + 1] = fists_unit
+
+soldier_prototypes[#soldier_prototypes + 1] = {
+	type = "recipe",
+	name = "not-alone-soldier",
+	enabled = true,
+	ingredients = {
+		{type = "item", name = "iron-plate", amount = 5}
+	},
+	results = {{type = "item", name = "not-alone-soldier", amount = 1}}
+}
+data:extend(soldier_prototypes)
+
+local team_mate_filter_names = {
+	"not-alone-team-mate",
+	"not-alone-team-mate-hidden",
+	"not-alone-team-mate-fists"
+}
+for _, weapon in pairs(SOLDIER_WEAPONS) do
+	table.insert(team_mate_filter_names, "not-alone-team-mate-" .. weapon.suffix)
+end
+
 local command_tool = {
 	type = "selection-tool",
 	name = "not-alone-command-tool",
@@ -337,13 +448,13 @@ local command_tool = {
 	select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = {"not-alone-team-mate", "not-alone-team-mate-hidden"},
+		entity_filters = team_mate_filter_names,
 		cursor_box_type = "entity"
 	},
 	alt_select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = {"not-alone-team-mate", "not-alone-team-mate-hidden"},
+		entity_filters = team_mate_filter_names,
 		cursor_box_type = "entity"
 	},
 	reverse_select = {

@@ -33,6 +33,21 @@ local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
 local INVENTORY_ICON_SCALE = 0.5
 local INVENTORY_ICON_SPACING = 0.65
 local TEAM_MATE_NAME = "not-alone-team-mate"
+local TEAM_MATE_ENTITY_BY_KIND = {
+  soldier = "not-alone-team-mate-fists"
+}
+local KIND_BY_ENTITY_NAME = {
+  ["not-alone-team-mate-fists"] = "soldier",
+  ["not-alone-team-mate-smg"] = "soldier",
+  ["not-alone-team-mate-shotgun"] = "soldier",
+  ["not-alone-team-mate-combat-shotgun"] = "soldier",
+  ["not-alone-team-mate-flamethrower"] = "soldier",
+  ["not-alone-team-mate-rocket"] = "soldier"
+}
+local TEAM_MATE_NAMES = {TEAM_MATE_NAME}
+for entity_name in pairs(KIND_BY_ENTITY_NAME) do
+  TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
+end
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
@@ -54,6 +69,47 @@ local KIND_COLOR = {
   soldier = {r = 0.72, g = 0.08, b = 0.08},
   carrier = {r = 0.2, g = 0.55, b = 0.85}
 }
+-- Soldier arsenal, ordered worst to best. Soldiers fight with the best owned
+-- weapon that still has ammo, and restock the best ammo tier listed first.
+local SOLDIER_WEAPONS = {
+  {
+    kind = "smg",
+    item = "not-alone-soldier-smg",
+    entity = "not-alone-team-mate-smg",
+    ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
+  },
+  {
+    kind = "shotgun",
+    item = "not-alone-soldier-shotgun",
+    entity = "not-alone-team-mate-shotgun",
+    ammo = {"piercing-shotgun-shell", "shotgun-shell"}
+  },
+  {
+    kind = "combat-shotgun",
+    item = "not-alone-soldier-combat-shotgun",
+    entity = "not-alone-team-mate-combat-shotgun",
+    ammo = {"piercing-shotgun-shell", "shotgun-shell"}
+  },
+  {
+    kind = "flamethrower",
+    item = "not-alone-soldier-flamethrower",
+    entity = "not-alone-team-mate-flamethrower",
+    ammo = {"flamethrower-ammo"}
+  },
+  {
+    kind = "rocket",
+    item = "not-alone-soldier-rocket",
+    entity = "not-alone-team-mate-rocket",
+    ammo = {"explosive-rocket", "rocket"}
+  }
+}
+local SOLDIER_WEAPON_BY_KIND = {}
+for _, weapon in pairs(SOLDIER_WEAPONS) do
+  SOLDIER_WEAPON_BY_KIND[weapon.kind] = weapon
+end
+local SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
+local SOLDIER_AMMO_RESTOCK_COUNT = 20
+local SOLDIER_AMMO_TICKS_PER_ROUND = 30
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -189,6 +245,13 @@ local function get_carried_items(record)
     and (record.carrier_carried_count or 0) > 0 then
     counts[record.carrier_item.name] = (counts[record.carrier_item.name] or 0)
       + record.carrier_carried_count
+  end
+  if record.kind == "soldier" and record.soldier_ammo then
+    for ammo_name, count in pairs(record.soldier_ammo) do
+      if count > 0 then
+        counts[ammo_name] = (counts[ammo_name] or 0) + count
+      end
+    end
   end
 
   local items = {}
@@ -597,6 +660,24 @@ local function find_logistics_return_source(record, item_name)
     end
   end
   return nearest_source
+end
+
+local function find_logistics_item_source(record, item_name)
+  local network = record.entity.surface.find_closest_logistic_network_by_position(
+    position_table(record.entity.position),
+    record.entity.force
+  )
+  if not network then
+    return nil
+  end
+  local pickup_point = network.select_pickup_point({
+    name = item_name,
+    position = position_table(record.entity.position),
+    include_buffers = true
+  })
+  local source = pickup_point and pickup_point.owner
+  local inventory = get_logistics_source_inventory(source)
+  return inventory and inventory.get_item_count(item_name) > 0 and source or nil
 end
 
 local function get_resource_info(resource_name)
@@ -1112,6 +1193,37 @@ local function move_team_mate_toward_destination(record, destination)
   move_team_mate(record, waypoint, 1)
 end
 
+local function find_soldier_target(record, surface, force, position)
+  local team_mate = record.entity
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local network = surface.find_closest_logistic_network_by_position(position, force)
+  if not network then
+    return nil
+  end
+
+  local nearest_enemy
+  local nearest_distance
+  for _, cell in pairs(network.cells) do
+    if cell.valid and cell.owner.valid then
+      local radius = math.max(cell.logistic_radius, cell.construction_radius)
+      if radius > 0 then
+        for _, enemy in pairs(surface.find_enemy_units(cell.owner.position, radius, force)) do
+          if enemy.valid then
+            local current_distance = distance_squared(position, enemy.position)
+            if not nearest_distance or current_distance < nearest_distance then
+              nearest_enemy = enemy
+              nearest_distance = current_distance
+            end
+          end
+        end
+      end
+    end
+  end
+  return nearest_enemy
+end
+
 local function attack_with_team_mate(record, enemy)
   if record.command_kind == "attack"
     and record.command_target
@@ -1129,6 +1241,211 @@ local function attack_with_team_mate(record, enemy)
   record.command_kind = "attack"
   record.command_destination = nil
   record.command_target = enemy
+end
+
+local function get_soldier_ammo_count(record, weapon)
+  local total = 0
+  for _, ammo_name in pairs(weapon.ammo) do
+    total = total + ((record.soldier_ammo and record.soldier_ammo[ammo_name]) or 0)
+  end
+  return total
+end
+
+-- Best owned weapon that still has ammo; nil means fall back to fists.
+local function select_soldier_weapon(record)
+  for rank = #SOLDIER_WEAPONS, 1, -1 do
+    local weapon = SOLDIER_WEAPONS[rank]
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind]
+      and get_soldier_ammo_count(record, weapon) > 0 then
+      return weapon
+    end
+  end
+  return nil
+end
+
+local function consume_soldier_ammo(record, weapon)
+  for _, ammo_name in ipairs(weapon.ammo) do
+    local count = record.soldier_ammo and record.soldier_ammo[ammo_name] or 0
+    if count > 0 then
+      record.soldier_ammo[ammo_name] = count > 1 and count - 1 or nil
+      return
+    end
+  end
+end
+
+-- Swap the unit prototype to match the weapon in hand (nil means fists).
+local function ensure_soldier_entity(record, weapon)
+  local wanted = weapon and weapon.entity or SOLDIER_FISTS_ENTITY
+  local old_entity = record.entity
+  if old_entity.name == wanted then
+    return true
+  end
+  local replacement = old_entity.surface.create_entity({
+    name = wanted,
+    position = old_entity.position,
+    force = old_entity.force,
+    create_build_effect_smoke = false
+  })
+  if not replacement then
+    return false
+  end
+  local tag = old_entity.name_tag
+  destroy_network_member(record)
+  destroy_color_marker(record)
+  destroy_inventory_renderings(record)
+  old_entity.destroy()
+  replacement.name_tag = tag
+  record.entity = replacement
+  record.command_kind = nil
+  record.command_destination = nil
+  record.command_target = nil
+  update_network_member(record)
+  create_color_marker(record)
+  return true
+end
+
+-- Best owned weapon's ammo first, then that weapon's best ammo tier.
+local function find_soldier_ammo_source(record)
+  for rank = #SOLDIER_WEAPONS, 1, -1 do
+    local weapon = SOLDIER_WEAPONS[rank]
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind] then
+      for _, ammo_name in ipairs(weapon.ammo) do
+        if prototypes.item[ammo_name] then
+          local source = find_logistics_item_source(record, ammo_name)
+          if source then
+            return source, ammo_name
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function assign_soldier_job(record, surface, force, position)
+  -- Even an unarmed Soldier will deploy and punch.
+  return find_soldier_target(record, surface, force, position) ~= nil
+end
+
+local function try_soldier_weapon_pickup(record)
+  for rank = #SOLDIER_WEAPONS, 1, -1 do
+    local weapon = SOLDIER_WEAPONS[rank]
+    if not (record.soldier_weapons and record.soldier_weapons[weapon.kind]) then
+      local source = find_logistics_item_source(record, weapon.item)
+      if source then
+        record.soldier_state = "pickup-weapon"
+        record.soldier_pickup_kind = weapon.kind
+        record.soldier_pickup_source = source
+        return true
+      end
+    end
+  end
+  return false
+end
+
+local function start_soldier_restock(record)
+  local source, ammo_name = find_soldier_ammo_source(record)
+  if not source then
+    return false
+  end
+  record.soldier_state = "restock"
+  record.soldier_ammo_source = source
+  record.soldier_restock_name = ammo_name
+  return true
+end
+
+local function update_soldier(record)
+  if record.soldier_state == "restock" then
+    local source = record.soldier_ammo_source
+    local inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not inventory
+      or inventory.get_item_count(record.soldier_restock_name) == 0 then
+      record.soldier_state = nil
+      record.soldier_ammo_source = nil
+      record.soldier_restock_name = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      local removed = inventory.remove({
+        name = record.soldier_restock_name,
+        count = SOLDIER_AMMO_RESTOCK_COUNT
+      })
+      if removed > 0 then
+        record.soldier_ammo = record.soldier_ammo or {}
+        record.soldier_ammo[record.soldier_restock_name] =
+          (record.soldier_ammo[record.soldier_restock_name] or 0) + removed
+      end
+      record.soldier_state = nil
+      record.soldier_ammo_source = nil
+      record.soldier_restock_name = nil
+      stop_team_mate(record)
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
+
+  if record.soldier_state == "pickup-weapon" then
+    local source = record.soldier_pickup_source
+    local weapon = SOLDIER_WEAPON_BY_KIND[record.soldier_pickup_kind]
+    local inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not inventory or not weapon
+      or inventory.get_item_count(weapon.item) == 0 then
+      record.soldier_state = nil
+      record.soldier_pickup_source = nil
+      record.soldier_pickup_kind = nil
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      if inventory.remove({name = weapon.item, count = 1}) == 1 then
+        record.soldier_weapons = record.soldier_weapons or {}
+        record.soldier_weapons[weapon.kind] = true
+      end
+      record.soldier_state = nil
+      record.soldier_pickup_source = nil
+      record.soldier_pickup_kind = nil
+      stop_team_mate(record)
+    else
+      move_team_mate(record, source.position, 2)
+    end
+    return true
+  end
+
+  local target = find_soldier_target(record)
+  if not target then
+    local nearby = record.entity.surface.find_nearest_enemy({
+      position = record.entity.position,
+      max_distance = ENGAGEMENT_RADIUS,
+      force = record.entity.force
+    })
+    if nearby and nearby.valid then
+      target = nearby
+    end
+  end
+
+  if target then
+    local weapon = select_soldier_weapon(record)
+    -- Out of ammo for every owned weapon: rearm if the network has any;
+    -- only fight bare-handed when no ammo can be had anywhere.
+    if not weapon and start_soldier_restock(record) then
+      return true
+    end
+    if not ensure_soldier_entity(record, weapon) then
+      return true
+    end
+    attack_with_team_mate(record, target)
+    -- Fighting burns ammo over time; the engine cannot report each shot.
+    if weapon and game.tick >= (record.soldier_next_ammo_tick or 0) then
+      consume_soldier_ammo(record, weapon)
+      record.soldier_next_ammo_tick = game.tick + SOLDIER_AMMO_TICKS_PER_ROUND
+    end
+    return true
+  end
+
+  -- Idle: collect new weapons, then top up ammo, then dock.
+  if try_soldier_weapon_pickup(record) then
+    return true
+  end
+  if not select_soldier_weapon(record) and start_soldier_restock(record) then
+    return true
+  end
+  return dock_at_habitat(record)
 end
 
 local function get_ghost_item(ghost)
@@ -1503,6 +1820,19 @@ dock_at_habitat = function(record)
     or inventory.insert({name = ITEM_NAME_BY_KIND[record.kind], count = 1}) ~= 1 then
     return true
   end
+  -- Docked Soldiers keep their weapons and ammo; the arsenal waits in the
+  -- Habitat's locker and is restored to the next Soldier deployed from it.
+  if record.kind == "soldier" and habitat.unit_number
+    and ((record.soldier_weapons and next(record.soldier_weapons))
+      or (record.soldier_ammo and next(record.soldier_ammo))) then
+    storage.not_alone_soldier_lockers = storage.not_alone_soldier_lockers or {}
+    local lockers = storage.not_alone_soldier_lockers[habitat.unit_number] or {}
+    lockers[#lockers + 1] = {
+      weapons = record.soldier_weapons,
+      ammo = record.soldier_ammo
+    }
+    storage.not_alone_soldier_lockers[habitat.unit_number] = lockers
+  end
   destroy_route_renderings(record)
   destroy_inventory_renderings(record)
   destroy_network_member(record)
@@ -1710,7 +2040,7 @@ local function create_team_mate(player, kind, index, spawn_center)
   end
 
   local character = player.surface.create_entity({
-    name = TEAM_MATE_NAME,
+    name = TEAM_MATE_ENTITY_BY_KIND[kind] or TEAM_MATE_NAME,
     position = spawn_position,
     force = player.force,
     create_build_effect_smoke = false
@@ -1751,12 +2081,15 @@ local function reconcile_orphaned_team_mates()
   end
 
   for _, surface in pairs(game.surfaces) do
-    for _, entity in pairs(surface.find_entities_filtered({name = TEAM_MATE_NAME})) do
+    for _, entity in pairs(surface.find_entities_filtered({name = TEAM_MATE_NAMES})) do
       if entity.valid and not tracked[entity.unit_number] then
         local player = find_any_player_for_force(entity.force)
         if player and player.valid then
-          local label = entity.name_tag and entity.name_tag:match("^(%a+)")
-          local kind = (label and KIND_BY_LABEL[label]) or "soldier"
+          local kind = KIND_BY_ENTITY_NAME[entity.name]
+          if not kind then
+            local label = entity.name_tag and entity.name_tag:match("^(%a+)")
+            kind = (label and KIND_BY_LABEL[label]) or "soldier"
+          end
           local record = {entity = entity, kind = kind}
           find_nearest_habitat(record)
           update_network_member(record)
@@ -1925,6 +2258,8 @@ local function assign_job(record, surface, force, position)
     return assign_builder_job(record, surface, force, position)
   elseif record.kind == "carrier" then
     return assign_carrier_job(record, surface, force, position)
+  elseif record.kind == "soldier" then
+    return assign_soldier_job(record, surface, force, position)
   end
   return false
 end
@@ -1954,6 +2289,16 @@ local function auto_deploy_from_habitat(habitat)
           record[key] = value
         end
         record.habitat = habitat
+        -- Restore a docked Soldier's stashed weapons and ammo.
+        if kind == "soldier" then
+          local lockers = storage.not_alone_soldier_lockers
+            and storage.not_alone_soldier_lockers[habitat.unit_number]
+          if lockers and #lockers > 0 then
+            local locker = table.remove(lockers)
+            record.soldier_weapons = locker.weapons
+            record.soldier_ammo = locker.ammo
+          end
+        end
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
       elseif record then
@@ -2113,7 +2458,8 @@ local function update_team_mate(record, player)
     force = character.force
   })
 
-  if enemy and enemy.valid then
+  -- Soldiers manage their own combat (with ammo) in update_soldier.
+  if enemy and enemy.valid and record.kind ~= "soldier" then
     attack_with_team_mate(record, enemy)
     return true
   end
@@ -2124,6 +2470,8 @@ local function update_team_mate(record, player)
     return update_builder(record)
   elseif record.kind == "carrier" then
     return update_carrier(record)
+  elseif record.kind == "soldier" then
+    return update_soldier(record)
   end
   return dock_at_habitat(record)
 end
