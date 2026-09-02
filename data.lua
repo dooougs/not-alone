@@ -121,7 +121,7 @@ for _, target_name in pairs(requester_target_types) do
 	if target then
 		local variant = table.deepcopy(building_logistics_requester)
 		variant.name = "not-alone-building-logistics-requester-" .. target_name
-		variant.localised_name = target.localised_name
+		variant.localised_name = {"entity-name." .. target_name}
 		variant.icon = target.icon
 		variant.icon_size = target.icon_size
 		variant.icons = target.icons
