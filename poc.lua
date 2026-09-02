@@ -44,6 +44,15 @@ local ITEM_NAME_BY_KIND = {
 }
 local TEAM_MATE_KINDS = {"miner", "builder", "soldier", "carrier"}
 local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier", carrier = "Carrier"}
+-- Division colors borrowed from classic sci-fi uniforms: engineering gold for
+-- Builders, command red for Soldiers, sciences blue for Carriers, and a
+-- hazard-suit orange for Miners (mining/EVA suits across many settings).
+local KIND_COLOR = {
+  miner = {r = 0.92, g = 0.42, b = 0.04},
+  builder = {r = 0.87, g = 0.72, b = 0.2},
+  soldier = {r = 0.72, g = 0.08, b = 0.08},
+  carrier = {r = 0.2, g = 0.55, b = 0.85}
+}
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -1673,7 +1682,7 @@ local function create_team_mate(player, kind, index, spawn_center)
     return nil
   end
 
-  character.color = player.color
+  character.color = KIND_COLOR[kind] or player.color
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
   local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
