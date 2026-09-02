@@ -277,6 +277,18 @@ local function set_team_mate_pedia_visuals(unit, tint, sheet)
 		}
 	}
 	tint_unit_masks(unit, tint)
+	unit.factoriopedia_simulation = {
+		init = "game.simulation.camera_zoom = 2.8\n"
+			.. "game.simulation.camera_position = {0, 0}\n"
+			.. "tiles = {}\n"
+			.. "for x = -12, 12 do for y = -12, 12 do "
+			.. "tiles[#tiles + 1] = {position = {x, y}, name = \"grass-1\"} "
+			.. "end end\n"
+			.. "game.surfaces[1].set_tiles(tiles)\n"
+			.. "preview = game.surfaces[1].create_entity{name = \""
+			.. unit.name .. "\", position = {0, 0}}"
+			.. "\npreview.commandable.set_command{type = defines.command.stop}"
+	}
 end
 
 local hidden_team_mate = table.deepcopy(team_mate)
