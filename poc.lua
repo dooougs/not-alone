@@ -293,6 +293,12 @@ local function get_logistics_target_inventory(target, inventory_kind)
   return target.get_inventory(defines.inventory.crafter_input)
 end
 
+local function item_is_fuel_for(item_name, burner)
+  local item_prototype = prototypes.item[item_name]
+  return item_prototype and item_prototype.fuel_category
+    and burner.fuel_categories[item_prototype.fuel_category]
+end
+
 local function find_available_fuel(target, network)
   local burner = target.burner
   if not burner or not burner.inventory then
@@ -303,23 +309,53 @@ local function find_available_fuel(target, network)
     local inventory = get_logistics_source_inventory(source)
     if inventory then
       for _, item in pairs(inventory.get_contents()) do
-        local item_prototype = prototypes.item[item.name]
-        if item_prototype and burner.fuel_categories[item_prototype.fuel_category] then
+        if item_is_fuel_for(item.name, burner) then
           return item.name
         end
       end
     end
   end
 
-  -- Fuel mined by team mates exists in no chest yet but is en route.
+  -- Fuel carried by team mates exists in no chest yet but is en route.
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       local resource_info = record.kind == "miner" and record.mining_resource_info
-      local item_prototype = resource_info and prototypes.item[resource_info.item_name]
-      if item_prototype and record.entity.valid
+      if resource_info and record.entity.valid
         and record.entity.force == target.force
-        and burner.fuel_categories[item_prototype.fuel_category] then
+        and item_is_fuel_for(resource_info.item_name, burner) then
         return resource_info.item_name
+      end
+      if record.kind == "builder" and record.entity.valid
+        and record.entity.force == target.force then
+        if record.builder_item and (record.builder_carried_count or 0) > 0
+          and item_is_fuel_for(record.builder_item.name, burner) then
+          return record.builder_item.name
+        end
+        if record.builder_cargo and record.builder_cargo.valid then
+          for _, item in pairs(record.builder_cargo.get_contents()) do
+            if item_is_fuel_for(item.name, burner) then
+              return item.name
+            end
+          end
+        end
+      end
+    end
+  end
+  return nil
+end
+
+local function inventory_kind_for_item(target, item_name)
+  local burner = target.burner
+  if burner and burner.inventory and item_is_fuel_for(item_name, burner) then
+    return "fuel"
+  end
+  if RECIPE_ENTITY_TYPES[target.type] then
+    local recipe = target.get_recipe()
+    if recipe then
+      for _, ingredient in pairs(recipe.ingredients) do
+        if ingredient.type == "item" and ingredient.name == item_name then
+          return "input"
+        end
       end
     end
   end
@@ -374,24 +410,20 @@ local function update_building_requester(requester_record, network)
     return false
   end
 
-  local requests = get_building_requests(target, network)
-  local request_by_item = {}
-  for _, request in pairs(requests) do
-    request_by_item[request.item_name] = request
-  end
-
   local requester_inventory = requester.get_inventory(defines.inventory.chest)
   for _, item in pairs(requester_inventory.get_contents()) do
-    local request = request_by_item[item.name]
-    local target_inventory = request
-      and get_logistics_target_inventory(target, request.inventory_kind)
+    -- Move whatever the target can currently accept, even if the fresh
+    -- request that originally justified delivering it has since expired.
+    local inventory_kind = inventory_kind_for_item(target, item.name)
+    local target_inventory = inventory_kind
+      and get_logistics_target_inventory(target, inventory_kind)
     if target_inventory then
       local inserted = target_inventory.insert({name = item.name, count = item.count})
       requester_inventory.remove({name = item.name, count = inserted})
     end
   end
 
-  requests = get_building_requests(target, network)
+  local requests = get_building_requests(target, network)
 
   local requester_point = requester.get_requester_point()
   local section = requester_point and requester_point.get_section(1)
