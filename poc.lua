@@ -1699,6 +1699,15 @@ end
 
 -- Mirrors how logistic robots resolve a delivery: find any network item with
 -- an unmet requester demand, then find the nearest chest currently holding it.
+local function get_requested_count(logistic_point, item_name, quality)
+  for _, filter in pairs(logistic_point.filters or {}) do
+    if filter.name == item_name and (not filter.quality or filter.quality == quality) then
+      return filter.count
+    end
+  end
+  return nil
+end
+
 local function find_carrier_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -1706,7 +1715,7 @@ local function find_carrier_job(record, surface, force, position)
   position = position or position_table(team_mate.position)
   local network = surface.find_logistic_network_by_position(position, force)
   if not network then
-    return nil, nil, nil
+    return nil, nil, nil, nil
   end
 
   for _, item in pairs(network.get_contents()) do
@@ -1718,30 +1727,40 @@ local function find_carrier_job(record, surface, force, position)
     local consumer = drop_point and drop_point.owner
     local consumer_inventory = consumer and consumer.valid
       and consumer.get_inventory(defines.inventory.chest)
-    if consumer_inventory and consumer_inventory.get_insertable_count(item_id) > 0 then
-      local pickup_point = network.select_pickup_point({
-        name = item_id,
-        position = position,
-        include_buffers = true
-      })
-      local source = pickup_point and pickup_point.owner
-      local source_inventory = get_logistics_source_inventory(source)
-      if source_inventory and source_inventory.get_item_count(item_id) > 0 then
-        return source, consumer, item_id
+    if consumer_inventory then
+      -- Only deliver up to what's actually still requested, not a full stack.
+      local requested = get_requested_count(drop_point, item.name, item.quality)
+      local missing = requested
+        and math.max(requested - consumer_inventory.get_item_count(item_id), 0)
+        or consumer_inventory.get_insertable_count(item_id)
+      missing = math.min(missing, consumer_inventory.get_insertable_count(item_id))
+      if missing > 0 then
+        local pickup_point = network.select_pickup_point({
+          name = item_id,
+          position = position,
+          include_buffers = true
+        })
+        local source = pickup_point and pickup_point.owner
+        local source_inventory = get_logistics_source_inventory(source)
+        local available = source_inventory and source_inventory.get_item_count(item_id) or 0
+        if available > 0 then
+          return source, consumer, item_id, math.min(missing, available)
+        end
       end
     end
   end
-  return nil, nil, nil
+  return nil, nil, nil, nil
 end
 
 local function assign_carrier_job(record, surface, force, position)
-  local source, target, item = find_carrier_job(record, surface, force, position)
+  local source, target, item, needed = find_carrier_job(record, surface, force, position)
   if not source then
     return false
   end
   record.carrier_source = source
   record.carrier_target = target
   record.carrier_item = item
+  record.carrier_needed_count = needed
   record.carrier_carried_count = 0
   record.carrier_state = "move-to-source"
   return true
@@ -1757,11 +1776,12 @@ local function update_carrier(record)
       record.carrier_source = nil
       record.carrier_target = nil
       record.carrier_item = nil
+      record.carrier_needed_count = nil
     elseif distance_squared(record.entity.position, source.position) <= 4 then
       local removed = inventory.remove({
         name = record.carrier_item.name,
         quality = record.carrier_item.quality,
-        count = CARRIER_CAPACITY
+        count = math.min(CARRIER_CAPACITY, record.carrier_needed_count or CARRIER_CAPACITY)
       })
       if removed > 0 then
         record.carrier_carried_count = removed
@@ -1771,6 +1791,7 @@ local function update_carrier(record)
         record.carrier_source = nil
         record.carrier_target = nil
         record.carrier_item = nil
+        record.carrier_needed_count = nil
       end
     else
       move_team_mate(record, source.position, 2)
@@ -1794,6 +1815,7 @@ local function update_carrier(record)
       record.carrier_source = nil
       record.carrier_item = nil
       record.carrier_carried_count = 0
+      record.carrier_needed_count = nil
     elseif distance_squared(record.entity.position, target.position) <= 4 then
       local inserted = target_inventory.insert({
         name = record.carrier_item.name,
@@ -1807,6 +1829,7 @@ local function update_carrier(record)
         record.carrier_source = nil
         record.carrier_target = nil
         record.carrier_item = nil
+        record.carrier_needed_count = nil
       end
     else
       move_team_mate(record, target.position, 2)
