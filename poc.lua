@@ -157,15 +157,12 @@ local SOLDIER_ARMOR_ENTITY_SUFFIX = {
   [4] = "-armor-power",
   [5] = "-armor-power"
 }
--- Other crews crashed here too: derelict ships seeded from the map seed,
--- rare overall, but one is always placed inside the initially charted area
--- so the player has a visible lead to investigate.
+-- Other crews crashed here too: derelict ships seeded from the map seed and
+-- distributed by a rate derived from the opening charted area.
 local CRASH_SHIP_NAME = "crash-site-spaceship"
-local CRASH_SHIP_BASE_CHANCE = 0.002
-local CRASH_SHIP_FALLOFF_CHUNKS = 8
 local CRASH_SHIP_MAX_CREW = 10
-local CRASH_SHIP_STARTER_MIN_CHUNKS = 2
-local CRASH_SHIP_STARTER_MAX_CHUNKS = 5
+local CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER = 5
+local CRASH_SHIP_LOCAL_TARGET = 3
 local LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
@@ -3247,6 +3244,42 @@ end
 
 -- Other crews crash-landed here too. Seeded purely from the map seed and
 -- chunk position so the same map always yields the same wreck field.
+local function create_seeded_random(seed, chunk_x, chunk_y)
+  local modulus = 2147483647
+  local state = (seed % modulus
+    + (chunk_x + 1048576) * 40093
+    + (chunk_y + 1048576) * 92821) % modulus
+  if state <= 0 then
+    state = 1
+  end
+  return function(first, last)
+    state = (state * 48271) % modulus
+    local value = state / modulus
+    if first == nil then
+      return value
+    end
+    return math.floor(first + value * (last - first + 1))
+  end
+end
+
+local function get_crash_ship_rate(surface, distance_tiles)
+  local starting_radius = surface.get_starting_area_radius()
+  if not starting_radius or starting_radius <= 0 then
+    return 0
+  end
+  local visible_radius = starting_radius
+  local cutoff_radius = visible_radius * CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER
+  if distance_tiles >= cutoff_radius then
+    return 0
+  end
+
+  -- Normalize the local rate from the map's starting-area size rather than
+  -- using a fixed per-chunk chance.
+  local local_area = math.pi * (visible_radius / CHUNK_SIZE) ^ 2
+  local local_rate = CRASH_SHIP_LOCAL_TARGET / local_area
+  return local_rate * (1 - distance_tiles / cutoff_radius)
+end
+
 function poc.on_chunk_generated(event)
   local surface = event.surface
   if not surface.valid or surface.platform then
@@ -3257,22 +3290,14 @@ function poc.on_chunk_generated(event)
     return
   end
   local seed = surface.map_gen_settings.seed
-  local mixed = (seed + (chunk.x + 2048) * 40093 + (chunk.y + 2048) * 92821) % 4294967291
-  local rng = game.create_random_generator(mixed > 0 and mixed or 1)
-  local distance_chunks = math.sqrt(chunk.x * chunk.x + chunk.y * chunk.y)
-  -- Guarantee one wreck inside the initially charted area so the player
-  -- always spots a lead worth investigating.
-  if not storage.not_alone_starter_ship_placed
-    and distance_chunks >= CRASH_SHIP_STARTER_MIN_CHUNKS
-    and distance_chunks <= CRASH_SHIP_STARTER_MAX_CHUNKS then
-    if spawn_crash_ship(surface, event.area, rng) then
-      storage.not_alone_starter_ship_placed = true
-    end
-    return
-  end
-  local chance = CRASH_SHIP_BASE_CHANCE * math.exp(
-    -distance_chunks / CRASH_SHIP_FALLOFF_CHUNKS
-  )
+  local rng = create_seeded_random(seed, chunk.x, chunk.y)
+  local spawn = game.forces.player.get_spawn_position(surface)
+  local chunk_center = {
+    x = event.area.left_top.x + CHUNK_SIZE / 2,
+    y = event.area.left_top.y + CHUNK_SIZE / 2
+  }
+  local distance_tiles = math.sqrt(distance_squared(chunk_center, spawn))
+  local chance = get_crash_ship_rate(surface, distance_tiles)
   if rng() >= chance then
     return
   end
