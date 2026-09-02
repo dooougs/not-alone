@@ -44,6 +44,7 @@ local ITEM_NAME_BY_KIND = {
 }
 local TEAM_MATE_KINDS = {"miner", "builder", "soldier", "carrier"}
 local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier", carrier = "Carrier"}
+local KIND_BY_LABEL = {Miner = "miner", Builder = "builder", Soldier = "soldier", Carrier = "carrier"}
 -- Division colors borrowed from classic sci-fi uniforms: engineering gold for
 -- Builders, command red for Soldiers, sciences blue for Carriers, and a
 -- hazard-suit orange for Miners (mining/EVA suits across many settings).
@@ -300,7 +301,10 @@ local function consumer_accepts_item(consumer, mining_role, count)
 end
 
 local function find_requesting_consumer(record, mining_role)
-  local network = record.entity.surface.find_logistic_network_by_position(
+  -- Use the closest network, not just one that exactly covers this position:
+  -- a full Miner/Builder may have wandered just outside coverage while
+  -- gathering and must still be able to find its way back to deliver.
+  local network = record.entity.surface.find_closest_logistic_network_by_position(
     position_table(record.entity.position),
     record.entity.force
   )
@@ -569,7 +573,10 @@ local function update_building_requesters(record)
 end
 
 local function find_logistics_return_source(record, item_name)
-  local network = record.entity.surface.find_logistic_network_by_position(
+  -- Use the closest network, not just one that exactly covers this position:
+  -- a full Miner/Builder may have wandered just outside coverage while
+  -- gathering and must still be able to find its way back to deliver.
+  local network = record.entity.surface.find_closest_logistic_network_by_position(
     position_table(record.entity.position),
     record.entity.force
   )
@@ -1728,6 +1735,43 @@ local function find_any_player_for_force(force)
   return force.players and force.players[1]
 end
 
+-- A save/load or migration desync can leave a real team mate entity in the
+-- world with no matching record in storage; since update_team_mate only ever
+-- runs for tracked records, an orphan would otherwise sit frozen forever
+-- (e.g. a Miner stuck holding a full load it can never deliver). Re-adopt any
+-- such entity so it resumes normal behavior instead of staying stranded.
+local function reconcile_orphaned_team_mates()
+  local tracked = {}
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.entity and record.entity.valid then
+        tracked[record.entity.unit_number] = true
+      end
+    end
+  end
+
+  for _, surface in pairs(game.surfaces) do
+    for _, entity in pairs(surface.find_entities_filtered({name = TEAM_MATE_NAME})) do
+      if entity.valid and not tracked[entity.unit_number] then
+        local player = find_any_player_for_force(entity.force)
+        if player and player.valid then
+          local label = entity.name_tag and entity.name_tag:match("^(%a+)")
+          local kind = (label and KIND_BY_LABEL[label]) or "soldier"
+          local record = {entity = entity, kind = kind}
+          find_nearest_habitat(record)
+          update_network_member(record)
+          create_color_marker(record)
+          storage.not_alone_team_mates = storage.not_alone_team_mates or {}
+          local team_mates = storage.not_alone_team_mates[player.index] or {}
+          team_mates[#team_mates + 1] = record
+          storage.not_alone_team_mates[player.index] = team_mates
+          tracked[entity.unit_number] = true
+        end
+      end
+    end
+  end
+end
+
 -- Mirrors how logistic robots resolve a delivery: find any network item with
 -- an unmet requester demand, then find the nearest chest currently holding it.
 local function get_requested_count(logistic_point, item_name, quality)
@@ -2325,6 +2369,8 @@ function poc.on_update(event)
       auto_deploy_from_habitat(habitat)
     end
   end
+
+  reconcile_orphaned_team_mates()
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
