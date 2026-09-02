@@ -419,7 +419,9 @@ local function update_building_requester(requester_record, network)
       and get_logistics_target_inventory(target, inventory_kind)
     if target_inventory then
       local inserted = target_inventory.insert({name = item.name, count = item.count})
-      requester_inventory.remove({name = item.name, count = inserted})
+      if inserted > 0 then
+        requester_inventory.remove({name = item.name, count = inserted})
+      end
     end
   end
 
