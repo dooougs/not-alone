@@ -1261,6 +1261,31 @@ local function find_soldier_target(record, surface, force, position)
       end
     end
   end
+
+  -- Clear the covered enemy units first; only then move on to enemy bases.
+  if not nearest_enemy then
+    for _, cell in pairs(network.cells) do
+      if cell.valid and cell.owner.valid then
+        local radius = math.max(cell.logistic_radius, cell.construction_radius)
+        if radius > 0 then
+          for _, base in pairs(surface.find_entities_filtered({
+            position = cell.owner.position,
+            radius = radius,
+            force = "enemy",
+            type = {"unit-spawner", "turret"}
+          })) do
+            if base.valid then
+              local current_distance = distance_squared(position, base.position)
+              if not nearest_distance or current_distance < nearest_distance then
+                nearest_enemy = base
+                nearest_distance = current_distance
+              end
+            end
+          end
+        end
+      end
+    end
+  end
   return nearest_enemy
 end
 
