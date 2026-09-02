@@ -53,43 +53,6 @@ logistics_hub.base_patch = nil
 logistics_hub.door_animation_up = nil
 logistics_hub.door_animation_down = nil
 
--- Rides along with a deployed team mate so it is a real member of the
--- network. Zero radius with a connection distance so it joins a Habitat's
--- logistic area without contributing any coverage of its own.
-local team_mate_member = table.deepcopy(logistics_hub)
-team_mate_member.name = "not-alone-team-mate-member"
-team_mate_member.localised_name = {"entity-name.not-alone-team-mate"}
-team_mate_member.minable = nil
-team_mate_member.material_slots_count = 0
-team_mate_member.logistics_radius = 0
-team_mate_member.logistics_connection_distance = 1
-team_mate_member.radar_range = 0
-team_mate_member.selectable_in_game = false
-team_mate_member.draw_logistic_radius_visualization = false
-team_mate_member.draw_construction_radius_visualization = false
-team_mate_member.collision_box = nil
-team_mate_member.collision_mask = {layers = {}}
-team_mate_member.selection_box = nil
-team_mate_member.flags = {
-	"placeable-off-grid",
-	"not-on-map",
-	"not-blueprintable",
-	"not-deconstructable",
-	"not-flammable",
-	"hide-alt-info",
-	"not-selectable-in-game",
-	"not-upgradable",
-	"not-in-kill-statistics",
-	"not-in-made-in"
-}
-team_mate_member.hidden = nil
-team_mate_member.hidden_in_factoriopedia = true
-for _, key in pairs({"base", "base_patch", "frozen_patch", "base_animation",
-	"door_animation_up", "door_animation_down", "recharging_animation",
-	"water_reflection", "integration_patch"}) do
-	team_mate_member[key] = nil
-end
-
 local logistics_hub_item = table.deepcopy(data.raw.item.roboport)
 logistics_hub_item.name = "not-alone-logistics-hub"
 logistics_hub_item.localised_name = {"item-name.not-alone-logistics-hub"}
@@ -384,20 +347,20 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
 	local gun = data.raw.gun[weapon.gun]
 	local ammo = data.raw.ammo[weapon.ammo]
 	if gun and ammo then
-		-- Keep the unit-required animation/structure, swap in the gun's stats.
-		local params = unit.attack_parameters
-		params.range = gun.attack_parameters.range
-		params.cooldown = gun.attack_parameters.cooldown
-		params.min_range = gun.attack_parameters.min_range
+		-- Adopt the gun's complete attack parameters so the attack type, cadence,
+		-- and audio all match the real weapon - the flamethrower's sound lives in
+		-- cyclic_sound and its delivery is a stream, which field-by-field copying
+		-- onto a projectile attack silently loses. Keep the character animation
+		-- and the ammo's effect.
+		local params = table.deepcopy(gun.attack_parameters)
+		params.animation = unit.attack_parameters.animation
 		params.ammo_category = ammo.ammo_category
 		local ammo_type = table.deepcopy(ammo.ammo_type)
 		if ammo_type and not ammo_type.action and ammo_type[1] then
 			ammo_type = ammo_type[1]
 		end
 		params.ammo_type = ammo_type
-		if gun.attack_parameters.sound then
-			params.sound = table.deepcopy(gun.attack_parameters.sound)
-		end
+		unit.attack_parameters = params
 	end
 	soldier_prototypes[#soldier_prototypes + 1] = unit
 
@@ -440,7 +403,25 @@ fist_params.range = 1.5
 fist_params.cooldown = 35
 fist_params.min_range = nil
 fist_params.ammo_category = "melee"
-fist_params.sound = nil
+-- Center-to-center range can never reach a large structure's center, so
+-- punches on spawners and turrets would whiff forever without this.
+fist_params.range_mode = "bounding-box-to-bounding-box"
+local biter_attack = data.raw.unit["small-biter"]
+	and data.raw.unit["small-biter"].attack_parameters
+fist_params.sound = biter_attack and table.deepcopy(biter_attack.sound) or nil
+-- Swing on each punch instead of freezing in the gun-idle pose.
+local punch_tool = table.deepcopy(character_animations.level1.mining_tool)
+local punch_mask = table.deepcopy(character_animations.level1.mining_tool_mask)
+local punch_shadow = table.deepcopy(character_animations.level1.mining_tool_shadow)
+punch_mask.apply_runtime_tint = nil
+punch_mask.tint = KIND_TINT.soldier
+fist_params.animation = {
+	layers = {
+		punch_tool,
+		punch_mask,
+		punch_shadow
+	}
+}
 fist_params.ammo_type = {
 	category = "melee",
 	target_type = "entity",
@@ -526,7 +507,6 @@ data:extend({
 	logistics_hub,
 	logistics_hub_item,
 	logistics_hub_recipe,
-	team_mate_member,
 	miner_item,
 	builder_item,
 	soldier_item,

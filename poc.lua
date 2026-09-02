@@ -26,8 +26,6 @@ local BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
-local NETWORK_MEMBER_NAME = "not-alone-team-mate-member"
-local NETWORK_MEMBER_FOLLOW_DISTANCE = 1
 local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
 local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
 local INVENTORY_ICON_SCALE = 0.5
@@ -206,6 +204,75 @@ local function get_habitat_inventory(habitat)
     or nil
 end
 
+-- Docked team mates live as script-side crew counts, not items: a roboport's
+-- material inventory leaks into logistic network contents, so real items
+-- would show up in the network as if they sat in storage.
+local function get_habitat_crew(habitat)
+  storage.not_alone_habitat_crews = storage.not_alone_habitat_crews or {}
+  local crew = storage.not_alone_habitat_crews[habitat.unit_number]
+  if not crew then
+    crew = {}
+    storage.not_alone_habitat_crews[habitat.unit_number] = crew
+  end
+  return crew
+end
+
+-- The material inventory stays as the player-facing inbox: inserted team
+-- mate items are absorbed into the crew within one update.
+local function absorb_habitat_inbox(habitat)
+  local inventory = get_habitat_inventory(habitat)
+  if not inventory then
+    return
+  end
+  for kind, item_name in pairs(ITEM_NAME_BY_KIND) do
+    local count = inventory.get_item_count(item_name)
+    if count > 0 then
+      local removed = inventory.remove({name = item_name, count = count})
+      if removed > 0 then
+        local crew = get_habitat_crew(habitat)
+        crew[kind] = (crew[kind] or 0) + removed
+      end
+    end
+  end
+end
+
+local function update_habitat_crew_display(habitat)
+  storage.not_alone_habitat_crew_renders = storage.not_alone_habitat_crew_renders or {}
+  local renders = storage.not_alone_habitat_crew_renders
+  local crew = storage.not_alone_habitat_crews
+    and storage.not_alone_habitat_crews[habitat.unit_number]
+  local parts = {}
+  for _, kind in pairs(TEAM_MATE_KINDS) do
+    local count = crew and crew[kind] or 0
+    if count > 0 then
+      parts[#parts + 1] = (KIND_LABEL[kind] or kind) .. " " .. count
+    end
+  end
+  local text = table.concat(parts, "  ")
+  local existing = renders[habitat.unit_number]
+  local render_object = existing and rendering.get_object_by_id(existing)
+  if text == "" then
+    if render_object then
+      render_object.destroy()
+    end
+    renders[habitat.unit_number] = nil
+    return
+  end
+  if render_object then
+    render_object.text = text
+  else
+    renders[habitat.unit_number] = rendering.draw_text({
+      text = text,
+      target = {entity = habitat, offset = {0, -2.4}},
+      surface = habitat.surface,
+      color = {1, 1, 1},
+      alignment = "center",
+      only_in_alt_mode = true,
+      scale = 0.8
+    }).id
+  end
+end
+
 local function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
@@ -316,46 +383,6 @@ local function update_inventory_renderings(record)
     })
     record.inventory_render_ids[#record.inventory_render_ids + 1] = icon.id
     record.inventory_render_ids[#record.inventory_render_ids + 1] = count.id
-  end
-end
-
-local function destroy_network_member(record)
-  if record.network_member and record.network_member.valid then
-    record.network_member.destroy()
-  end
-  record.network_member = nil
-end
-
-local function update_network_member(record)
-  local team_mate = record.entity
-  local member = record.network_member
-  if member and member.valid then
-    local destination_network = team_mate.surface.find_logistic_network_by_position(
-      position_table(team_mate.position),
-      team_mate.force
-    )
-    if destination_network and member.logistic_network ~= destination_network then
-      member.destroy()
-    elseif distance_squared(member.position, team_mate.position)
-      <= NETWORK_MEMBER_FOLLOW_DISTANCE * NETWORK_MEMBER_FOLLOW_DISTANCE then
-      return
-    elseif member.teleport(team_mate.position) then
-      return
-    else
-      member.destroy()
-    end
-  end
-
-  member = team_mate.surface.create_entity({
-    name = NETWORK_MEMBER_NAME,
-    position = team_mate.position,
-    force = team_mate.force,
-    create_build_effect_smoke = false
-  })
-  if member then
-    member.destructible = false
-    member.operable = false
-    record.network_member = member
   end
 end
 
@@ -1356,7 +1383,6 @@ local function replace_team_mate_entity(record, wanted)
   end
   local tag = old_entity.name_tag
   local health = old_entity.health
-  destroy_network_member(record)
   destroy_color_marker(record)
   destroy_inventory_renderings(record)
   old_entity.destroy()
@@ -1368,7 +1394,6 @@ local function replace_team_mate_entity(record, wanted)
   record.command_kind = nil
   record.command_destination = nil
   record.command_target = nil
-  update_network_member(record)
   return true
 end
 
@@ -1995,14 +2020,14 @@ dock_at_habitat = function(record)
 
   stop_team_mate(record)
   update_mining_animation(record, false)
-  local inventory = get_habitat_inventory(habitat)
-  if not inventory
-    or inventory.insert({name = ITEM_NAME_BY_KIND[record.kind], count = 1}) ~= 1 then
+  if not habitat.unit_number then
     return true
   end
+  local crew = get_habitat_crew(habitat)
+  crew[record.kind] = (crew[record.kind] or 0) + 1
   -- Docked Soldiers keep their weapons and ammo; the arsenal waits in the
   -- Habitat's locker and is restored to the next Soldier deployed from it.
-  if record.kind == "soldier" and habitat.unit_number
+  if record.kind == "soldier"
     and ((record.soldier_weapons and next(record.soldier_weapons))
       or (record.soldier_ammo and next(record.soldier_ammo))
       or record.soldier_armor) then
@@ -2017,13 +2042,15 @@ dock_at_habitat = function(record)
   end
   destroy_route_renderings(record)
   destroy_inventory_renderings(record)
-  destroy_network_member(record)
   destroy_color_marker(record)
   if record.builder_cargo and record.builder_cargo.valid then
     -- Should be empty already (see update_builder's cargo-priority guard);
-    -- spill anything left into the habitat rather than deleting it.
-    for _, item in pairs(record.builder_cargo.get_contents()) do
-      inventory.insert(item)
+    -- spill anything left at the habitat rather than deleting it.
+    if not record.builder_cargo.is_empty() then
+      record.entity.surface.spill_inventory({
+        position = position_table(habitat.position),
+        inventory = record.builder_cargo
+      })
     end
     record.builder_cargo.destroy()
   end
@@ -2234,7 +2261,6 @@ local function create_team_mate(player, kind, index, spawn_center)
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
   local record = {entity = character, kind = kind}
   find_nearest_habitat(record)
-  update_network_member(record)
   return record
 end
 
@@ -2272,7 +2298,6 @@ local function reconcile_orphaned_team_mates()
           end
           local record = {entity = entity, kind = kind}
           find_nearest_habitat(record)
-          update_network_member(record)
           storage.not_alone_team_mates = storage.not_alone_team_mates or {}
           local team_mates = storage.not_alone_team_mates[player.index] or {}
           team_mates[#team_mates + 1] = record
@@ -2445,23 +2470,20 @@ end
 
 local function auto_deploy_from_habitat(habitat)
   local player = find_any_player_for_force(habitat.force)
-  if not player or not player.valid then
+  if not player or not player.valid or not habitat.unit_number then
     return
   end
-  local inventory = get_habitat_inventory(habitat)
-  if not inventory then
-    return
-  end
+  local crew = get_habitat_crew(habitat)
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   for _, kind in pairs(TEAM_MATE_KINDS) do
-    local item_name = ITEM_NAME_BY_KIND[kind]
     local job = {entity = habitat, kind = kind}
-    if inventory.get_item_count(item_name) > 0
+    if (crew[kind] or 0) > 0
       and assign_job(job, habitat.surface, habitat.force, position_table(habitat.position)) then
       local team_mates = storage.not_alone_team_mates[player.index] or {}
       local record = create_team_mate(player, kind, #team_mates + 1, habitat.position)
-      if record and inventory.remove({name = item_name, count = 1}) == 1 then
+      if record then
+        crew[kind] = crew[kind] - 1
         job.entity = nil
         job.kind = nil
         for key, value in pairs(job) do
@@ -2481,9 +2503,6 @@ local function auto_deploy_from_habitat(habitat)
         end
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
-      elseif record then
-        destroy_network_member(record)
-        record.entity.destroy()
       end
     end
   end
@@ -2583,7 +2602,6 @@ local function update_team_mate(record, player)
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
     destroy_inventory_renderings(record)
-    destroy_network_member(record)
     destroy_color_marker(record)
     return false
   end
@@ -2601,7 +2619,6 @@ local function update_team_mate(record, player)
     end
   end
   update_inventory_renderings(record)
-  update_network_member(record)
   update_building_requesters(record)
 
   local manual_destinations = get_manual_destinations(record)
@@ -2692,11 +2709,6 @@ function poc.on_configuration_changed()
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
-  for _, surface in pairs(game.surfaces) do
-    for _, member in pairs(surface.find_entities_filtered({name = NETWORK_MEMBER_NAME})) do
-      member.destroy()
-    end
-  end
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
@@ -2717,7 +2729,6 @@ function poc.on_player_removed(event)
     for _, record in pairs(team_mates) do
       destroy_route_renderings(record)
       destroy_inventory_renderings(record)
-      destroy_network_member(record)
       destroy_color_marker(record)
       if record.builder_cargo and record.builder_cargo.valid then
         if not record.builder_cargo.is_empty() and record.entity.valid then
@@ -2899,6 +2910,8 @@ function poc.on_update(event)
   for _, surface in pairs(game.surfaces) do
     cleanup_marked_resources(surface.index)
     for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
+      absorb_habitat_inbox(habitat)
+      update_habitat_crew_display(habitat)
       update_building_requesters_for_network(
         surface,
         habitat.force,
@@ -3024,6 +3037,60 @@ function poc.on_chunk_generated(event)
   spawn_crash_ship(surface, event.area, rng)
 end
 
+-- A removed Habitat drops its docked crew and lockers as real items so
+-- nothing is silently lost with the building.
+function poc.on_habitat_removed(event)
+  local entity = event.entity
+  if not entity or not entity.valid or entity.name ~= LOGISTICS_HUB_NAME
+    or not entity.unit_number then
+    return
+  end
+  local surface = entity.surface
+  local position = position_table(entity.position)
+  local function spill(item_name, count)
+    if count and count > 0 and prototypes.item[item_name] then
+      surface.spill_item_stack({
+        position = position,
+        stack = {name = item_name, count = count}
+      })
+    end
+  end
+
+  local crews = storage.not_alone_habitat_crews
+  local crew = crews and crews[entity.unit_number]
+  if crew then
+    for kind, count in pairs(crew) do
+      spill(ITEM_NAME_BY_KIND[kind], count)
+    end
+    crews[entity.unit_number] = nil
+  end
+
+  local lockers = storage.not_alone_soldier_lockers
+    and storage.not_alone_soldier_lockers[entity.unit_number]
+  if lockers then
+    for _, locker in pairs(lockers) do
+      for weapon_kind in pairs(locker.weapons or {}) do
+        local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
+        if weapon then
+          spill(weapon.item, 1)
+        end
+      end
+      for ammo_name, count in pairs(locker.ammo or {}) do
+        spill(ammo_name, count)
+      end
+      if locker.armor and SOLDIER_ARMORS[locker.armor] then
+        spill(SOLDIER_ARMORS[locker.armor].item, 1)
+      end
+    end
+    storage.not_alone_soldier_lockers[entity.unit_number] = nil
+  end
+
+  local renders = storage.not_alone_habitat_crew_renders
+  if renders then
+    renders[entity.unit_number] = nil
+  end
+end
+
 function poc.register()
   script.on_init(poc.on_init)
   script.on_configuration_changed(poc.on_configuration_changed)
@@ -3041,6 +3108,10 @@ function poc.register()
   script.on_event(defines.events.script_raised_built, poc.on_roboport_built)
   script.on_event(defines.events.script_raised_revive, poc.on_roboport_built)
   script.on_event(defines.events.on_chunk_generated, poc.on_chunk_generated)
+  local habitat_filters = {{filter = "name", name = LOGISTICS_HUB_NAME}}
+  script.on_event(defines.events.on_entity_died, poc.on_habitat_removed, habitat_filters)
+  script.on_event(defines.events.on_player_mined_entity, poc.on_habitat_removed, habitat_filters)
+  script.on_event(defines.events.on_robot_mined_entity, poc.on_habitat_removed, habitat_filters)
   local damage_filters = {}
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}
