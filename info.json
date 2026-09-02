@@ -1,9 +1,9 @@
 {
   "name": "not-alone",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "title": "Not Alone",
   "author": "dougs",
   "factorio_version": "2.1",
   "dependencies": ["base >= 2.0.0"],
-  "description": "A starting point for the Not Alone mod."
+  "description": "You didn’t crash-land alone — and you don’t have to build the factory alone either. Miners mine, builders build, carriers haul and soldiers defend, turning your handful of survivors into a living part of the factory. Not Alone adds people to Factorio’s automation puzzle: organise them, protect them, and build an industrial world together."
 }

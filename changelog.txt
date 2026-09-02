@@ -1,4 +1,26 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.4
+Date: 2026-09-02
+  Changes:
+    - Added thumbnail.png using the Habitat artwork so the Mod Portal profile displays the Habitat as its canonical thumbnail.
+
+---------------------------------------------------------------------------------------------------
+Version: 0.1.3
+Date: 2026-09-02
+  Features:
+    - Added Miner, Builder, Soldier, and Carrier team mate roles with colored torso icons.
+    - Added Soldier weapon kits, tiered ammunition fallback, armor upgrades, and melee fallback.
+    - Added deterministic crash-site spaceships with mixed team mate crews and a guaranteed nearby wreck.
+    - Added automatic logistics requests for assemblers, furnaces, boilers, rocket silos, and labs.
+    - Added Factoriopedia descriptions for player-facing Not Alone items and entities.
+  Changes:
+    - Removed roboport proxy entities from deployed team mates so they no longer draw misleading network lines.
+    - Restored docked team mates as visible Habitat inventory items and fixed logistics network accounting.
+    - Made Soldiers collect weapons, armor, and ammunition from logistics storage and attack enemy bases after enemy units.
+    - Improved Soldier attack animations and sounds for ranged weapons and punches.
+    - Reduced distant crash-site density with exponential distance falloff while keeping one visible starter wreck.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.0
 Date: 2026-08-28
   Features:
