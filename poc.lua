@@ -1329,6 +1329,9 @@ end
 local function return_builder_cargo(record)
   local cargo = record.builder_cargo
   if not cargo or not cargo.valid or cargo.is_empty() then
+    record.builder_delivery_item = nil
+    record.builder_delivery_target = nil
+    record.builder_delivery_inventory = nil
     if record.kind == "builder" and record.builder_deconstruction_started
       and record.builder_target and record.builder_target.valid
       and record.builder_target.to_be_deconstructed() then
@@ -1342,7 +1345,20 @@ local function return_builder_cargo(record)
     return false
   end
 
-  local item, destination, inventory = find_builder_cargo_action(record, cargo)
+  -- Keep walking toward an already-chosen destination instead of re-running
+  -- the network search every tick, which can transiently fail (returning no
+  -- destination) while the team mate is between logistic cells en route.
+  local item = record.builder_delivery_item
+  local destination = record.builder_delivery_target
+  local inventory = destination and destination.valid and record.builder_delivery_inventory
+  if not item or not destination or not destination.valid or not inventory
+    or cargo.get_item_count(item.name) == 0
+    or inventory.get_insertable_count(item.name) == 0 then
+    item, destination, inventory = find_builder_cargo_action(record, cargo)
+    record.builder_delivery_item = item
+    record.builder_delivery_target = destination
+    record.builder_delivery_inventory = inventory
+  end
   if not destination then
     stop_team_mate(record)
     return true
@@ -1363,6 +1379,11 @@ local function return_builder_cargo(record)
         cargo.remove({name = item.name, quality = item.quality, count = inserted})
       end
     end
+    -- Force a fresh search next tick: this slot may be empty, or the
+    -- destination may now be full, or another cargo item needs a turn.
+    record.builder_delivery_item = nil
+    record.builder_delivery_target = nil
+    record.builder_delivery_inventory = nil
   else
     move_team_mate(record, destination.position, 2)
   end
