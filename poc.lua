@@ -1,7 +1,7 @@
 local poc = {}
 
 local INITIAL_HABITAT_COUNT = 1
-local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 0, carrier = 10}
+local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
 local STARTER_INVENTORY_VERSION = 5
 local UPDATE_INTERVAL = 10
 local ENGAGEMENT_RADIUS = 16
@@ -204,11 +204,14 @@ local function create_color_marker(record)
   if not color then
     return
   end
-  record.color_marker_render_id = rendering.draw_circle({
-    color = color,
-    filled = true,
-    radius = 0.18,
-    target = {entity = record.entity, offset = {0, 0.35}},
+  -- A torso-only armor icon reads far more clearly at this scale than a
+  -- plain colored dot, while still sitting above the sprite's head.
+  record.color_marker_render_id = rendering.draw_sprite({
+    sprite = "item.light-armor",
+    tint = color,
+    x_scale = 0.5,
+    y_scale = 0.5,
+    target = {entity = record.entity, offset = {0, -1.6}},
     surface = record.entity.surface,
     render_layer = "entity-info-icon"
   }).id
