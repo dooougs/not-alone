@@ -46,11 +46,20 @@ local KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-shotgun"] = "soldier",
   ["not-alone-team-mate-combat-shotgun"] = "soldier",
   ["not-alone-team-mate-flamethrower"] = "soldier",
-  ["not-alone-team-mate-rocket"] = "soldier"
+  ["not-alone-team-mate-rocket"] = "soldier",
+  ["not-alone-team-mate-fists-mech"] = "soldier",
+  ["not-alone-team-mate-smg-mech"] = "soldier",
+  ["not-alone-team-mate-shotgun-mech"] = "soldier",
+  ["not-alone-team-mate-combat-shotgun-mech"] = "soldier",
+  ["not-alone-team-mate-flamethrower-mech"] = "soldier",
+  ["not-alone-team-mate-rocket-mech"] = "soldier"
 }
 local TEAM_MATE_NAMES = {TEAM_MATE_NAME}
 for entity_name in pairs(KIND_BY_ENTITY_NAME) do
-  TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
+  -- Mech variants only exist when Space Age provides mech armor.
+  if prototypes.entity[entity_name] then
+    TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
+  end
 end
 local COMMAND_TOOL_NAME = "not-alone-command-tool"
 local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
@@ -127,7 +136,8 @@ local SOLDIER_ARMORS = {
   {item = "heavy-armor", mitigation = 0.4},
   {item = "modular-armor", mitigation = 0.5},
   {item = "power-armor", mitigation = 0.65},
-  {item = "power-armor-mk2", mitigation = 0.8}
+  {item = "power-armor-mk2", mitigation = 0.8},
+  {item = "mech-armor", mitigation = 0.9, flying = true}
 }
 -- Other crews crashed here too: derelict ships seeded from the map seed,
 -- rare overall, but one is always placed inside the initially charted area
@@ -1393,8 +1403,14 @@ local function replace_team_mate_entity(record, wanted)
 end
 
 -- Swap the unit prototype to match the weapon in hand (nil means fists).
+-- Mech-armored Soldiers use the hovering "-mech" twin of each variant.
 local function ensure_soldier_entity(record, weapon)
-  return replace_team_mate_entity(record, weapon and weapon.entity or SOLDIER_FISTS_ENTITY)
+  local wanted = weapon and weapon.entity or SOLDIER_FISTS_ENTITY
+  local armor = record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor]
+  if armor and armor.flying and prototypes.entity[wanted .. "-mech"] then
+    wanted = wanted .. "-mech"
+  end
+  return replace_team_mate_entity(record, wanted)
 end
 
 -- Best owned weapon's ammo first, then that weapon's best ammo tier.
@@ -1520,6 +1536,16 @@ local function start_soldier_restock(record)
   return true
 end
 
+local function soldier_needs_ammo(record)
+  for _, weapon in ipairs(SOLDIER_WEAPONS) do
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind]
+      and get_soldier_ammo_count(record, weapon) == 0 then
+      return true
+    end
+  end
+  return false
+end
+
 local function update_soldier(record)
   if record.soldier_state == "restock" then
     local source = record.soldier_ammo_source
@@ -1604,6 +1630,24 @@ local function update_soldier(record)
     return true
   end
 
+  -- Keep the body in sync with the gear so a mech-armored Soldier hovers
+  -- even while idle, and prepare before choosing a target: weapons first,
+  -- then ammunition. This prevents a nearby base from sending a newly
+  -- deployed Soldier into combat with fists while usable gear is waiting
+  -- in logistics storage.
+  if not ensure_soldier_entity(record, select_soldier_weapon(record)) then
+    return true
+  end
+  if try_soldier_weapon_pickup(record) then
+    return true
+  end
+  if soldier_needs_ammo(record) and start_soldier_restock(record) then
+    return true
+  end
+  if try_soldier_armor_pickup(record) then
+    return true
+  end
+
   local target = find_soldier_target(record)
   if not target then
     local nearby = record.entity.surface.find_nearest_enemy({
@@ -1635,13 +1679,7 @@ local function update_soldier(record)
     return true
   end
 
-  -- Idle: collect new weapons, then armor upgrades, then ammo, then dock.
-  if try_soldier_weapon_pickup(record) then
-    return true
-  end
-  if try_soldier_armor_pickup(record) then
-    return true
-  end
+  -- No target and no preparation work: return to the Habitat.
   if not select_soldier_weapon(record) and start_soldier_restock(record) then
     return true
   end

@@ -321,12 +321,13 @@ local mining_sound = {
 -- Soldier weapon tiers: each variant borrows the vanilla gun's range and
 -- cadence plus the ammo's effect, keeping the ammo_category aligned so the
 -- force's weapon-damage and shooting-speed research applies automatically.
+-- The armor sheet grows with the tier so loadouts are tellable at a glance.
 local SOLDIER_WEAPONS = {
-	{suffix = "smg", kind = "soldier-smg", gun = "submachine-gun", ammo = "firearm-magazine", order = "e[soldier-smg]"},
-	{suffix = "shotgun", kind = "soldier-shotgun", gun = "shotgun", ammo = "shotgun-shell", order = "f[soldier-shotgun]"},
-	{suffix = "combat-shotgun", kind = "soldier-combat-shotgun", gun = "combat-shotgun", ammo = "piercing-shotgun-shell", order = "g[soldier-combat-shotgun]"},
-	{suffix = "flamethrower", kind = "soldier-flamethrower", gun = "flamethrower", ammo = "flamethrower-ammo", order = "h[soldier-flamethrower]"},
-	{suffix = "rocket", kind = "soldier-rocket", gun = "rocket-launcher", ammo = "rocket", order = "i[soldier-rocket]"}
+	{suffix = "smg", kind = "soldier-smg", gun = "submachine-gun", ammo = "firearm-magazine", order = "e[soldier-smg]", sheet = "level1"},
+	{suffix = "shotgun", kind = "soldier-shotgun", gun = "shotgun", ammo = "shotgun-shell", order = "f[soldier-shotgun]", sheet = "level2armor1and2"},
+	{suffix = "combat-shotgun", kind = "soldier-combat-shotgun", gun = "combat-shotgun", ammo = "piercing-shotgun-shell", order = "g[soldier-combat-shotgun]", sheet = "level2armor1and2"},
+	{suffix = "flamethrower", kind = "soldier-flamethrower", gun = "flamethrower", ammo = "flamethrower-ammo", order = "h[soldier-flamethrower]", sheet = "level3armor3and4"},
+	{suffix = "rocket", kind = "soldier-rocket", gun = "rocket-launcher", ammo = "rocket", order = "i[soldier-rocket]", sheet = "level3armor3and4"}
 }
 
 local function find_unlocking_technology(recipe_name)
@@ -341,10 +342,26 @@ local function find_unlocking_technology(recipe_name)
 end
 
 local soldier_prototypes = {}
+local soldier_units = {}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	local unit = table.deepcopy(team_mate)
 	unit.name = "not-alone-team-mate-" .. weapon.suffix
 	unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
+	local sheet = character_animations[weapon.sheet] or character_animations.level1
+	unit.run_animation = {
+		layers = {
+			table.deepcopy(sheet.running),
+			table.deepcopy(sheet.running_mask),
+			table.deepcopy(sheet.running_shadow)
+		}
+	}
+	unit.attack_parameters.animation = {
+		layers = {
+			table.deepcopy(sheet.idle_gun),
+			table.deepcopy(sheet.idle_gun_mask),
+			table.deepcopy(sheet.idle_gun_shadow)
+		}
+	}
 	tint_unit_masks(unit, KIND_TINT.soldier)
 	local gun = data.raw.gun[weapon.gun]
 	local ammo = data.raw.ammo[weapon.ammo]
@@ -365,6 +382,7 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
 		unit.attack_parameters = params
 	end
 	soldier_prototypes[#soldier_prototypes + 1] = unit
+	soldier_units[#soldier_units + 1] = unit
 
 	local kit_item = make_team_mate_item(weapon.kind, KIND_TINT.soldier, weapon.order)
 	-- The kit shows the actual gun so the tiers are tellable apart at a glance.
@@ -438,6 +456,37 @@ fist_params.ammo_type = {
 	}
 }
 soldier_prototypes[#soldier_prototypes + 1] = fists_unit
+soldier_units[#soldier_units + 1] = fists_unit
+
+-- Space Age mech armor lets a Soldier hover: each combat variant gains a
+-- "-mech" twin using the mech suit's flying animation that ignores ground
+-- collision entirely.
+local mech_animations
+for _, entry in pairs(data.raw.character.character.animations or {}) do
+	for _, armor_name in pairs(entry.armors or {}) do
+		if armor_name == "mech-armor" then
+			mech_animations = entry
+		end
+	end
+end
+local mech_unit_names = {}
+if mech_animations and mech_animations.flying then
+	for _, unit in pairs(soldier_units) do
+		local mech = table.deepcopy(unit)
+		mech.name = unit.name .. "-mech"
+		mech.hidden_in_factoriopedia = true
+		mech.factoriopedia_description = nil
+		mech.run_animation = table.deepcopy(mech_animations.flying)
+		if mech_animations.idle_with_gun then
+			mech.attack_parameters.animation = table.deepcopy(mech_animations.idle_with_gun)
+		end
+		tint_unit_masks(mech, KIND_TINT.soldier)
+		mech.collision_mask = {layers = {}}
+		mech.movement_speed = mech.movement_speed * 1.3
+		soldier_prototypes[#soldier_prototypes + 1] = mech
+		mech_unit_names[#mech_unit_names + 1] = mech.name
+	end
+end
 
 soldier_prototypes[#soldier_prototypes + 1] = {
 	type = "recipe",
@@ -470,6 +519,9 @@ local team_mate_filter_names = {
 }
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	table.insert(team_mate_filter_names, "not-alone-team-mate-" .. weapon.suffix)
+end
+for _, name in pairs(mech_unit_names) do
+	table.insert(team_mate_filter_names, name)
 end
 
 local command_tool = {
