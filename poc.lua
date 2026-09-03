@@ -2467,6 +2467,27 @@ local function builder_target_is_claimed(target, current_record)
   return false
 end
 
+local BUILDER_UNREACHABLE_RETRY_TICKS = 7200
+
+local function builder_target_is_unreachable(record, target)
+  local unreachable = record.builder_unreachable
+  if not unreachable then
+    return false
+  end
+  local kept = {}
+  local found = false
+  for _, entry in pairs(unreachable) do
+    if entry.entity.valid and game.tick - entry.tick < BUILDER_UNREACHABLE_RETRY_TICKS then
+      kept[#kept + 1] = entry
+      if entry.entity == target then
+        found = true
+      end
+    end
+  end
+  record.builder_unreachable = kept[1] and kept or nil
+  return found
+end
+
 local function find_builder_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -2498,6 +2519,7 @@ local function find_builder_job(record, surface, force, position)
           or cell.is_in_construction_range(ghost.position)
         if in_network
           and not seen_ghosts[ghost.unit_number]
+          and not builder_target_is_unreachable(record, ghost)
           and not builder_target_is_claimed(ghost, record) then
           seen_ghosts[ghost.unit_number] = true
           ghosts[#ghosts + 1] = ghost
@@ -2520,27 +2542,6 @@ local function find_builder_job(record, surface, force, position)
     storage.not_alone_pending_builder_ghosts[ghost.unit_number] = ghost
   end
   return nil, nil, nil
-end
-
-local BUILDER_UNREACHABLE_RETRY_TICKS = 7200
-
-local function builder_target_is_unreachable(record, target)
-  local unreachable = record.builder_unreachable
-  if not unreachable then
-    return false
-  end
-  local kept = {}
-  local found = false
-  for _, entry in pairs(unreachable) do
-    if entry.entity.valid and game.tick - entry.tick < BUILDER_UNREACHABLE_RETRY_TICKS then
-      kept[#kept + 1] = entry
-      if entry.entity == target then
-        found = true
-      end
-    end
-  end
-  record.builder_unreachable = kept[1] and kept or nil
-  return found
 end
 
 local function find_builder_deconstruction_target(record, surface, force, position)
@@ -3163,6 +3164,8 @@ local function update_builder(record)
     if not target or not target.valid then
       record.builder_state = "return-material"
     elseif builder_is_at_target(record, target) then
+      record.builder_approach_position = nil
+      record.builder_approach_stalls = nil
       local _, revived_entity = target.revive({raise_revive = true})
       if revived_entity then
         local cargo = get_builder_cargo(record)
@@ -3196,6 +3199,30 @@ local function update_builder(record)
         end
       end
     else
+      -- A ghost the pathfinder cannot reach otherwise pins this builder
+      -- forever; give up like the deconstruction path does and let another
+      -- job (or a later retry) have a turn.
+      local position = record.entity.position
+      if record.builder_approach_position
+        and distance_squared(position, record.builder_approach_position) < 0.01 then
+        record.builder_approach_stalls = (record.builder_approach_stalls or 0) + 1
+        if record.builder_approach_stalls >= 30 then
+          record.builder_unreachable = record.builder_unreachable or {}
+          record.builder_unreachable[#record.builder_unreachable + 1] = {
+            entity = target,
+            tick = game.tick
+          }
+          record.builder_approach_position = nil
+          record.builder_approach_stalls = nil
+          record.builder_ghost_attempts = nil
+          record.builder_state = "return-material"
+          stop_team_mate(record)
+          return true
+        end
+      else
+        record.builder_approach_position = position_table(position)
+        record.builder_approach_stalls = 0
+      end
       move_team_mate(record, builder_target_destination(record, target), 0.2)
     end
     return true
