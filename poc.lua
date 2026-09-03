@@ -847,6 +847,14 @@ local function item_is_fuel_for(item_name, burner)
     and burner.fuel_categories[item_prototype.fuel_category]
 end
 
+local function fuel_priority(item_name)
+  local item_prototype = prototypes.item[item_name]
+  if not item_prototype or not item_prototype.fuel_value then
+    return 0
+  end
+  return item_prototype.fuel_value
+end
+
 -- Scanning every storage chest and team mate repeats identically for every
 -- burner in the same network on the same tick; memoize the candidate names.
 local fuel_candidate_cache = {}
@@ -898,12 +906,18 @@ local function find_available_fuel(target, network)
   if not burner or not burner.inventory then
     return nil
   end
+  local best_name = nil
+  local best_priority = -1
   for _, item_name in ipairs(get_network_fuel_candidates(network, target.force)) do
     if item_is_fuel_for(item_name, burner) then
-      return item_name
+      local priority = fuel_priority(item_name)
+      if priority > best_priority then
+        best_name = item_name
+        best_priority = priority
+      end
     end
   end
-  return nil
+  return best_name
 end
 
 local function inventory_kind_for_item(target, item_name)
@@ -3134,6 +3148,62 @@ local function get_requested_count(logistic_point, item_name, quality)
   return nil
 end
 
+local function find_nearest_requester_for_item(surface, force, position, item_id)
+  local nearest = nil
+  local nearest_distance = nil
+  for _, chest in pairs(surface.find_entities_filtered({
+    type = "logistic-container",
+    force = force,
+    position = position,
+    radius = LOGISTICS_SEARCH_RADIUS
+  })) do
+    if chest.valid and chest.prototype.logistic_mode == "requester"
+      and requester_chest_accepts_item(chest, item_id) then
+      local distance = distance_squared(position, chest.position)
+      if not nearest_distance or distance < nearest_distance then
+        nearest = chest
+        nearest_distance = distance
+      end
+    end
+  end
+  return nearest
+end
+
+local function get_producer_output_inventory(source)
+  if not source or not source.valid then
+    return nil
+  end
+  if source.type == "furnace" or source.type == "assembling-machine" or source.type == "rocket-silo" then
+    return source.get_inventory(defines.inventory.crafter_output)
+  end
+  return nil
+end
+
+local function requester_chest_accepts_item(chest, item_id)
+  if not chest or not chest.valid then
+    return false
+  end
+  local inventory = chest.get_inventory(defines.inventory.chest)
+  if not inventory or inventory.get_insertable_count(item_id) <= 0 then
+    return false
+  end
+  local requester_point = chest.get_requester_point()
+  if not requester_point then
+    return true
+  end
+  local filters = requester_point.filters or {}
+  if #filters == 0 then
+    return true
+  end
+  for _, filter in pairs(filters) do
+    if filter.name == item_id.name and (not filter.quality or filter.quality == item_id.quality) then
+      local requested = filter.count or 0
+      return inventory.get_item_count(item_id) < requested
+    end
+  end
+  return true
+end
+
 local function carrier_request_key(target, item)
   if not target or not target.valid or not item then
     return nil
@@ -3185,16 +3255,11 @@ local function find_carrier_job(record, surface, force, position)
   for _, item in pairs(get_logistics_contents(network)) do
     local quality = item.quality or "normal"
     local item_id = {name = item.name, quality = quality}
-    local drop_point = network.select_drop_point({
-      stack = {name = item.name, quality = quality, count = 1},
-      members = "requester"
-    })
-    local consumer = drop_point and drop_point.owner
-    local consumer_inventory = consumer and consumer.valid
-      and consumer.get_inventory(defines.inventory.chest)
-    if consumer_inventory then
-      -- Only deliver up to what's actually still requested, not a full stack.
-      local requested = get_requested_count(drop_point, item.name, item.quality)
+    local consumer = find_nearest_requester_for_item(surface, force, position, item_id)
+    if consumer then
+      local consumer_inventory = consumer.get_inventory(defines.inventory.chest)
+      local requester_point = consumer.get_requester_point()
+      local requested = requester_point and get_requested_count(requester_point, item.name, quality)
       local missing = requested
         and math.max(requested - consumer_inventory.get_item_count(item_id), 0)
         or consumer_inventory.get_insertable_count(item_id)
@@ -3217,6 +3282,47 @@ local function find_carrier_job(record, surface, force, position)
       end
     end
   end
+
+  local requesters = surface.find_entities_filtered({
+    type = "logistic-container",
+    force = force,
+    position = position,
+    radius = LOGISTICS_SEARCH_RADIUS
+  })
+  table.sort(requesters, function(left, right)
+    return distance_squared(position, left.position) < distance_squared(position, right.position)
+  end)
+  for _, chest in ipairs(requesters) do
+    if chest.valid and chest.prototype.logistic_mode == "requester" then
+      local inventory = chest.get_inventory(defines.inventory.chest)
+      if inventory and inventory.valid then
+        for _, producer in pairs(surface.find_entities_filtered({
+          type = LOGISTICS_DESTINATION_TYPES,
+          force = force,
+          position = position,
+          radius = LOGISTICS_SEARCH_RADIUS
+        })) do
+          local producer_inventory = get_producer_output_inventory(producer)
+          if producer_inventory then
+            for _, item in pairs(producer_inventory.get_contents()) do
+              local quality = item.quality or "normal"
+              local item_id = {name = item.name, quality = quality}
+              if requester_chest_accepts_item(chest, item_id) then
+                local available = producer_inventory.get_item_count(item_id)
+                if available > 0 then
+                  local claimed_count = math.min(available, CARRIER_CAPACITY)
+                  if reserve_carrier_request(record, chest, item_id, claimed_count) then
+                    return producer, chest, item_id, claimed_count
+                  end
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+  end
+
   return nil, nil, nil, nil
 end
 
