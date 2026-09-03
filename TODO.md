@@ -1,7 +1,4 @@
-ensure that builders building things that unlock research triggers than same unlock
-
-ensure that carriers look at the output of furnaces and assembly machines to see if they need to carry anything to the logistics network requester chests
-
-ensure team mates dont colide with other team mates
-
-ensure builders dont start building if they can't find all the resources they need somewhere in the nertwork.
+- ensure builders building items that unlock research trigger that same unlock
+- ensure carriers check the output of furnaces and assembly machines to decide whether they need to move items to requester chests in the logistics network
+- ensure teammates do not collide with other teammates
+- ensure builders do not start building if they cannot find all required resources somewhere in the network
