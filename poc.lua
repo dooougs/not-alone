@@ -1,60 +1,60 @@
-local poc = {}
+poc = {}
 
-local INITIAL_HABITAT_COUNT = 1
-local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
-local STARTER_INVENTORY_VERSION = 5
-local UPDATE_INTERVAL = 10
+INITIAL_HABITAT_COUNT = 1
+INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
+STARTER_INVENTORY_VERSION = 5
+UPDATE_INTERVAL = 10
 -- Idle units and empty habitats re-scan the whole network for work; doing
 -- that every update dominated frame time, so retries run on cooldowns.
-local IDLE_JOB_SEARCH_INTERVAL = 60
+IDLE_JOB_SEARCH_INTERVAL = 60
 -- Work arrives sporadically (new ghosts, new requests), so a single failed
 -- search no longer sends a team mate home; only a sustained drought does,
 -- avoiding needless dock/undeploy/redeploy churn between short job gaps.
-local IDLE_DOCK_AFTER_FAILURES = 5
-local HABITAT_DEPLOY_RETRY_INTERVAL = 120
-local BUILDING_REQUESTER_UPDATE_INTERVAL = 60
-local ORPHAN_RECONCILE_INTERVAL = 600
-local ENGAGEMENT_RADIUS = 16
-local COMMAND_REFRESH_DISTANCE = 2
-local CHUNK_SIZE = 32
-local SCOUT_WAYPOINT_DISTANCE = 64
-local SCOUT_GENERATION_RADIUS = 2
-local MINER_CAPACITY = 50
-local MINER_ORE_STOPPING_DISTANCE = 0.2
-local CARRIER_CAPACITY = 50
-local RESOURCE_MINING_TIME = 1
-local NORMAL_CHARACTER_MINING_SPEED = 0.5
-local LOGISTICS_SEARCH_RADIUS = 128
-local BUILDER_CARGO_SLOTS = 1
-local MAX_BUILDER_CARGO_SLOTS = 65535
-local FUEL_REQUEST_COUNT = 5
-local INGREDIENT_REQUEST_COUNT = 10
-local BUILDING_REQUEST_SLOT_COUNT = 20
-local BUILDER_ITEM_PICKUP_DISTANCE = 0.5
-local BUILDER_TARGET_CLEARANCE = 0.4
+IDLE_DOCK_AFTER_FAILURES = 5
+HABITAT_DEPLOY_RETRY_INTERVAL = 120
+BUILDING_REQUESTER_UPDATE_INTERVAL = 60
+ORPHAN_RECONCILE_INTERVAL = 600
+ENGAGEMENT_RADIUS = 16
+COMMAND_REFRESH_DISTANCE = 2
+CHUNK_SIZE = 32
+SCOUT_WAYPOINT_DISTANCE = 64
+SCOUT_GENERATION_RADIUS = 2
+MINER_CAPACITY = 50
+MINER_ORE_STOPPING_DISTANCE = 0.2
+CARRIER_CAPACITY = 50
+RESOURCE_MINING_TIME = 1
+NORMAL_CHARACTER_MINING_SPEED = 0.5
+LOGISTICS_SEARCH_RADIUS = 128
+BUILDER_CARGO_SLOTS = 1
+MAX_BUILDER_CARGO_SLOTS = 65535
+FUEL_REQUEST_COUNT = 5
+INGREDIENT_REQUEST_COUNT = 10
+BUILDING_REQUEST_SLOT_COUNT = 20
+BUILDER_ITEM_PICKUP_DISTANCE = 0.5
+BUILDER_TARGET_CLEARANCE = 0.4
 -- Must exceed the 0.2 stopping distance used when stepping out of a ghost's
 -- footprint; otherwise the escape point can land within arrival range of an
 -- already-close position, so move_team_mate no-ops and the builder never
 -- actually moves (seen wedged between adjacent belt ghosts).
-local BUILDER_GHOST_ESCAPE_DISTANCE = 1
+BUILDER_GHOST_ESCAPE_DISTANCE = 1
 -- Must exceed clearance plus the 0.2 move stopping distance or arrivals stall.
-local BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
-local REPAIR_PACK_ITEM_NAME = "repair-pack"
-local MINING_ANIMATION_FRAMES = 51
-local MINING_ANIMATION_SPEED = 51 / 60
-local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
-local ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
-local MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
-local INVENTORY_ICON_SCALE = 0.5
-local INVENTORY_ICON_SPACING = 0.65
-local TEAM_MATE_NAME = "not-alone-team-mate"
-local TEAM_MATE_ENTITY_BY_KIND = {
+BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
+REPAIR_PACK_ITEM_NAME = "repair-pack"
+MINING_ANIMATION_FRAMES = 51
+MINING_ANIMATION_SPEED = 51 / 60
+HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
+ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
+MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
+INVENTORY_ICON_SCALE = 0.5
+INVENTORY_ICON_SPACING = 0.65
+TEAM_MATE_NAME = "not-alone-team-mate"
+TEAM_MATE_ENTITY_BY_KIND = {
   miner = "not-alone-team-mate-miner",
   builder = "not-alone-team-mate-builder",
   carrier = "not-alone-team-mate-carrier",
   soldier = "not-alone-team-mate-fists"
 }
-local KIND_BY_ENTITY_NAME = {
+KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-miner"] = "miner",
   ["not-alone-team-mate-builder"] = "builder",
   ["not-alone-team-mate-carrier"] = "carrier",
@@ -82,30 +82,30 @@ for _, entity_name in pairs({
   KIND_BY_ENTITY_NAME[entity_name .. "-armor-heavy"] = "soldier"
   KIND_BY_ENTITY_NAME[entity_name .. "-armor-power"] = "soldier"
 end
-local TEAM_MATE_NAMES = {TEAM_MATE_NAME}
+TEAM_MATE_NAMES = {TEAM_MATE_NAME}
 for entity_name in pairs(KIND_BY_ENTITY_NAME) do
   -- Mech variants only exist when Space Age provides mech armor.
   if prototypes.entity[entity_name] then
     TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
   end
 end
-local COMMAND_TOOL_NAME = "not-alone-command-tool"
-local LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
-local BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
-local BUILDING_REQUESTER_PREFIX = BUILDING_REQUESTER_NAME .. "-"
-local ITEM_NAME_BY_KIND = {
+COMMAND_TOOL_NAME = "not-alone-command-tool"
+LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
+BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
+BUILDING_REQUESTER_PREFIX = BUILDING_REQUESTER_NAME .. "-"
+ITEM_NAME_BY_KIND = {
   miner = "not-alone-miner",
   builder = "not-alone-builder",
   soldier = "not-alone-soldier",
   carrier = "not-alone-carrier"
 }
-local TEAM_MATE_KINDS = {"miner", "builder", "soldier", "carrier"}
-local KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier", carrier = "Carrier"}
-local KIND_BY_LABEL = {Miner = "miner", Builder = "builder", Soldier = "soldier", Carrier = "carrier"}
+TEAM_MATE_KINDS = {"miner", "builder", "soldier", "carrier"}
+KIND_LABEL = {miner = "Miner", builder = "Builder", soldier = "Soldier", carrier = "Carrier"}
+KIND_BY_LABEL = {Miner = "miner", Builder = "builder", Soldier = "soldier", Carrier = "carrier"}
 -- Division colors borrowed from classic sci-fi uniforms: engineering gold for
 -- Builders, command red for Soldiers, sciences blue for Carriers, and a
 -- hazard-suit orange for Miners (mining/EVA suits across many settings).
-local KIND_COLOR = {
+KIND_COLOR = {
   miner = {r = 0.92, g = 0.42, b = 0.04},
   builder = {r = 0.87, g = 0.72, b = 0.2},
   soldier = {r = 0.72, g = 0.08, b = 0.08},
@@ -114,7 +114,7 @@ local KIND_COLOR = {
 -- Soldier arsenal, ordered worst to best. Soldiers fight with the best owned
 -- weapon that still has ammo, and restock the best ammo tier listed first.
 -- Soldiers collect the vanilla gun item directly from logistics storage.
-local SOLDIER_WEAPONS = {
+SOLDIER_WEAPONS = {
   {
     kind = "smg",
     gun = "submachine-gun",
@@ -146,16 +146,16 @@ local SOLDIER_WEAPONS = {
     ammo = {"explosive-rocket", "rocket"}
   }
 }
-local SOLDIER_WEAPON_BY_KIND = {}
+SOLDIER_WEAPON_BY_KIND = {}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
   SOLDIER_WEAPON_BY_KIND[weapon.kind] = weapon
 end
-local SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
-local SOLDIER_AMMO_RESTOCK_COUNT = 20
-local SOLDIER_AMMO_TICKS_PER_ROUND = 30
+SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
+SOLDIER_AMMO_RESTOCK_COUNT = 20
+SOLDIER_AMMO_TICKS_PER_ROUND = 30
 -- Armor tiers, worst to best; a Soldier wears the best suit it has found and
 -- shrugs off that fraction of every hit.
-local SOLDIER_ARMORS = {
+SOLDIER_ARMORS = {
   {item = "light-armor", mitigation = 0.2},
   {item = "heavy-armor", mitigation = 0.4},
   {item = "modular-armor", mitigation = 0.5},
@@ -163,7 +163,7 @@ local SOLDIER_ARMORS = {
   {item = "power-armor-mk2", mitigation = 0.8},
   {item = "mech-armor", mitigation = 0.9, flying = true}
 }
-local SOLDIER_ARMOR_ENTITY_SUFFIX = {
+SOLDIER_ARMOR_ENTITY_SUFFIX = {
   [2] = "-armor-heavy",
   [3] = "-armor-heavy",
   [4] = "-armor-power",
@@ -171,24 +171,24 @@ local SOLDIER_ARMOR_ENTITY_SUFFIX = {
 }
 -- Other crews crashed here too: derelict ships seeded from the map seed and
 -- distributed by a rate derived from the opening charted area.
-local CRASH_SHIP_NAME = "crash-site-spaceship"
-local CRASH_SHIP_MAX_CREW = 10
-local CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER = 5
-local CRASH_SHIP_LOCAL_TARGET = 3
-local FURNACE_ENTITY_NAMES = {
+CRASH_SHIP_NAME = "crash-site-spaceship"
+CRASH_SHIP_MAX_CREW = 10
+CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER = 5
+CRASH_SHIP_LOCAL_TARGET = 3
+FURNACE_ENTITY_NAMES = {
   ["stone-furnace"] = true,
   ["steel-furnace"] = true,
   ["electric-furnace"] = true
 }
-local FURNACE_ENTITY_NAME_LIST = {"stone-furnace", "steel-furnace", "electric-furnace"}
-local LOGISTICS_SOURCE_MODES = {
+FURNACE_ENTITY_NAME_LIST = {"stone-furnace", "steel-furnace", "electric-furnace"}
+LOGISTICS_SOURCE_MODES = {
 
   ["active-provider"] = true,
   ["passive-provider"] = true,
   ["storage"] = true,
   ["buffer"] = true
 }
-local LOGISTICS_DESTINATION_TYPES = {
+LOGISTICS_DESTINATION_TYPES = {
   "assembling-machine",
   "boiler",
   "burner-generator",
@@ -196,33 +196,33 @@ local LOGISTICS_DESTINATION_TYPES = {
   "lab",
   "rocket-silo"
 }
-local RECIPE_ENTITY_TYPES = {
+RECIPE_ENTITY_TYPES = {
   ["assembling-machine"] = true,
   ["furnace"] = true,
   ["rocket-silo"] = true
 }
-local dock_at_habitat
-local stop_team_mate
-local move_team_mate
-local update_mining_animation
+dock_at_habitat = nil
+stop_team_mate = nil
+move_team_mate = nil
+update_mining_animation = nil
 
-local function distance_squared(first, second)
+function distance_squared(first, second)
   local delta_x = first.x - second.x
   local delta_y = first.y - second.y
   return delta_x * delta_x + delta_y * delta_y
 end
 
-local function distance_squared_to_box(position, box)
+function distance_squared_to_box(position, box)
   local delta_x = math.max(box.left_top.x - position.x, 0, position.x - box.right_bottom.x)
   local delta_y = math.max(box.left_top.y - position.y, 0, position.y - box.right_bottom.y)
   return delta_x * delta_x + delta_y * delta_y
 end
 
-local function position_table(position)
+function position_table(position)
   return {x = position.x, y = position.y}
 end
 
-local function create_mining_particles(surface, position, particle_name)
+function create_mining_particles(surface, position, particle_name)
   if not prototypes.particle[particle_name] then
     return
   end
@@ -241,7 +241,7 @@ local function create_mining_particles(surface, position, particle_name)
   end
 end
 
-local function get_habitat_inventory(habitat)
+function get_habitat_inventory(habitat)
   return habitat and habitat.valid
     and habitat.get_inventory(defines.inventory.roboport_material)
     or nil
@@ -249,7 +249,7 @@ end
 
 -- Whole-surface habitat scans dominated update time; track Habitats in a
 -- registry maintained by build/remove events instead (lazy-built for old saves).
-local function get_habitat_registry()
+function get_habitat_registry()
   local registry = storage.not_alone_habitats
   if not registry then
     registry = {}
@@ -265,7 +265,7 @@ local function get_habitat_registry()
   return registry
 end
 
-local function each_habitat()
+function each_habitat()
   local registry = get_habitat_registry()
   local key, habitat
   return function()
@@ -283,7 +283,7 @@ end
 -- Docked team mates are real items in the Habitat's material inventory, so
 -- they count as genuine network storage. Older builds briefly tracked them
 -- as script-side crew records; convert any such records back into items.
-local function flush_habitat_crew_records(habitat)
+function flush_habitat_crew_records(habitat)
   local crews = storage.not_alone_habitat_crews
   local crew = crews and crews[habitat.unit_number]
   if not crew then
@@ -308,7 +308,7 @@ local function flush_habitat_crew_records(habitat)
   end
 end
 
-local function update_habitat_crew_display(habitat)
+function update_habitat_crew_display(habitat)
   storage.not_alone_habitat_crew_renders = storage.not_alone_habitat_crew_renders or {}
   local renders = storage.not_alone_habitat_crew_renders
   local inventory = get_habitat_inventory(habitat)
@@ -344,9 +344,9 @@ local function update_habitat_crew_display(habitat)
   end
 end
 
-local TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
+TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
 
-local function destroy_team_mate_panel(player)
+function destroy_team_mate_panel(player)
   local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
     or player.gui.screen[TEAM_MATE_PANEL_NAME]
   if panel then
@@ -354,7 +354,7 @@ local function destroy_team_mate_panel(player)
   end
 end
 
-local function update_team_mate_panel(player)
+function update_team_mate_panel(player)
   local logistics_open = player.opened_gui_type == defines.gui_type.logistic
     or storage.not_alone_logistics_gui_open
       and storage.not_alone_logistics_gui_open[player.index]
@@ -473,7 +473,7 @@ function poc.on_gui_closed(event)
   end
 end
 
-local function destroy_route_renderings(record)
+function destroy_route_renderings(record)
   for _, render_id in pairs(record.route_render_ids or {}) do
     local render_object = rendering.get_object_by_id(render_id)
     if render_object then
@@ -485,7 +485,7 @@ end
 
 -- Role colors are baked into each kind's unit prototype (units ignore
 -- LuaEntity.color); this only cleans up markers left by older versions.
-local function destroy_color_marker(record)
+function destroy_color_marker(record)
   if record.color_marker_render_id then
     local render_object = rendering.get_object_by_id(record.color_marker_render_id)
     if render_object then
@@ -495,11 +495,11 @@ local function destroy_color_marker(record)
   end
 end
 
-local function get_render_object(render_id)
+function get_render_object(render_id)
   return render_id and rendering.get_object_by_id(render_id) or nil
 end
 
-local function destroy_inventory_renderings(record)
+function destroy_inventory_renderings(record)
   for _, render_id in pairs(record.inventory_render_ids or {}) do
     local render_object = get_render_object(render_id)
     if render_object then
@@ -517,7 +517,7 @@ local function destroy_inventory_renderings(record)
   record.builder_target_render_ids = {}
 end
 
-local function update_builder_target_renderings(record)
+function update_builder_target_renderings(record)
   if record.kind ~= "builder" or not record.builder_target
     or not record.builder_target.valid or not record.builder_item then
     for _, render_id in pairs(record.builder_target_render_ids or {}) do
@@ -604,7 +604,7 @@ local function update_builder_target_renderings(record)
   }
 end
 
-local function get_carried_items(record)
+function get_carried_items(record)
   local counts = {}
   if record.kind == "miner" and record.mining_resource_info
     and (record.carried_count or 0) > 0 then
@@ -641,7 +641,7 @@ local function get_carried_items(record)
   return items
 end
 
-local function update_inventory_renderings(record)
+function update_inventory_renderings(record)
   local items = get_carried_items(record)
   local signature_parts = {}
   for _, item in pairs(items) do
@@ -684,12 +684,12 @@ local function update_inventory_renderings(record)
   end
 end
 
-local function get_manual_destinations(record)
+function get_manual_destinations(record)
   record.manual_destinations = record.manual_destinations or {}
   return record.manual_destinations
 end
 
-local function get_consumer_inventory(consumer, mining_role)
+function get_consumer_inventory(consumer, mining_role)
   if consumer.name == BUILDING_REQUESTER_NAME
     or consumer.name:sub(1, #BUILDING_REQUESTER_PREFIX) == BUILDING_REQUESTER_PREFIX
     or LOGISTICS_SOURCE_MODES[consumer.prototype.logistic_mode] then
@@ -698,12 +698,12 @@ local function get_consumer_inventory(consumer, mining_role)
   return consumer.get_inventory(mining_role.inventory)
 end
 
-local function consumer_accepts_item(consumer, mining_role, count)
+function consumer_accepts_item(consumer, mining_role, count)
   local inventory = get_consumer_inventory(consumer, mining_role)
   return inventory and inventory.get_insertable_count(mining_role.item_name) >= count
 end
 
-local function find_requesting_consumer(record, mining_role)
+function find_requesting_consumer(record, mining_role)
   -- Use the closest network, not just one that exactly covers this position:
   -- a full Miner/Builder may have wandered just outside coverage while
   -- gathering and must still be able to find its way back to deliver.
@@ -724,13 +724,13 @@ local function find_requesting_consumer(record, mining_role)
   return nil
 end
 
-local function get_mining_interval(player)
+function get_mining_interval(player)
   local mining_speed_modifier = player.character_mining_speed_modifier
   local effective_mining_speed = NORMAL_CHARACTER_MINING_SPEED * (1 + mining_speed_modifier)
   return math.max(1, math.ceil(RESOURCE_MINING_TIME * 60 / effective_mining_speed))
 end
 
-local function get_logistics_source_inventory(source)
+function get_logistics_source_inventory(source)
   if not source or not source.valid then
     return nil
   end
@@ -743,7 +743,7 @@ local function get_logistics_source_inventory(source)
   return source.get_inventory(defines.inventory.chest)
 end
 
-local function get_network_furnaces(network)
+function get_network_furnaces(network)
   local furnaces = {}
   local seen = {}
   for _, cell in pairs(network and network.cells or {}) do
@@ -764,7 +764,7 @@ local function get_network_furnaces(network)
   return furnaces
 end
 
-local function get_logistics_contents(network)
+function get_logistics_contents(network)
   local contents = network.get_contents()
   for _, furnace in pairs(get_network_furnaces(network)) do
     local inventory = get_logistics_source_inventory(furnace)
@@ -775,7 +775,7 @@ local function get_logistics_contents(network)
   return contents
 end
 
-local function safe_recipe_value(recipe, key)
+function safe_recipe_value(recipe, key)
   if not recipe then
     return nil
   end
@@ -788,7 +788,7 @@ local function safe_recipe_value(recipe, key)
   return nil
 end
 
-local function recipe_produces_item(recipe, item_name)
+function recipe_produces_item(recipe, item_name)
   if not recipe then
     return false
   end
@@ -813,7 +813,7 @@ local function recipe_produces_item(recipe, item_name)
   return false
 end
 
-local function trigger_research_unlocks_for_item(force, item_name)
+function trigger_research_unlocks_for_item(force, item_name)
   if not force or not item_name then
     return
   end
@@ -834,7 +834,7 @@ local function trigger_research_unlocks_for_item(force, item_name)
   end
 end
 
-local function get_logistics_target_inventory(target, inventory_kind)
+function get_logistics_target_inventory(target, inventory_kind)
   if not target or not target.valid then
     return nil
   end
@@ -850,13 +850,13 @@ local function get_logistics_target_inventory(target, inventory_kind)
   return target.get_inventory(defines.inventory.crafter_input)
 end
 
-local function item_is_fuel_for(item_name, burner)
+function item_is_fuel_for(item_name, burner)
   local item_prototype = prototypes.item[item_name]
   return item_prototype and item_prototype.fuel_category
     and burner.fuel_categories[item_prototype.fuel_category]
 end
 
-local function fuel_priority(item_name)
+function fuel_priority(item_name)
   local item_prototype = prototypes.item[item_name]
   if not item_prototype or not item_prototype.fuel_value then
     return 0
@@ -866,9 +866,9 @@ end
 
 -- Scanning every storage chest and team mate repeats identically for every
 -- burner in the same network on the same tick; memoize the candidate names.
-local fuel_candidate_cache = {}
+fuel_candidate_cache = {}
 
-local function get_network_fuel_candidates(network, force)
+function get_network_fuel_candidates(network, force)
   local cached = fuel_candidate_cache[network.network_id]
   if cached and cached.tick == game.tick then
     return cached.items
@@ -910,7 +910,7 @@ local function get_network_fuel_candidates(network, force)
   return items
 end
 
-local function find_available_fuel(target, network)
+function find_available_fuel(target, network)
   local burner = target.burner
   if not burner or not burner.inventory then
     return nil
@@ -929,7 +929,7 @@ local function find_available_fuel(target, network)
   return best_name
 end
 
-local function inventory_kind_for_item(target, item_name)
+function inventory_kind_for_item(target, item_name)
   local burner = target.burner
   if burner and burner.inventory and item_is_fuel_for(item_name, burner) then
     return "fuel"
@@ -954,7 +954,7 @@ local function inventory_kind_for_item(target, item_name)
   return nil
 end
 
-local function get_building_requests(target, network)
+function get_building_requests(target, network)
   local requests = {}
   if RECIPE_ENTITY_TYPES[target.type] then
     local recipe = target.get_recipe()
@@ -1008,7 +1008,7 @@ local function get_building_requests(target, network)
   return requests
 end
 
-local function update_building_requester(requester_record, network)
+function update_building_requester(requester_record, network)
   local target = requester_record.target
   local requester = requester_record.requester
   if not target.valid or not requester.valid then
@@ -1057,7 +1057,7 @@ local function update_building_requester(requester_record, network)
   return true
 end
 
-local function update_building_requesters_for_network(surface, force, position, network)
+function update_building_requesters_for_network(surface, force, position, network)
   network = network or surface.find_logistic_network_by_position(
     position_table(position),
     force
@@ -1125,7 +1125,7 @@ local function update_building_requesters_for_network(surface, force, position, 
   end
 end
 
-local function find_logistics_return_source(record, item_name)
+function find_logistics_return_source(record, item_name)
   -- Use the closest network, not just one that exactly covers this position:
   -- a full Miner/Builder may have wandered just outside coverage while
   -- gathering and must still be able to find its way back to deliver.
@@ -1152,7 +1152,7 @@ local function find_logistics_return_source(record, item_name)
   return nearest_source
 end
 
-local function find_logistics_item_source(record, item_name)
+function find_logistics_item_source(record, item_name)
   local network = record.entity.surface.find_closest_logistic_network_by_position(
     position_table(record.entity.position),
     record.entity.force
@@ -1185,7 +1185,7 @@ local function find_logistics_item_source(record, item_name)
   return nearest_source
 end
 
-local function get_resource_info(resource_name)
+function get_resource_info(resource_name)
   local resource_prototype = prototypes.entity[resource_name]
   local mineable = resource_prototype and resource_prototype.mineable_properties
   local product = mineable and mineable.products and mineable.products[1]
@@ -1201,14 +1201,14 @@ local function get_resource_info(resource_name)
   }
 end
 
-local function get_marked_resources(surface_index)
+function get_marked_resources(surface_index)
   storage.not_alone_marked_resources = storage.not_alone_marked_resources or {}
   storage.not_alone_marked_resources[surface_index] =
     storage.not_alone_marked_resources[surface_index] or {}
   return storage.not_alone_marked_resources[surface_index]
 end
 
-local function destroy_mark_rendering(mark)
+function destroy_mark_rendering(mark)
   local render_object = mark and mark.render_id and rendering.get_object_by_id(mark.render_id)
   if render_object then
     render_object.destroy()
@@ -1216,12 +1216,12 @@ local function destroy_mark_rendering(mark)
 end
 
 -- Resource entities have no unit_number, so mark them by tile position.
-local function resource_mark_key(resource)
+function resource_mark_key(resource)
   local position = resource.position
   return math.floor(position.x) .. "," .. math.floor(position.y)
 end
 
-local function mark_resource_for_mining(resource)
+function mark_resource_for_mining(resource)
   local marks = get_marked_resources(resource.surface.index)
   local key = resource_mark_key(resource)
   if marks[key] then
@@ -1241,7 +1241,7 @@ local function mark_resource_for_mining(resource)
   }
 end
 
-local function unmark_resource_for_mining(resource)
+function unmark_resource_for_mining(resource)
   local marks = get_marked_resources(resource.surface.index)
   local key = resource_mark_key(resource)
   local mark = marks[key]
@@ -1251,13 +1251,13 @@ local function unmark_resource_for_mining(resource)
   end
 end
 
-local function is_resource_marked(resource)
+function is_resource_marked(resource)
   local marks = storage.not_alone_marked_resources
     and storage.not_alone_marked_resources[resource.surface.index]
   return marks and marks[resource_mark_key(resource)] ~= nil
 end
 
-local function cleanup_marked_resources(surface_index)
+function cleanup_marked_resources(surface_index)
   local marks = storage.not_alone_marked_resources
     and storage.not_alone_marked_resources[surface_index]
   if not marks then
@@ -1271,7 +1271,7 @@ local function cleanup_marked_resources(surface_index)
   end
 end
 
-local function get_resource_claimant(resource)
+function get_resource_claimant(resource)
   local claimant
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, other_record in pairs(team_mates) do
@@ -1289,7 +1289,7 @@ local function get_resource_claimant(resource)
   return claimant
 end
 
-local function find_marked_resource(record, surface, force, position)
+function find_marked_resource(record, surface, force, position)
   surface = surface or record.entity.surface
   force = force or record.entity.force
   position = position or position_table(record.entity.position)
@@ -1319,7 +1319,7 @@ local function find_marked_resource(record, surface, force, position)
   return nearest_resource
 end
 
-local function assign_miner_job(record, surface, force, position)
+function assign_miner_job(record, surface, force, position)
   local resource = find_marked_resource(record, surface, force, position)
   if not resource then
     return false
@@ -1330,7 +1330,7 @@ local function assign_miner_job(record, surface, force, position)
   return true
 end
 
-local function update_miner(record, player)
+function update_miner(record, player)
   update_mining_animation(record, record.miner_state == "mine")
 
   if record.miner_state == "move-to-ore" then
@@ -1567,7 +1567,7 @@ update_mining_animation = function(record, should_show)
   end
 end
 
-local function refresh_route_renderings(record, player_index)
+function refresh_route_renderings(record, player_index)
   destroy_route_renderings(record)
 
   local destinations = get_manual_destinations(record)
@@ -1603,7 +1603,7 @@ local function refresh_route_renderings(record, player_index)
   end
 end
 
-local function enable_logistics_network_gui(force)
+function enable_logistics_network_gui(force)
   force.unlock_logistic_network = true
   force.character_logistic_requests = true
 end
@@ -1660,7 +1660,7 @@ move_team_mate = function(record, destination, stopping_distance)
   record.command_target = nil
 end
 
-local function find_nearest_habitat(record)
+function find_nearest_habitat(record)
   local team_mate = record.entity
   local nearest_habitat = nil
   local nearest_distance = nil
@@ -1677,7 +1677,7 @@ local function find_nearest_habitat(record)
   return nearest_habitat
 end
 
-local function move_team_mate_toward_destination(record, destination)
+function move_team_mate_toward_destination(record, destination)
   local position = record.entity.position
   local delta_x = destination.x - position.x
   local delta_y = destination.y - position.y
@@ -1706,7 +1706,7 @@ local function move_team_mate_toward_destination(record, destination)
   move_team_mate(record, waypoint, 1)
 end
 
-local function find_soldier_target(record, surface, force, position)
+function find_soldier_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
@@ -1763,7 +1763,7 @@ local function find_soldier_target(record, surface, force, position)
   return nearest_enemy
 end
 
-local function attack_with_team_mate(record, enemy)
+function attack_with_team_mate(record, enemy)
   if record.command_kind == "attack"
     and record.command_target
     and record.command_target.valid
@@ -1784,7 +1784,7 @@ local function attack_with_team_mate(record, enemy)
   record.command_target = enemy
 end
 
-local function get_soldier_ammo_count(record, weapon)
+function get_soldier_ammo_count(record, weapon)
   local total = 0
   for _, ammo_name in pairs(weapon.ammo) do
     total = total + ((record.soldier_ammo and record.soldier_ammo[ammo_name]) or 0)
@@ -1793,7 +1793,7 @@ local function get_soldier_ammo_count(record, weapon)
 end
 
 -- Best owned weapon that still has ammo; nil means fall back to fists.
-local function select_soldier_weapon(record)
+function select_soldier_weapon(record)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
     if record.soldier_weapons and record.soldier_weapons[weapon.kind]
@@ -1804,7 +1804,7 @@ local function select_soldier_weapon(record)
   return nil
 end
 
-local function consume_soldier_ammo(record, weapon)
+function consume_soldier_ammo(record, weapon)
   for _, ammo_name in ipairs(weapon.ammo) do
     local count = record.soldier_ammo and record.soldier_ammo[ammo_name] or 0
     if count > 0 then
@@ -1816,7 +1816,7 @@ end
 
 -- Swap the unit prototype in place, keeping the record, name tag, health,
 -- and network membership.
-local function replace_team_mate_entity(record, wanted)
+function replace_team_mate_entity(record, wanted)
   local old_entity = record.entity
   if old_entity.name == wanted then
     return true
@@ -1848,7 +1848,7 @@ end
 
 -- Swap the unit prototype to match the weapon in hand (nil means fists).
 -- Mech-armored Soldiers use the hovering "-mech" twin of each variant.
-local function ensure_soldier_entity(record, weapon)
+function ensure_soldier_entity(record, weapon)
   local wanted = weapon and weapon.entity or SOLDIER_FISTS_ENTITY
   local armor = record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor]
   if armor and armor.flying and prototypes.entity[wanted .. "-mech"] then
@@ -1866,7 +1866,7 @@ end
 -- Best owned weapon's ammo first, then that weapon's best ammo tier.
 -- only_empty restricts the search to weapons with dry ammo pools so
 -- preparation cannot loop on topping up an already stocked weapon.
-local function find_soldier_ammo_source(record, only_empty)
+function find_soldier_ammo_source(record, only_empty)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
     if record.soldier_weapons and record.soldier_weapons[weapon.kind]
@@ -1884,7 +1884,7 @@ local function find_soldier_ammo_source(record, only_empty)
   return nil
 end
 
-local function find_soldier_weapon_source(record, weapon)
+function find_soldier_weapon_source(record, weapon)
   if not prototypes.item[weapon.gun] then
     return nil
   end
@@ -1895,7 +1895,7 @@ local function find_soldier_weapon_source(record, weapon)
   return nil
 end
 
-local function assign_soldier_job(record, surface, force, position)
+function assign_soldier_job(record, surface, force, position)
   -- Even an unarmed Soldier will deploy and punch.
   if find_soldier_target(record, surface, force, position) then
     return true
@@ -1975,7 +1975,7 @@ function poc._clear_soldier_pickup(record)
   record.soldier_reservation_key = nil
 end
 
-local function try_soldier_weapon_pickup(record)
+function try_soldier_weapon_pickup(record)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
     if not (record.soldier_weapons and record.soldier_weapons[weapon.kind]) then
@@ -1992,7 +1992,7 @@ local function try_soldier_weapon_pickup(record)
   return false
 end
 
-local function try_soldier_armor_pickup(record)
+function try_soldier_armor_pickup(record)
   for tier = #SOLDIER_ARMORS, (record.soldier_armor or 0) + 1, -1 do
     local armor = SOLDIER_ARMORS[tier]
     if prototypes.item[armor.item] then
@@ -2008,7 +2008,7 @@ local function try_soldier_armor_pickup(record)
   return false
 end
 
-local function start_soldier_restock(record, only_empty)
+function start_soldier_restock(record, only_empty)
   local source, ammo_name = find_soldier_ammo_source(record, only_empty)
   if not source or not poc._reserve_soldier_pickup(record, source, ammo_name) then
     return false
@@ -2019,7 +2019,7 @@ local function start_soldier_restock(record, only_empty)
   return true
 end
 
-local function soldier_needs_ammo(record)
+function soldier_needs_ammo(record)
   for _, weapon in ipairs(SOLDIER_WEAPONS) do
     if record.soldier_weapons and record.soldier_weapons[weapon.kind]
       and get_soldier_ammo_count(record, weapon) == 0 then
@@ -2029,7 +2029,7 @@ local function soldier_needs_ammo(record)
   return false
 end
 
-local function update_soldier(record)
+function update_soldier(record)
   if record.soldier_state == "restock" then
     local source = record.soldier_ammo_source
     local inventory = get_logistics_source_inventory(source)
@@ -2214,7 +2214,7 @@ local function update_soldier(record)
   return dock_at_habitat(record)
 end
 
-local function get_ghost_item(ghost)
+function get_ghost_item(ghost)
   if not ghost or not ghost.valid or ghost.type ~= "entity-ghost" then
     return nil
   end
@@ -2227,7 +2227,7 @@ local function get_ghost_item(ghost)
   return nil
 end
 
-local function find_builder_source(network, item, position)
+function find_builder_source(network, item, position)
   if not network then
     return nil
   end
@@ -2273,7 +2273,7 @@ local function find_builder_source(network, item, position)
   return nearest_source
 end
 
-local function get_recipe_product(recipe, item_name)
+function get_recipe_product(recipe, item_name)
   for _, product in pairs(recipe.products or {}) do
     if (not product.type or product.type == "item") and product.name == item_name then
       return product
@@ -2282,15 +2282,15 @@ local function get_recipe_product(recipe, item_name)
   return nil
 end
 
-local function get_product_amount(product)
+function get_product_amount(product)
   return math.max(1, math.floor(product.amount or product.minimum or 1))
 end
 
 -- Prototypes never change mid-session; index hand-craftable recipes by
 -- product once instead of scanning every recipe per planner lookup.
-local recipes_by_product
+recipes_by_product = nil
 
-local function get_recipes_by_product()
+function get_recipes_by_product()
   if recipes_by_product then
     return recipes_by_product
   end
@@ -2315,7 +2315,7 @@ local function get_recipes_by_product()
   return recipes_by_product
 end
 
-local function find_hand_crafting_recipe(item_name, force)
+function find_hand_crafting_recipe(item_name, force)
   local recipes = {}
   for _, recipe in ipairs(get_recipes_by_product()[item_name] or {}) do
     local force_recipe = force.recipes[recipe.name]
@@ -2326,7 +2326,7 @@ local function find_hand_crafting_recipe(item_name, force)
   return recipes
 end
 
-local function plan_builder_item(network, item, force, available, visiting, actions)
+function plan_builder_item(network, item, force, available, visiting, actions)
   local item_name = item.name
   local needed = item.count or 1
   local in_network = available[item_name] or 0
@@ -2400,7 +2400,7 @@ local function plan_builder_item(network, item, force, available, visiting, acti
   return false
 end
 
-local function find_builder_plan(network, item, force, contents)
+function find_builder_plan(network, item, force, contents)
   local available = {}
   for _, stack in pairs(contents or get_logistics_contents(network)) do
     local stack_quality = stack.quality
@@ -2418,7 +2418,7 @@ local function find_builder_plan(network, item, force, contents)
   return nil
 end
 
-local function builder_plan_has_valid_sources(network, plan)
+function builder_plan_has_valid_sources(network, plan)
   if not network or not plan then
     return false
   end
@@ -2456,7 +2456,7 @@ local function builder_plan_has_valid_sources(network, plan)
   return true
 end
 
-local function builder_target_is_claimed(target, current_record)
+function builder_target_is_claimed(target, current_record)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       if record ~= current_record and record.builder_target == target then
@@ -2467,9 +2467,9 @@ local function builder_target_is_claimed(target, current_record)
   return false
 end
 
-local BUILDER_UNREACHABLE_RETRY_TICKS = 7200
+BUILDER_UNREACHABLE_RETRY_TICKS = 7200
 
-local function builder_target_is_unreachable(record, target)
+function builder_target_is_unreachable(record, target)
   local unreachable = record.builder_unreachable
   if not unreachable then
     return false
@@ -2488,7 +2488,7 @@ local function builder_target_is_unreachable(record, target)
   return found
 end
 
-local function find_builder_job(record, surface, force, position)
+function find_builder_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
@@ -2544,7 +2544,7 @@ local function find_builder_job(record, surface, force, position)
   return nil, nil, nil
 end
 
-local function find_builder_deconstruction_target(record, surface, force, position)
+function find_builder_deconstruction_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
@@ -2606,7 +2606,7 @@ end
 
 -- Damaged buildings take priority over new construction: find the nearest
 -- one, whether stock has a spare repair pack or one needs crafting first.
-local function find_builder_repair_target(record, surface, force, position)
+function find_builder_repair_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
@@ -2645,7 +2645,7 @@ local function find_builder_repair_target(record, surface, force, position)
   return nearest_target
 end
 
-local function find_builder_repair_job(record, surface, force, position)
+function find_builder_repair_job(record, surface, force, position)
   if not prototypes.item[REPAIR_PACK_ITEM_NAME] then
     return nil, nil, nil
   end
@@ -2673,7 +2673,7 @@ local function find_builder_repair_job(record, surface, force, position)
   return nil, nil, nil
 end
 
-local function assign_builder_job(record, surface, force, position)
+function assign_builder_job(record, surface, force, position)
   local repair_target, repair_plan, repair_item = find_builder_repair_job(record, surface, force, position)
   if repair_target then
     record.builder_target = repair_target
@@ -2713,14 +2713,14 @@ local function assign_builder_job(record, surface, force, position)
   return false
 end
 
-local function get_builder_cargo(record)
+function get_builder_cargo(record)
   if not record.builder_cargo or not record.builder_cargo.valid then
     record.builder_cargo = game.create_inventory(BUILDER_CARGO_SLOTS)
   end
   return record.builder_cargo
 end
 
-local function size_builder_cargo_for_plan(record, plan)
+function size_builder_cargo_for_plan(record, plan)
   local item_names = {}
   for _, action in pairs(plan) do
     if action.type == "fetch" then
@@ -2744,7 +2744,7 @@ local function size_builder_cargo_for_plan(record, plan)
   return record.builder_cargo
 end
 
-local function grow_builder_cargo(record)
+function grow_builder_cargo(record)
   local cargo = record.builder_cargo
   if not cargo or not cargo.valid or not cargo.is_empty()
     or #cargo >= MAX_BUILDER_CARGO_SLOTS then
@@ -2756,7 +2756,7 @@ local function grow_builder_cargo(record)
   return record.builder_cargo
 end
 
-local function size_builder_cargo_for_target(record, target)
+function size_builder_cargo_for_target(record, target)
   local required_slots = #(target.prototype.mineable_properties.products or {})
   for inventory_index = 1, target.get_max_inventory_index() do
     local inventory = target.get_inventory(inventory_index)
@@ -2775,7 +2775,7 @@ local function size_builder_cargo_for_target(record, target)
   return record.builder_cargo
 end
 
-local function find_builder_cargo_action(record, cargo)
+function find_builder_cargo_action(record, cargo)
   for slot = 1, #cargo do
     local stack = cargo[slot]
     if stack.valid_for_read then
@@ -2803,7 +2803,7 @@ local function find_builder_cargo_action(record, cargo)
   return nil, nil, nil
 end
 
-local function return_builder_cargo(record)
+function return_builder_cargo(record)
   local cargo = record.builder_cargo
   if not cargo or not cargo.valid or cargo.is_empty() then
     record.builder_delivery_item = nil
@@ -2867,7 +2867,7 @@ local function return_builder_cargo(record)
   return true
 end
 
-local function return_builder_material(record)
+function return_builder_material(record)
   if not record.builder_item or (record.builder_carried_count or 0) == 0 then
     record.builder_item = nil
     record.builder_source = nil
@@ -2957,7 +2957,7 @@ dock_at_habitat = function(record)
   return false
 end
 
-local function builder_is_at_target(record, target)
+function builder_is_at_target(record, target)
   if target.type == "item-entity" then
     return distance_squared(record.entity.position, target.position)
       <= BUILDER_ITEM_PICKUP_DISTANCE * BUILDER_ITEM_PICKUP_DISTANCE
@@ -2966,7 +2966,7 @@ local function builder_is_at_target(record, target)
     <= BUILDER_TARGET_INTERACTION_DISTANCE * BUILDER_TARGET_INTERACTION_DISTANCE
 end
 
-local function builder_target_destination(record, target)
+function builder_target_destination(record, target)
   if target.type == "item-entity" then
     return position_table(target.position)
   end
@@ -2984,7 +2984,7 @@ local function builder_target_destination(record, target)
   }
 end
 
-local function builder_ghost_standing_position(record, target)
+function builder_ghost_standing_position(record, target)
   local box = target.bounding_box
   local position = record.entity.position
   if position.x > box.left_top.x and position.x < box.right_bottom.x
@@ -3009,7 +3009,7 @@ local function builder_ghost_standing_position(record, target)
   return builder_target_destination(record, target)
 end
 
-local function update_builder(record)
+function update_builder(record)
   -- Never let cargo go undelivered: whatever the state machine was doing,
   -- unspent deconstruction cargo always takes priority over new jobs or
   -- docking, so it can never be silently lost or abandoned mid-route.
@@ -3342,7 +3342,7 @@ local function update_builder(record)
   return dock_at_habitat(record)
 end
 
-local function create_team_mate(player, kind, index, spawn_center)
+function create_team_mate(player, kind, index, spawn_center)
   -- Units do not collide with each other, so find_non_colliding_position
   -- returns the same spot for every spawn; ring offsets keep them apart
   -- because perfectly co-located units cannot be separated by the engine.
@@ -3378,7 +3378,7 @@ local function create_team_mate(player, kind, index, spawn_center)
   return record
 end
 
-local function find_any_player_for_force(force)
+function find_any_player_for_force(force)
   if force.connected_players and force.connected_players[1] then
     return force.connected_players[1]
   end
@@ -3390,7 +3390,7 @@ end
 -- runs for tracked records, an orphan would otherwise sit frozen forever
 -- (e.g. a Miner stuck holding a full load it can never deliver). Re-adopt any
 -- such entity so it resumes normal behavior instead of staying stranded.
-local function reconcile_orphaned_team_mates()
+function reconcile_orphaned_team_mates()
   local tracked = {}
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
@@ -3425,7 +3425,7 @@ end
 
 -- Mirrors how logistic robots resolve a delivery: find any network item with
 -- an unmet requester demand, then find the nearest chest currently holding it.
-local function get_requested_count(logistic_point, item_name, quality)
+function get_requested_count(logistic_point, item_name, quality)
   for _, filter in pairs(logistic_point.filters or {}) do
     if filter.name == item_name and (not filter.quality or filter.quality == quality) then
       return filter.count
@@ -3434,7 +3434,7 @@ local function get_requested_count(logistic_point, item_name, quality)
   return nil
 end
 
-local function requester_chest_accepts_item(chest, item_id)
+function requester_chest_accepts_item(chest, item_id)
   if not chest or not chest.valid then
     return false
   end
@@ -3457,7 +3457,7 @@ local function requester_chest_accepts_item(chest, item_id)
   return false
 end
 
-local function find_nearest_requester_for_item(surface, force, position, item_id)
+function find_nearest_requester_for_item(surface, force, position, item_id)
   local nearest = nil
   local nearest_distance = nil
   for _, chest in pairs(surface.find_entities_filtered({
@@ -3478,7 +3478,7 @@ local function find_nearest_requester_for_item(surface, force, position, item_id
   return nearest
 end
 
-local function get_producer_output_inventory(source)
+function get_producer_output_inventory(source)
   if not source or not source.valid then
     return nil
   end
@@ -3489,7 +3489,7 @@ local function get_producer_output_inventory(source)
   return nil
 end
 
-local function find_producer_with_item(surface, force, position, item_id)
+function find_producer_with_item(surface, force, position, item_id)
   local nearest
   local nearest_distance
   for _, producer in pairs(surface.find_entities_filtered({
@@ -3510,14 +3510,14 @@ local function find_producer_with_item(surface, force, position, item_id)
   return nearest
 end
 
-local function carrier_request_key(target, item)
+function carrier_request_key(target, item)
   if not target or not target.valid or not item then
     return nil
   end
   return tostring(target.unit_number) .. ":" .. item.name .. ":" .. (item.quality or "normal")
 end
 
-local function reserve_carrier_request(record, target, item, count)
+function reserve_carrier_request(record, target, item, count)
   local key = carrier_request_key(target, item)
   if not key then
     return false
@@ -3536,7 +3536,7 @@ local function reserve_carrier_request(record, target, item, count)
   return true
 end
 
-local function clear_carrier_request(record)
+function clear_carrier_request(record)
   if not record or not record.carrier_request_key then
     return
   end
@@ -3548,7 +3548,7 @@ local function clear_carrier_request(record)
   record.carrier_request_key = nil
 end
 
-local function find_carrier_job(record, surface, force, position)
+function find_carrier_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
@@ -3635,7 +3635,7 @@ local function find_carrier_job(record, surface, force, position)
   return nil, nil, nil, nil
 end
 
-local function assign_carrier_job(record, surface, force, position)
+function assign_carrier_job(record, surface, force, position)
   local source, target, item, needed = find_carrier_job(record, surface, force, position)
   if not source then
     return false
@@ -3649,7 +3649,7 @@ local function assign_carrier_job(record, surface, force, position)
   return true
 end
 
-local function update_carrier(record)
+function update_carrier(record)
   if record.carrier_state == "move-to-source" then
     local source = record.carrier_source
     local inventory = get_logistics_source_inventory(source)
@@ -3741,7 +3741,7 @@ local function update_carrier(record)
   return dock_at_habitat(record)
 end
 
-local function assign_job(record, surface, force, position)
+function assign_job(record, surface, force, position)
   if record.kind == "miner" then
     return assign_miner_job(record, surface, force, position)
   elseif record.kind == "builder" then
@@ -3754,7 +3754,7 @@ local function assign_job(record, surface, force, position)
   return false
 end
 
-local function auto_deploy_from_habitat(habitat)
+function auto_deploy_from_habitat(habitat)
   local player = find_any_player_for_force(habitat.force)
   if not player or not player.valid or not habitat.unit_number then
     return
@@ -3802,7 +3802,7 @@ local function auto_deploy_from_habitat(habitat)
   return deployed
 end
 
-local function configure_freeplay_starter_inventory()
+function configure_freeplay_starter_inventory()
   local freeplay = remote.interfaces.freeplay
   if not freeplay or not freeplay.get_created_items or not freeplay.set_created_items then
     return
@@ -3826,13 +3826,13 @@ local function configure_freeplay_starter_inventory()
   remote.call("freeplay", "set_created_items", created_items)
 end
 
-local function queue_starter_inventory(player_index)
+function queue_starter_inventory(player_index)
   storage.not_alone_starter_inventory_pending =
     storage.not_alone_starter_inventory_pending or {}
   storage.not_alone_starter_inventory_pending[player_index] = true
 end
 
-local function queue_starter_inventory_migration()
+function queue_starter_inventory_migration()
   if storage.not_alone_starter_inventory_version == STARTER_INVENTORY_VERSION then
     return
   end
@@ -3842,7 +3842,7 @@ local function queue_starter_inventory_migration()
   storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
-local function ensure_starter_inventory(player)
+function ensure_starter_inventory(player)
   if not player or not player.valid or not player.character or not player.character.valid then
     return false
   end
@@ -3869,7 +3869,7 @@ local function ensure_starter_inventory(player)
   return satisfied and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
 end
 
-local function rescue_immobile_team_mate(record)
+function rescue_immobile_team_mate(record)
   local entity = record.entity
   if record.command_kind ~= "move" and record.command_kind ~= "attack" then
     record.stall_position = nil
@@ -3905,7 +3905,7 @@ local function rescue_immobile_team_mate(record)
   end
 end
 
-local function update_team_mate(record, player)
+function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
     destroy_route_renderings(record)
@@ -4088,7 +4088,7 @@ function poc.on_selected_area(event)
   player.print({"not-alone.team-mates-selected", selected_count})
 end
 
-local function deconstruction_planner_accepts(stack, resource_name)
+function deconstruction_planner_accepts(stack, resource_name)
   if not stack or not stack.valid_for_read then
     return true
   end
@@ -4138,7 +4138,7 @@ function poc.on_deconstructed_area(event)
   end
 end
 
-local function order_selected_team_mates(event, append)
+function order_selected_team_mates(event, append)
   if event.item ~= COMMAND_TOOL_NAME then
     return
   end
@@ -4309,7 +4309,7 @@ function poc.on_entity_damaged(event)
   end
 end
 
-local function spawn_crash_ship(surface, area, rng)
+function spawn_crash_ship(surface, area, rng)
   local ship_target = {
     x = area.left_top.x + rng(4, 28),
     y = area.left_top.y + rng(4, 28)
@@ -4342,7 +4342,7 @@ end
 
 -- Other crews crash-landed here too. Seeded purely from the map seed and
 -- chunk position so the same map always yields the same wreck field.
-local function create_seeded_random(seed, chunk_x, chunk_y)
+function create_seeded_random(seed, chunk_x, chunk_y)
   local modulus = 2147483647
   local state = (seed % modulus
     + (chunk_x + 1048576) * 40093
@@ -4360,7 +4360,7 @@ local function create_seeded_random(seed, chunk_x, chunk_y)
   end
 end
 
-local function get_crash_ship_rate(surface, distance_tiles)
+function get_crash_ship_rate(surface, distance_tiles)
   local starting_radius = surface.get_starting_area_radius()
   if not starting_radius or starting_radius <= 0 then
     return 0
