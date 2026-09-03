@@ -2340,19 +2340,39 @@ local function find_builder_plan(network, item, force, contents)
   return nil
 end
 
-local function builder_plan_has_valid_sources(network, plan, position)
+local function builder_plan_has_valid_sources(network, plan)
   if not network or not plan then
     return false
   end
+  -- Sum what is actually withdrawable; no single chest needs to hold an
+  -- action's full count on its own.
+  local available = {}
+  local seen = {}
+  local function add_source(source)
+    if source and source.valid and source.unit_number and not seen[source.unit_number] then
+      seen[source.unit_number] = true
+      local inventory = get_logistics_source_inventory(source)
+      for _, item in pairs(inventory and inventory.get_contents() or {}) do
+        available[item.name] = (available[item.name] or 0) + item.count
+      end
+    end
+  end
+  for _, source in pairs(network.providers) do
+    add_source(source)
+  end
+  for _, source in pairs(network.storages) do
+    add_source(source)
+  end
+  for _, furnace in pairs(get_network_furnaces(network)) do
+    add_source(furnace)
+  end
   for _, action in ipairs(plan) do
     if action.type == "fetch" then
-      local item = action.item
-      local source = find_builder_source(network, item, position)
-      local inventory = get_logistics_source_inventory(source)
-      if not source or not inventory
-        or inventory.get_item_count(item.name) < action.count then
+      local name = action.item.name
+      if (available[name] or 0) < action.count then
         return false
       end
+      available[name] = available[name] - action.count
     end
   end
   return true
@@ -2410,7 +2430,7 @@ local function find_builder_job(record, surface, force, position)
   for _, ghost in ipairs(ghosts) do
     local item = get_ghost_item(ghost)
     local plan = item and find_builder_plan(network, item, force, contents)
-    if plan and builder_plan_has_valid_sources(network, plan, position) then
+    if plan and builder_plan_has_valid_sources(network, plan) then
       return ghost, plan, item
     end
     storage.not_alone_pending_builder_ghosts = storage.not_alone_pending_builder_ghosts or {}
@@ -2904,12 +2924,12 @@ local function update_builder(record)
           quality = action.item.quality,
           count = removed
         })
+        -- Partial withdrawals continue at the next source for the remainder.
+        action.count = action.count - removed
       end
-      if removed >= action.count then
-        record.builder_source = nil
+      record.builder_source = nil
+      if action.count <= 0 then
         record.builder_plan_index = record.builder_plan_index + 1
-      else
-        record.builder_source = nil
       end
     else
       move_team_mate(record, source.position, 2)
@@ -3156,21 +3176,19 @@ local function requester_chest_accepts_item(chest, item_id)
   if not inventory or inventory.get_insertable_count(item_id) <= 0 then
     return false
   end
+  -- Only deliver items the chest is actively requesting; anything else would
+  -- turn requesters (including the hidden per-building ones) into dumping grounds.
   local requester_point = chest.get_requester_point()
   if not requester_point then
-    return true
+    return false
   end
-  local filters = requester_point.filters or {}
-  if #filters == 0 then
-    return true
-  end
-  for _, filter in pairs(filters) do
+  for _, filter in pairs(requester_point.filters or {}) do
     if filter.name == item_id.name and (not filter.quality or filter.quality == item_id.quality) then
       local requested = filter.count or 0
       return inventory.get_item_count(item_id) < requested
     end
   end
-  return true
+  return false
 end
 
 local function find_nearest_requester_for_item(surface, force, position, item_id)
@@ -3198,35 +3216,32 @@ local function get_producer_output_inventory(source)
   if not source or not source.valid then
     return nil
   end
-  if source.type == "furnace" or source.type == "assembling-machine" or source.type == "rocket-silo" then
+  if source.type == "furnace" or source.type == "assembling-machine"
+    or source.type == "rocket-silo" then
     return source.get_inventory(defines.inventory.crafter_output)
   end
   return nil
 end
 
-local function requester_chest_accepts_item(chest, item_id)
-  if not chest or not chest.valid then
-    return false
-  end
-  local inventory = chest.get_inventory(defines.inventory.chest)
-  if not inventory or inventory.get_insertable_count(item_id) <= 0 then
-    return false
-  end
-  local requester_point = chest.get_requester_point()
-  if not requester_point then
-    return true
-  end
-  local filters = requester_point.filters or {}
-  if #filters == 0 then
-    return true
-  end
-  for _, filter in pairs(filters) do
-    if filter.name == item_id.name and (not filter.quality or filter.quality == item_id.quality) then
-      local requested = filter.count or 0
-      return inventory.get_item_count(item_id) < requested
+local function find_producer_with_item(surface, force, position, item_id)
+  local nearest
+  local nearest_distance
+  for _, producer in pairs(surface.find_entities_filtered({
+    type = {"furnace", "assembling-machine", "rocket-silo"},
+    force = force,
+    position = position,
+    radius = LOGISTICS_SEARCH_RADIUS
+  })) do
+    local inventory = get_producer_output_inventory(producer)
+    if inventory and inventory.get_item_count(item_id) > 0 then
+      local distance = distance_squared(position, producer.position)
+      if not nearest_distance or distance < nearest_distance then
+        nearest = producer
+        nearest_distance = distance
+      end
     end
   end
-  return true
+  return nearest
 end
 
 local function carrier_request_key(target, item)
@@ -3308,6 +3323,9 @@ local function find_carrier_job(record, surface, force, position)
     end
   end
 
+  -- Fulfil unmet requester demands from producer machine outputs; only items
+  -- the chest actively requests are considered, so producers never become
+  -- generic storage sources.
   local requesters = surface.find_entities_filtered({
     type = "logistic-container",
     force = force,
@@ -3320,25 +3338,25 @@ local function find_carrier_job(record, surface, force, position)
   for _, chest in ipairs(requesters) do
     if chest.valid and chest.prototype.logistic_mode == "requester" then
       local inventory = chest.get_inventory(defines.inventory.chest)
-      if inventory and inventory.valid then
-        for _, producer in pairs(surface.find_entities_filtered({
-          type = LOGISTICS_DESTINATION_TYPES,
-          force = force,
-          position = position,
-          radius = LOGISTICS_SEARCH_RADIUS
-        })) do
-          local producer_inventory = get_producer_output_inventory(producer)
-          if producer_inventory then
-            for _, item in pairs(producer_inventory.get_contents()) do
-              local quality = item.quality or "normal"
-              local item_id = {name = item.name, quality = quality}
-              if requester_chest_accepts_item(chest, item_id) then
-                local available = producer_inventory.get_item_count(item_id)
-                if available > 0 then
-                  local claimed_count = math.min(available, CARRIER_CAPACITY)
-                  if reserve_carrier_request(record, chest, item_id, claimed_count) then
-                    return producer, chest, item_id, claimed_count
-                  end
+      local requester_point = chest.get_requester_point()
+      if inventory and inventory.valid and requester_point then
+        for _, filter in pairs(requester_point.filters or {}) do
+          if filter.name then
+            local item_id = {name = filter.name, quality = filter.quality or "normal"}
+            local missing = math.max((filter.count or 0) - inventory.get_item_count(item_id), 0)
+            missing = math.min(missing, inventory.get_insertable_count(item_id))
+            if missing > 0 then
+              local producer = find_producer_with_item(surface, force, position, item_id)
+              local producer_inventory = get_producer_output_inventory(producer)
+              if producer_inventory then
+                local claimed_count = math.min(
+                  missing,
+                  producer_inventory.get_item_count(item_id),
+                  CARRIER_CAPACITY
+                )
+                if claimed_count > 0
+                  and reserve_carrier_request(record, chest, item_id, claimed_count) then
+                  return producer, chest, item_id, claimed_count
                 end
               end
             end
@@ -3369,6 +3387,7 @@ local function update_carrier(record)
   if record.carrier_state == "move-to-source" then
     local source = record.carrier_source
     local inventory = get_logistics_source_inventory(source)
+      or get_producer_output_inventory(source)
     if not source or not source.valid or not inventory
       or inventory.get_item_count(record.carrier_item) == 0 then
       clear_carrier_request(record)
