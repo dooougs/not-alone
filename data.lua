@@ -176,6 +176,9 @@ team_mate.movement_speed = data.raw.character.character.running_speed
 team_mate.distance_per_frame = 0.13
 team_mate.vision_distance = 30
 team_mate.radar_range = 2
+-- Belts dragging team mates off their walking paths caused endless stall
+-- rescues; all variants deep-copy this base, so immunity covers every role.
+team_mate.has_belt_immunity = true
 team_mate.friendly_map_color = {r = 0.2, g = 1, b = 0.2, a = 1}
 team_mate.corpse = nil
 team_mate.dying_explosion = nil
