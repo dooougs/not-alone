@@ -570,8 +570,8 @@ local function update_builder_target_renderings(record)
   local bar_background = rendering.draw_rectangle({
     color = {r = 0.08, g = 0.08, b = 0.08, a = 0.9},
     filled = true,
-    left_top = {record.entity.position.x + 0.55, record.entity.position.y - 2.65},
-    right_bottom = {record.entity.position.x + 1.95, record.entity.position.y - 2.4},
+    left_top = {entity = record.entity, offset = {0.55, -2.65}},
+    right_bottom = {entity = record.entity, offset = {1.95, -2.4}},
     surface = record.entity.surface,
     only_in_alt_mode = true,
     draw_on_ground = false
@@ -579,11 +579,8 @@ local function update_builder_target_renderings(record)
   local bar_fill = rendering.draw_rectangle({
     color = KIND_COLOR.builder,
     filled = true,
-    left_top = {record.entity.position.x + 0.55, record.entity.position.y - 2.65},
-    right_bottom = {
-      record.entity.position.x + 0.55 + 1.4 * progress,
-      record.entity.position.y - 2.4
-    },
+    left_top = {entity = record.entity, offset = {0.55, -2.65}},
+    right_bottom = {entity = record.entity, offset = {0.55 + 1.4 * progress, -2.4}},
     surface = record.entity.surface,
     only_in_alt_mode = true,
     draw_on_ground = false
@@ -2182,14 +2179,30 @@ local function find_builder_source(network, item, position)
   end
   local nearest_source
   local nearest_distance
-  for _, furnace in pairs(get_network_furnaces(network)) do
-    local furnace_inventory = get_logistics_source_inventory(furnace)
-    if furnace_inventory and furnace_inventory.get_item_count(item_name) > 0 then
-      local distance = distance_squared(position, furnace.position)
+  local function consider(candidate)
+    local candidate_inventory = get_logistics_source_inventory(candidate)
+    if candidate_inventory and candidate_inventory.get_item_count(item_name) > 0 then
+      local distance = distance_squared(position, candidate.position)
       if not nearest_distance or distance < nearest_distance then
-        nearest_source = furnace
+        nearest_source = candidate
         nearest_distance = distance
       end
+    end
+  end
+  for _, furnace in pairs(get_network_furnaces(network)) do
+    consider(furnace)
+  end
+  -- The engine's pickup-point selection can miss stock that is only sitting
+  -- in other providers/storages; fall back to the same broad scan used to
+  -- validate the plan so execution never fails on stock the plan counted.
+  if not nearest_source then
+    for _, provider in pairs(network.providers) do
+      consider(provider)
+    end
+  end
+  if not nearest_source then
+    for _, storage_entity in pairs(network.storages) do
+      consider(storage_entity)
     end
   end
   return nearest_source
@@ -2819,6 +2832,31 @@ local function builder_target_destination(record, target)
   }
 end
 
+local function builder_ghost_standing_position(record, target)
+  local box = target.bounding_box
+  local position = record.entity.position
+  if position.x > box.left_top.x and position.x < box.right_bottom.x
+    and position.y > box.left_top.y and position.y < box.right_bottom.y then
+    -- Standing inside the footprint blocks revive; leave through the nearest edge.
+    local exits = {
+      {x = box.left_top.x - BUILDER_TARGET_CLEARANCE, y = position.y},
+      {x = box.right_bottom.x + BUILDER_TARGET_CLEARANCE, y = position.y},
+      {x = position.x, y = box.left_top.y - BUILDER_TARGET_CLEARANCE},
+      {x = position.x, y = box.right_bottom.y + BUILDER_TARGET_CLEARANCE}
+    }
+    local best, best_distance
+    for _, exit in pairs(exits) do
+      local exit_distance = distance_squared(position, exit)
+      if not best_distance or exit_distance < best_distance then
+        best = exit
+        best_distance = exit_distance
+      end
+    end
+    return best
+  end
+  return builder_target_destination(record, target)
+end
+
 local function update_builder(record)
   -- Never let cargo go undelivered: whatever the state machine was doing,
   -- unspent deconstruction cargo always takes priority over new jobs or
@@ -2965,10 +3003,11 @@ local function update_builder(record)
     return true
   end
   if record.builder_state == "move-to-ghost" then
-    if not record.builder_target or not record.builder_target.valid then
+    local target = record.builder_target
+    if not target or not target.valid then
       record.builder_state = "return-material"
-    elseif distance_squared(record.entity.position, record.builder_target.position) <= 16 then
-      local _, revived_entity = record.builder_target.revive({raise_revive = true})
+    elseif builder_is_at_target(record, target) then
+      local _, revived_entity = target.revive({raise_revive = true})
       if revived_entity then
         local cargo = get_builder_cargo(record)
         cargo.remove({
@@ -2986,12 +3025,22 @@ local function update_builder(record)
         record.builder_plan_index = nil
         record.builder_target = nil
         record.builder_state = nil
+        record.builder_ghost_attempts = nil
+        stop_team_mate(record)
       else
-        record.builder_state = "return-material"
+        -- Blocked, usually by a unit standing in the footprint (often this
+        -- builder itself); step clear and retry before giving up.
+        record.builder_ghost_attempts = (record.builder_ghost_attempts or 0) + 1
+        if record.builder_ghost_attempts > 120 then
+          record.builder_ghost_attempts = nil
+          record.builder_state = "return-material"
+          stop_team_mate(record)
+        else
+          move_team_mate(record, builder_ghost_standing_position(record, target), 0.2)
+        end
       end
-      stop_team_mate(record)
     else
-      move_team_mate(record, record.builder_target.position, 4)
+      move_team_mate(record, builder_target_destination(record, target), 0.2)
     end
     return true
   end
