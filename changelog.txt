@@ -1,4 +1,13 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.8
+Date: 2026-09-03
+  Changes:
+    - Fixed Builders rejecting valid construction plans when required materials were split across multiple logistic sources.
+    - Fixed Builders continuing to request an entire material quantity after a partial source withdrawal.
+    - Added guarded carrier fulfilment from furnace and assembling-machine outputs for active requester chest demands.
+    - Prevented producer outputs from being treated as generic logistic storage.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.7
 Date: 2026-09-02
   Changes:
