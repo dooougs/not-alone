@@ -1,4 +1,4 @@
-﻿local poc = {}
+local poc = {}
 
 local INITIAL_HABITAT_COUNT = 1
 local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
@@ -1943,12 +1943,43 @@ local function assign_soldier_job(record, surface, force, position)
   return false
 end
 
+-- Prevents multiple Soldiers from all committing to the same scarce weapon,
+-- armor, or ammo stack; mirrors the carrier request reservation pattern.
+-- Attached to the existing `poc` table (rather than a new local) since the
+-- main chunk is already at Lua's 200 local variable limit.
+function poc._reserve_soldier_pickup(record, source, item_name)
+  if not source or not source.valid or not item_name then
+    return false
+  end
+  local key = tostring(source.unit_number) .. ":" .. item_name
+  storage.not_alone_soldier_pickups = storage.not_alone_soldier_pickups or {}
+  local existing = storage.not_alone_soldier_pickups[key]
+  if existing and existing.record ~= record and game.tick - existing.tick < 300 then
+    return false
+  end
+  storage.not_alone_soldier_pickups[key] = {record = record, tick = game.tick}
+  record.soldier_reservation_key = key
+  return true
+end
+
+function poc._clear_soldier_pickup(record)
+  if not record or not record.soldier_reservation_key then
+    return
+  end
+  storage.not_alone_soldier_pickups = storage.not_alone_soldier_pickups or {}
+  local existing = storage.not_alone_soldier_pickups[record.soldier_reservation_key]
+  if existing and existing.record == record then
+    storage.not_alone_soldier_pickups[record.soldier_reservation_key] = nil
+  end
+  record.soldier_reservation_key = nil
+end
+
 local function try_soldier_weapon_pickup(record)
   for rank = #SOLDIER_WEAPONS, 1, -1 do
     local weapon = SOLDIER_WEAPONS[rank]
     if not (record.soldier_weapons and record.soldier_weapons[weapon.kind]) then
       local source, item_name = find_soldier_weapon_source(record, weapon)
-      if source then
+      if source and poc._reserve_soldier_pickup(record, source, item_name) then
         record.soldier_state = "pickup-weapon"
         record.soldier_pickup_kind = weapon.kind
         record.soldier_pickup_item = item_name
@@ -1965,7 +1996,7 @@ local function try_soldier_armor_pickup(record)
     local armor = SOLDIER_ARMORS[tier]
     if prototypes.item[armor.item] then
       local source = find_logistics_item_source(record, armor.item)
-      if source then
+      if source and poc._reserve_soldier_pickup(record, source, armor.item) then
         record.soldier_state = "pickup-armor"
         record.soldier_pickup_armor = tier
         record.soldier_pickup_source = source
@@ -1978,7 +2009,7 @@ end
 
 local function start_soldier_restock(record, only_empty)
   local source, ammo_name = find_soldier_ammo_source(record, only_empty)
-  if not source then
+  if not source or not poc._reserve_soldier_pickup(record, source, ammo_name) then
     return false
   end
   record.soldier_state = "restock"
@@ -2006,6 +2037,7 @@ local function update_soldier(record)
       record.soldier_state = nil
       record.soldier_ammo_source = nil
       record.soldier_restock_name = nil
+      poc._clear_soldier_pickup(record)
     elseif distance_squared(record.entity.position, source.position) <= 4 then
       local removed = inventory.remove({
         name = record.soldier_restock_name,
@@ -2019,6 +2051,7 @@ local function update_soldier(record)
       record.soldier_state = nil
       record.soldier_ammo_source = nil
       record.soldier_restock_name = nil
+      poc._clear_soldier_pickup(record)
       stop_team_mate(record)
     else
       move_team_mate(record, source.position, 2)
@@ -2037,6 +2070,7 @@ local function update_soldier(record)
       record.soldier_pickup_source = nil
       record.soldier_pickup_kind = nil
       record.soldier_pickup_item = nil
+      poc._clear_soldier_pickup(record)
     elseif distance_squared(record.entity.position, source.position) <= 4 then
       if inventory.remove({name = pickup_item, count = 1}) == 1 then
         record.soldier_weapons = record.soldier_weapons or {}
@@ -2046,6 +2080,7 @@ local function update_soldier(record)
       record.soldier_pickup_source = nil
       record.soldier_pickup_kind = nil
       record.soldier_pickup_item = nil
+      poc._clear_soldier_pickup(record)
       stop_team_mate(record)
     else
       move_team_mate(record, source.position, 2)
@@ -2062,6 +2097,7 @@ local function update_soldier(record)
       record.soldier_state = nil
       record.soldier_pickup_source = nil
       record.soldier_pickup_armor = nil
+      poc._clear_soldier_pickup(record)
     elseif distance_squared(record.entity.position, source.position) <= 4 then
       if inventory.remove({name = armor.item, count = 1}) == 1 then
         -- Trade in the old suit so it goes back to the network.
@@ -2074,6 +2110,7 @@ local function update_soldier(record)
       record.soldier_state = nil
       record.soldier_pickup_source = nil
       record.soldier_pickup_armor = nil
+      poc._clear_soldier_pickup(record)
       stop_team_mate(record)
     else
       move_team_mate(record, source.position, 2)
