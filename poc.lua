@@ -1,5 +1,15 @@
 poc = {}
 
+local constants = require("lib/constants")
+local utils = require("lib/utils")
+
+for name, value in pairs(constants) do
+  _G[name] = value
+end
+for name, value in pairs(utils) do
+  _G[name] = value
+end
+
 INITIAL_HABITAT_COUNT = 1
 INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
 STARTER_INVENTORY_VERSION = 5
