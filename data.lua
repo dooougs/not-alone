@@ -390,17 +390,6 @@ local SOLDIER_WEAPONS = {
 	{suffix = "rocket", kind = "soldier-rocket", gun = "rocket-launcher", ammo = "rocket", order = "i[soldier-rocket]", sheet = "level3armor3and4"}
 }
 
-local function find_unlocking_technology(recipe_name)
-	for _, technology in pairs(data.raw.technology) do
-		for _, effect in pairs(technology.effects or {}) do
-			if effect.type == "unlock-recipe" and effect.recipe == recipe_name then
-				return technology
-			end
-		end
-	end
-	return nil
-end
-
 local soldier_prototypes = {}
 local soldier_units = {}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
@@ -429,32 +418,6 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
 	end
 	soldier_prototypes[#soldier_prototypes + 1] = unit
 	soldier_units[#soldier_units + 1] = unit
-
-	local kit_item = make_team_mate_item(weapon.kind, KIND_TINT.soldier, weapon.order)
-	-- The kit shows the actual gun so the tiers are tellable apart at a glance.
-	if gun and gun.icon then
-		kit_item.icons = nil
-		kit_item.icon = gun.icon
-		kit_item.icon_size = gun.icon_size
-	end
-	soldier_prototypes[#soldier_prototypes + 1] = kit_item
-
-	local recipe = {
-		type = "recipe",
-		name = "not-alone-" .. weapon.kind,
-		enabled = true,
-		ingredients = {
-			{type = "item", name = weapon.gun, amount = 1},
-			{type = "item", name = weapon.ammo, amount = 5}
-		},
-		results = {{type = "item", name = "not-alone-" .. weapon.kind, amount = 1}}
-	}
-	local technology = find_unlocking_technology(weapon.gun)
-	if technology then
-		recipe.enabled = false
-		table.insert(technology.effects, {type = "unlock-recipe", recipe = recipe.name})
-	end
-	soldier_prototypes[#soldier_prototypes + 1] = recipe
 end
 
 -- The base Soldier is unarmed and punches at melee range, like a recruit.

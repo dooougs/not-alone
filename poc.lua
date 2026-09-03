@@ -113,39 +113,34 @@ local KIND_COLOR = {
 }
 -- Soldier arsenal, ordered worst to best. Soldiers fight with the best owned
 -- weapon that still has ammo, and restock the best ammo tier listed first.
--- Either the crafted kit or the vanilla gun item arms the tier.
+-- Soldiers collect the vanilla gun item directly from logistics storage.
 local SOLDIER_WEAPONS = {
   {
     kind = "smg",
-    item = "not-alone-soldier-smg",
     gun = "submachine-gun",
     entity = "not-alone-team-mate-smg",
     ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
   },
   {
     kind = "shotgun",
-    item = "not-alone-soldier-shotgun",
     gun = "shotgun",
     entity = "not-alone-team-mate-shotgun",
     ammo = {"piercing-shotgun-shell", "shotgun-shell"}
   },
   {
     kind = "combat-shotgun",
-    item = "not-alone-soldier-combat-shotgun",
     gun = "combat-shotgun",
     entity = "not-alone-team-mate-combat-shotgun",
     ammo = {"piercing-shotgun-shell", "shotgun-shell"}
   },
   {
     kind = "flamethrower",
-    item = "not-alone-soldier-flamethrower",
     gun = "flamethrower",
     entity = "not-alone-team-mate-flamethrower",
     ammo = {"flamethrower-ammo"}
   },
   {
     kind = "rocket",
-    item = "not-alone-soldier-rocket",
     gun = "rocket-launcher",
     entity = "not-alone-team-mate-rocket",
     ammo = {"explosive-rocket", "rocket"}
@@ -1883,13 +1878,12 @@ local function find_soldier_ammo_source(record, only_empty)
 end
 
 local function find_soldier_weapon_source(record, weapon)
-  for _, item_name in pairs({weapon.item, weapon.gun}) do
-    if item_name and prototypes.item[item_name] then
-      local source = find_logistics_item_source(record, item_name)
-      if source then
-        return source, item_name
-      end
-    end
+  if not prototypes.item[weapon.gun] then
+    return nil
+  end
+  local source = find_logistics_item_source(record, weapon.gun)
+  if source then
+    return source, weapon.gun
   end
   return nil
 end
@@ -2062,7 +2056,7 @@ local function update_soldier(record)
   if record.soldier_state == "pickup-weapon" then
     local source = record.soldier_pickup_source
     local weapon = SOLDIER_WEAPON_BY_KIND[record.soldier_pickup_kind]
-    local pickup_item = record.soldier_pickup_item or (weapon and weapon.item)
+    local pickup_item = record.soldier_pickup_item or (weapon and weapon.gun)
     local inventory = get_logistics_source_inventory(source)
     if not source or not source.valid or not inventory or not weapon
       or inventory.get_item_count(pickup_item) == 0 then
@@ -4404,7 +4398,7 @@ function poc.on_habitat_removed(event)
       for weapon_kind in pairs(locker.weapons or {}) do
         local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
         if weapon then
-          spill(weapon.item, 1)
+          spill(weapon.gun, 1)
         end
       end
       for ammo_name, count in pairs(locker.ammo or {}) do
