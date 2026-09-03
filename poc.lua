@@ -1,4 +1,4 @@
-local poc = {}
+﻿local poc = {}
 
 local INITIAL_HABITAT_COUNT = 1
 local INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
@@ -242,6 +242,39 @@ local function get_habitat_inventory(habitat)
     or nil
 end
 
+-- Whole-surface habitat scans dominated update time; track Habitats in a
+-- registry maintained by build/remove events instead (lazy-built for old saves).
+local function get_habitat_registry()
+  local registry = storage.not_alone_habitats
+  if not registry then
+    registry = {}
+    for _, surface in pairs(game.surfaces) do
+      for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
+        if habitat.unit_number then
+          registry[habitat.unit_number] = habitat
+        end
+      end
+    end
+    storage.not_alone_habitats = registry
+  end
+  return registry
+end
+
+local function each_habitat()
+  local registry = get_habitat_registry()
+  local key, habitat
+  return function()
+    repeat
+      key, habitat = next(registry, key)
+      if habitat and not habitat.valid then
+        registry[key] = nil
+        habitat = nil
+      end
+    until key == nil or habitat
+    return habitat
+  end
+end
+
 -- Docked team mates are real items in the Habitat's material inventory, so
 -- they count as genuine network storage. Older builds briefly tracked them
 -- as script-side crew records; convert any such records back into items.
@@ -360,11 +393,9 @@ local function update_team_mate_panel(player)
     end
   end
 
-  for _, habitat in pairs(surface.find_entities_filtered({
-    name = LOGISTICS_HUB_NAME,
-    force = player.force
-  })) do
-    if not selected_network or habitat.logistic_network == selected_network then
+  for habitat in each_habitat() do
+    if habitat.surface == surface and habitat.force == player.force
+      and (not selected_network or habitat.logistic_network == selected_network) then
       local inventory = get_habitat_inventory(habitat)
       for _, kind in pairs(TEAM_MATE_KINDS) do
         counts[kind].docked = counts[kind].docked
@@ -1545,14 +1576,13 @@ local function find_nearest_habitat(record)
   local team_mate = record.entity
   local nearest_habitat = nil
   local nearest_distance = nil
-  for _, habitat in pairs(team_mate.surface.find_entities_filtered({
-    name = LOGISTICS_HUB_NAME,
-    force = team_mate.force
-  })) do
-    local distance = distance_squared(team_mate.position, habitat.position)
-    if not nearest_distance or distance < nearest_distance then
-      nearest_habitat = habitat
-      nearest_distance = distance
+  for habitat in each_habitat() do
+    if habitat.surface == team_mate.surface and habitat.force == team_mate.force then
+      local distance = distance_squared(team_mate.position, habitat.position)
+      if not nearest_distance or distance < nearest_distance then
+        nearest_habitat = habitat
+        nearest_distance = distance
+      end
     end
   end
   record.habitat = nearest_habitat
@@ -3429,6 +3459,7 @@ end
 
 function poc.on_configuration_changed()
   rendering.clear("not-alone")
+  storage.not_alone_habitats = nil
   for _, requester_record in pairs(storage.not_alone_building_requesters or {}) do
     if requester_record.requester and requester_record.requester.valid then
       requester_record.requester.destroy()
@@ -3621,6 +3652,9 @@ function poc.on_roboport_built(event)
   if entity.type ~= "roboport" then
     return
   end
+  if entity.name == LOGISTICS_HUB_NAME and entity.unit_number then
+    get_habitat_registry()[entity.unit_number] = entity
+  end
   -- New coverage may reveal marked resources to miners still looking for ore.
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
@@ -3646,25 +3680,25 @@ function poc.on_update(event)
 
   for _, surface in pairs(game.surfaces) do
     cleanup_marked_resources(surface.index)
-    for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
-      flush_habitat_crew_records(habitat)
-      update_habitat_crew_display(habitat)
-      update_building_requesters_for_network(
-        surface,
-        habitat.force,
-        habitat.position,
-        habitat.logistic_network
-      )
-      -- Deploy scans re-run every role's full job search; back off when a
-      -- habitat had nothing to deploy.
-      storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
-      local deploy_ticks = storage.not_alone_habitat_deploy_ticks
-      if habitat.unit_number and game.tick >= (deploy_ticks[habitat.unit_number] or 0) then
-        if auto_deploy_from_habitat(habitat) then
-          deploy_ticks[habitat.unit_number] = nil
-        else
-          deploy_ticks[habitat.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
-        end
+  end
+  for habitat in each_habitat() do
+    flush_habitat_crew_records(habitat)
+    update_habitat_crew_display(habitat)
+    update_building_requesters_for_network(
+      habitat.surface,
+      habitat.force,
+      habitat.position,
+      habitat.logistic_network
+    )
+    -- Deploy scans re-run every role's full job search; back off when a
+    -- habitat had nothing to deploy.
+    storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
+    local deploy_ticks = storage.not_alone_habitat_deploy_ticks
+    if habitat.unit_number and game.tick >= (deploy_ticks[habitat.unit_number] or 0) then
+      if auto_deploy_from_habitat(habitat) then
+        deploy_ticks[habitat.unit_number] = nil
+      else
+        deploy_ticks[habitat.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
       end
     end
   end
@@ -3675,6 +3709,7 @@ function poc.on_update(event)
     storage.not_alone_next_reconcile_tick = game.tick + ORPHAN_RECONCILE_INTERVAL
     reconcile_orphaned_team_mates()
   end
+
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
@@ -3824,6 +3859,9 @@ function poc.on_habitat_removed(event)
   if not entity or not entity.valid or entity.name ~= LOGISTICS_HUB_NAME
     or not entity.unit_number then
     return
+  end
+  if storage.not_alone_habitats then
+    storage.not_alone_habitats[entity.unit_number] = nil
   end
   local surface = entity.surface
   local position = position_table(entity.position)
