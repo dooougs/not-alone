@@ -2310,6 +2310,24 @@ local function find_builder_plan(network, item, force, contents)
   return nil
 end
 
+local function builder_plan_has_valid_sources(network, plan, position)
+  if not network or not plan then
+    return false
+  end
+  for _, action in ipairs(plan) do
+    if action.type == "fetch" then
+      local item = action.item
+      local source = find_builder_source(network, item, position)
+      local inventory = get_logistics_source_inventory(source)
+      if not source or not inventory
+        or inventory.get_item_count(item.name) < action.count then
+        return false
+      end
+    end
+  end
+  return true
+end
+
 local function builder_target_is_claimed(target, current_record)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
@@ -2362,7 +2380,7 @@ local function find_builder_job(record, surface, force, position)
   for _, ghost in ipairs(ghosts) do
     local item = get_ghost_item(ghost)
     local plan = item and find_builder_plan(network, item, force, contents)
-    if plan then
+    if plan and builder_plan_has_valid_sources(network, plan, position) then
       return ghost, plan, item
     end
     storage.not_alone_pending_builder_ghosts = storage.not_alone_pending_builder_ghosts or {}
