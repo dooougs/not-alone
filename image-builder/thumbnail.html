@@ -91,17 +91,27 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 <script>
 (() => {
   const storageKey = "not-alone-thumbnail-layout-v1";
+  const historyKey = `${storageKey}-history`;
   const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  const history = JSON.parse(localStorage.getItem(historyKey) || "[]");
+  const elements = new Map();
 
   const save = () => localStorage.setItem(storageKey, JSON.stringify(saved));
+  const saveHistory = () => localStorage.setItem(historyKey, JSON.stringify(history));
   const applyOffset = (element, name) => {
     const offset = saved[name] || {x: 0, y: 0};
     saved[name] = offset;
     element.style.translate = `${offset.x}px ${offset.y}px`;
   };
+  const record = (name, offset) => {
+    history.push({name, x: offset.x, y: offset.y});
+    if (history.length > 100) history.shift();
+    saveHistory();
+  };
 
   document.querySelectorAll("[data-drag]").forEach((element) => {
     const name = element.dataset.drag;
+    elements.set(name, element);
     applyOffset(element, name);
     element.addEventListener("pointerdown", (event) => {
       if (name === "gear") event.stopPropagation();
@@ -110,10 +120,17 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
       const start = saved[name] || {x: 0, y: 0};
       const originX = event.clientX;
       const originY = event.clientY;
+      const axisLocked = event.ctrlKey;
+      let axis = null;
       const move = (moveEvent) => {
+        const deltaX = moveEvent.clientX - originX;
+        const deltaY = moveEvent.clientY - originY;
+        if (axisLocked && !axis && (deltaX || deltaY)) {
+          axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y";
+        }
         saved[name] = {
-          x: Math.round(start.x + moveEvent.clientX - originX),
-          y: Math.round(start.y + moveEvent.clientY - originY)
+          x: Math.round(start.x + (axis === "y" ? 0 : deltaX)),
+          y: Math.round(start.y + (axis === "x" ? 0 : deltaY))
         };
         applyOffset(element, name);
       };
@@ -122,6 +139,8 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
         element.removeEventListener("pointermove", move);
         element.removeEventListener("pointerup", end);
         element.removeEventListener("pointercancel", end);
+        const finish = saved[name];
+        if (finish.x !== start.x || finish.y !== start.y) record(name, start);
         save();
       };
       element.addEventListener("pointermove", move);
@@ -130,10 +149,25 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
     });
     element.addEventListener("dblclick", (event) => {
       event.stopPropagation();
+      const previous = saved[name] || {x: 0, y: 0};
+      if (previous.x || previous.y) record(name, previous);
       saved[name] = {x: 0, y: 0};
       applyOffset(element, name);
       save();
     });
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey && event.key.toLowerCase() === "z") || event.repeat) return;
+    event.preventDefault();
+    const action = history.pop();
+    if (!action) return;
+    const element = elements.get(action.name);
+    if (!element) return;
+    saved[action.name] = {x: action.x, y: action.y};
+    applyOffset(element, action.name);
+    save();
+    saveHistory();
   });
 })();
 </script>
