@@ -7,6 +7,10 @@ local UPDATE_INTERVAL = 10
 -- Idle units and empty habitats re-scan the whole network for work; doing
 -- that every update dominated frame time, so retries run on cooldowns.
 local IDLE_JOB_SEARCH_INTERVAL = 60
+-- Work arrives sporadically (new ghosts, new requests), so a single failed
+-- search no longer sends a team mate home; only a sustained drought does,
+-- avoiding needless dock/undeploy/redeploy churn between short job gaps.
+local IDLE_DOCK_AFTER_FAILURES = 5
 local HABITAT_DEPLOY_RETRY_INTERVAL = 120
 local BUILDING_REQUESTER_UPDATE_INTERVAL = 60
 local ORPHAN_RECONCILE_INTERVAL = 600
@@ -28,8 +32,14 @@ local INGREDIENT_REQUEST_COUNT = 10
 local BUILDING_REQUEST_SLOT_COUNT = 20
 local BUILDER_ITEM_PICKUP_DISTANCE = 0.5
 local BUILDER_TARGET_CLEARANCE = 0.4
+-- Must exceed the 0.2 stopping distance used when stepping out of a ghost's
+-- footprint; otherwise the escape point can land within arrival range of an
+-- already-close position, so move_team_mate no-ops and the builder never
+-- actually moves (seen wedged between adjacent belt ghosts).
+local BUILDER_GHOST_ESCAPE_DISTANCE = 1
 -- Must exceed clearance plus the 0.2 move stopping distance or arrivals stall.
 local BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
+local REPAIR_PACK_ITEM_NAME = "repair-pack"
 local MINING_ANIMATION_FRAMES = 51
 local MINING_ANIMATION_SPEED = 51 / 60
 local HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
@@ -1439,9 +1449,15 @@ local function update_miner(record, player)
   if game.tick >= (record.next_job_search_tick or 0) then
     if assign_miner_job(record) then
       record.next_job_search_tick = nil
+      record.idle_search_failures = nil
       return true
     end
     record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
+    record.idle_search_failures = (record.idle_search_failures or 0) + 1
+  end
+  if (record.idle_search_failures or 0) < IDLE_DOCK_AFTER_FAILURES then
+    stop_team_mate(record)
+    return true
   end
   return dock_at_habitat(record)
 end
@@ -2079,19 +2095,25 @@ local function update_soldier(record)
     if game.tick >= (record.next_job_search_tick or 0) then
       if try_soldier_weapon_pickup(record) then
         record.next_job_search_tick = nil
+        record.idle_search_failures = nil
         return true
       end
       if soldier_needs_ammo(record) and start_soldier_restock(record, true) then
         record.next_job_search_tick = nil
+        record.idle_search_failures = nil
         return true
       end
       if try_soldier_armor_pickup(record) then
         record.next_job_search_tick = nil
+        record.idle_search_failures = nil
         return true
       end
       target = find_soldier_target(record)
       if not target then
         record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
+        record.idle_search_failures = (record.idle_search_failures or 0) + 1
+      else
+        record.idle_search_failures = nil
       end
     end
     -- Point-blank threats are engine-indexed and cheap: always check.
@@ -2140,10 +2162,15 @@ local function update_soldier(record)
     return true
   end
 
-  -- No target and no preparation work: return to the Habitat.
+  -- No target and no preparation work: return to the Habitat, but only
+  -- once a sustained drought confirms there is nothing left to do nearby.
   if not select_soldier_weapon(record)
     and game.tick >= (record.next_job_search_tick or 0)
     and start_soldier_restock(record) then
+    return true
+  end
+  if (record.idle_search_failures or 0) < IDLE_DOCK_AFTER_FAILURES then
+    stop_team_mate(record)
     return true
   end
   return dock_at_habitat(record)
@@ -2533,7 +2560,88 @@ local function find_builder_deconstruction_target(record, surface, force, positi
   return nearest_target
 end
 
+-- Damaged buildings take priority over new construction: find the nearest
+-- one, whether stock has a spare repair pack or one needs crafting first.
+local function find_builder_repair_target(record, surface, force, position)
+  local team_mate = record.entity
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local network = surface.find_logistic_network_by_position(position, force)
+  if not network then
+    return nil
+  end
+
+  local nearest_target
+  local nearest_distance
+  for _, cell in pairs(network.cells) do
+    if cell.valid and cell.owner.valid then
+      local habitat_cell = cell.owner.name == LOGISTICS_HUB_NAME
+      local search_radius = habitat_cell and cell.logistic_radius or cell.construction_radius
+      for _, target in pairs(surface.find_entities_filtered({
+        position = cell.owner.position,
+        radius = search_radius * 1.5,
+        force = force
+      })) do
+        local distance = distance_squared(position, target.position)
+        if target.health and target.type ~= "unit" and target.type ~= "entity-ghost"
+          and target.get_health_ratio and target.get_health_ratio() < 1
+          and not target.to_be_deconstructed()
+          and not builder_target_is_unreachable(record, target)
+          and (habitat_cell and cell.is_in_logistic_range(target.position)
+            or not habitat_cell and cell.is_in_construction_range(target.position))
+          and not builder_target_is_claimed(target, record)
+          and (not nearest_distance or distance < nearest_distance) then
+          nearest_target = target
+          nearest_distance = distance
+        end
+      end
+    end
+  end
+  return nearest_target
+end
+
+local function find_builder_repair_job(record, surface, force, position)
+  if not prototypes.item[REPAIR_PACK_ITEM_NAME] then
+    return nil, nil, nil
+  end
+  local team_mate = record.entity
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local target = find_builder_repair_target(record, surface, force, position)
+  if not target then
+    return nil, nil, nil
+  end
+  local network = surface.find_logistic_network_by_position(position, force)
+  if not network then
+    return nil, nil, nil
+  end
+  -- find_builder_plan already fetches directly from stock when a repair
+  -- pack is available, and otherwise chains in the crafting actions needed
+  -- to make one, so a builder without a spare pack crafts it on the spot.
+  local item = {name = REPAIR_PACK_ITEM_NAME, quality = "normal"}
+  local contents = get_logistics_contents(network)
+  local plan = find_builder_plan(network, item, force, contents)
+  if plan and builder_plan_has_valid_sources(network, plan) then
+    return target, plan, item
+  end
+  return nil, nil, nil
+end
+
 local function assign_builder_job(record, surface, force, position)
+  local repair_target, repair_plan, repair_item = find_builder_repair_job(record, surface, force, position)
+  if repair_target then
+    record.builder_target = repair_target
+    record.builder_plan = repair_plan
+    record.builder_plan_index = 1
+    record.builder_item = repair_item
+    record.builder_carried_count = 0
+    record.builder_source = nil
+    record.builder_state = "execute-plan"
+    return true
+  end
+
   local target, plan, item = find_builder_job(record, surface, force, position)
   if target then
     record.builder_target = target
@@ -2839,10 +2947,10 @@ local function builder_ghost_standing_position(record, target)
     and position.y > box.left_top.y and position.y < box.right_bottom.y then
     -- Standing inside the footprint blocks revive; leave through the nearest edge.
     local exits = {
-      {x = box.left_top.x - BUILDER_TARGET_CLEARANCE, y = position.y},
-      {x = box.right_bottom.x + BUILDER_TARGET_CLEARANCE, y = position.y},
-      {x = position.x, y = box.left_top.y - BUILDER_TARGET_CLEARANCE},
-      {x = position.x, y = box.right_bottom.y + BUILDER_TARGET_CLEARANCE}
+      {x = box.left_top.x - BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
+      {x = box.right_bottom.x + BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
+      {x = position.x, y = box.left_top.y - BUILDER_GHOST_ESCAPE_DISTANCE},
+      {x = position.x, y = box.right_bottom.y + BUILDER_GHOST_ESCAPE_DISTANCE}
     }
     local best, best_distance
     for _, exit in pairs(exits) do
@@ -2918,7 +3026,12 @@ local function update_builder(record)
       if product and cargo.get_item_count(product) > 0 then
         cargo.remove({name = product.name, quality = product.quality, count = 1})
         record.builder_carried_count = 1
-        record.builder_state = "move-to-ghost"
+        if record.builder_target and record.builder_target.valid
+          and record.builder_target.type == "entity-ghost" then
+          record.builder_state = "move-to-ghost"
+        else
+          record.builder_state = "move-to-repair"
+        end
       else
         record.builder_state = nil
         record.builder_plan = nil
@@ -3044,6 +3157,31 @@ local function update_builder(record)
     end
     return true
   end
+  if record.builder_state == "move-to-repair" then
+    local target = record.builder_target
+    if not target or not target.valid
+      or (target.get_health_ratio and target.get_health_ratio() >= 1) then
+      -- Already fixed (by someone else, or destroyed): the pack in hand
+      -- still needs to go back into logistics storage.
+      record.builder_target = nil
+      record.builder_plan = nil
+      record.builder_plan_index = nil
+      record.builder_state = "return-material"
+    elseif builder_is_at_target(record, target) then
+      target.health = target.prototype.max_health
+      record.builder_item = nil
+      record.builder_carried_count = 0
+      record.builder_source = nil
+      record.builder_plan = nil
+      record.builder_plan_index = nil
+      record.builder_target = nil
+      record.builder_state = nil
+      stop_team_mate(record)
+    else
+      move_team_mate(record, builder_target_destination(record, target), 0.2)
+    end
+    return true
+  end
   if record.builder_state == "move-to-deconstruction" then
     local target = record.builder_target
     if not target or not target.valid
@@ -3118,9 +3256,15 @@ local function update_builder(record)
   if game.tick >= (record.next_job_search_tick or 0) then
     if assign_builder_job(record) then
       record.next_job_search_tick = nil
+      record.idle_search_failures = nil
       return true
     end
     record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
+    record.idle_search_failures = (record.idle_search_failures or 0) + 1
+  end
+  if (record.idle_search_failures or 0) < IDLE_DOCK_AFTER_FAILURES then
+    stop_team_mate(record)
+    return true
   end
   return dock_at_habitat(record)
 end
@@ -3511,9 +3655,15 @@ local function update_carrier(record)
   if game.tick >= (record.next_job_search_tick or 0) then
     if assign_carrier_job(record) then
       record.next_job_search_tick = nil
+      record.idle_search_failures = nil
       return true
     end
     record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
+    record.idle_search_failures = (record.idle_search_failures or 0) + 1
+  end
+  if (record.idle_search_failures or 0) < IDLE_DOCK_AFTER_FAILURES then
+    stop_team_mate(record)
+    return true
   end
   return dock_at_habitat(record)
 end
