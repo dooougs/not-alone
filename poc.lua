@@ -3148,6 +3148,31 @@ local function get_requested_count(logistic_point, item_name, quality)
   return nil
 end
 
+local function requester_chest_accepts_item(chest, item_id)
+  if not chest or not chest.valid then
+    return false
+  end
+  local inventory = chest.get_inventory(defines.inventory.chest)
+  if not inventory or inventory.get_insertable_count(item_id) <= 0 then
+    return false
+  end
+  local requester_point = chest.get_requester_point()
+  if not requester_point then
+    return true
+  end
+  local filters = requester_point.filters or {}
+  if #filters == 0 then
+    return true
+  end
+  for _, filter in pairs(filters) do
+    if filter.name == item_id.name and (not filter.quality or filter.quality == item_id.quality) then
+      local requested = filter.count or 0
+      return inventory.get_item_count(item_id) < requested
+    end
+  end
+  return true
+end
+
 local function find_nearest_requester_for_item(surface, force, position, item_id)
   local nearest = nil
   local nearest_distance = nil
