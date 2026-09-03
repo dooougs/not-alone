@@ -2489,9 +2489,14 @@ local function find_builder_job(record, surface, force, position)
         type = "entity-ghost",
         force = force,
         position = cell.owner.position,
-        radius = cell.logistic_radius * 1.5
+        radius = math.max(cell.logistic_radius, cell.construction_radius) * 1.5
       })) do
-        if cell.is_in_logistic_range(ghost.position)
+        -- A ghost can be buildable inside the network's construction footprint
+        -- even when it sits just outside the logistic coverage window; some
+        -- underground-belt and power-pole ghosts land exactly on that edge.
+        local in_network = cell.is_in_logistic_range(ghost.position)
+          or cell.is_in_construction_range(ghost.position)
+        if in_network
           and not seen_ghosts[ghost.unit_number]
           and not builder_target_is_claimed(ghost, record) then
           seen_ghosts[ghost.unit_number] = true
