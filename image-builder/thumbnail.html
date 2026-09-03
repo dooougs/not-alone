@@ -90,21 +90,29 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 </body>
 <script>
 (() => {
-  const storageKey = "not-alone-thumbnail-layout-v1";
+  const storageKey = "not-alone-layout-v1";
+  const layoutName = "thumbnail";
   const historyKey = `${storageKey}-history`;
-  const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  const legacy = JSON.parse(localStorage.getItem("not-alone-thumbnail-layout-v1") || "{}");
+  const saved = stored[layoutName] || legacy;
   const history = JSON.parse(localStorage.getItem(historyKey) || "[]");
   const elements = new Map();
 
-  const save = () => localStorage.setItem(storageKey, JSON.stringify(saved));
+  const save = () => {
+    stored[layoutName] = saved;
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+  };
   const saveHistory = () => localStorage.setItem(historyKey, JSON.stringify(history));
   const applyOffset = (element, name) => {
-    const offset = saved[name] || {x: 0, y: 0};
+    const offset = saved[name] || {x: 0, y: 0, scale: 1};
+    if (offset.scale === undefined) offset.scale = 1;
     saved[name] = offset;
     element.style.translate = `${offset.x}px ${offset.y}px`;
+    element.style.scale = String(offset.scale);
   };
   const record = (name, offset) => {
-    history.push({name, x: offset.x, y: offset.y});
+    history.push({layout: layoutName, name, x: offset.x, y: offset.y, scale: offset.scale ?? 1});
     if (history.length > 100) history.shift();
     saveHistory();
   };
@@ -117,7 +125,7 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
       if (name === "gear") event.stopPropagation();
       element.setPointerCapture(event.pointerId);
       element.classList.add("is-dragging");
-      const start = saved[name] || {x: 0, y: 0};
+      const start = saved[name] || {x: 0, y: 0, scale: 1};
       const originX = event.clientX;
       const originY = event.clientY;
       const axisLocked = event.ctrlKey;
@@ -130,7 +138,8 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
         }
         saved[name] = {
           x: Math.round(start.x + (axis === "y" ? 0 : deltaX)),
-          y: Math.round(start.y + (axis === "x" ? 0 : deltaY))
+          y: Math.round(start.y + (axis === "x" ? 0 : deltaY)),
+          scale: start.scale ?? 1
         };
         applyOffset(element, name);
       };
@@ -149,22 +158,49 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
     });
     element.addEventListener("dblclick", (event) => {
       event.stopPropagation();
-      const previous = saved[name] || {x: 0, y: 0};
-      if (previous.x || previous.y) record(name, previous);
-      saved[name] = {x: 0, y: 0};
+      const previous = saved[name] || {x: 0, y: 0, scale: 1};
+      if (previous.x || previous.y || previous.scale !== 1) record(name, previous);
+      saved[name] = {x: 0, y: 0, scale: 1};
       applyOffset(element, name);
       save();
     });
+    let wheelStart = null;
+    let wheelTimer = null;
+    element.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const current = saved[name] || {x: 0, y: 0, scale: 1};
+      if (current.scale === undefined) current.scale = 1;
+      if (!wheelStart) wheelStart = {x: current.x, y: current.y, scale: current.scale};
+      const factor = event.deltaY < 0 ? 1.05 : 1 / 1.05;
+      const nextScale = Math.min(6, Math.max(0.15, Math.round(current.scale * factor * 100) / 100));
+      saved[name] = {x: current.x, y: current.y, scale: nextScale};
+      applyOffset(element, name);
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => {
+        if (saved[name].scale !== wheelStart.scale) record(name, wheelStart);
+        wheelStart = null;
+        save();
+      }, 400);
+    }, {passive: false});
   });
 
   document.addEventListener("keydown", (event) => {
     if (!(event.ctrlKey && event.key.toLowerCase() === "z") || event.repeat) return;
     event.preventDefault();
-    const action = history.pop();
+    let actionIndex = -1;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].layout === layoutName || !history[index].layout) {
+        actionIndex = index;
+        break;
+      }
+    }
+    if (actionIndex < 0) return;
+    const action = history.splice(actionIndex, 1)[0];
     if (!action) return;
     const element = elements.get(action.name);
     if (!element) return;
-    saved[action.name] = {x: action.x, y: action.y};
+    saved[action.name] = {x: action.x, y: action.y, scale: action.scale ?? 1};
     applyOffset(element, action.name);
     save();
     saveHistory();

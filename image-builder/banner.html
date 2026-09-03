@@ -6,6 +6,7 @@
 * { box-sizing: border-box; margin: 0; }
 html, body { width: 1152px; height: 768px; overflow: hidden; }
 body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; background: #1a1611; }
+@font-face { font-family: "Full Automation"; src: url("assets/FullAutomation-Squared.otf") format("opentype"); font-weight: normal; font-style: normal; }
 
 /* Real game menu-background screenshot, darkened toward the card band */
 .bg { position: absolute; inset: 0; background: url("assets/bg.jpg") center/cover; }
@@ -14,11 +15,11 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 
 /* Title: stone-orange Factorio-style lettering, gear sprite as the O of ALONE */
 .title { position: absolute; z-index: 3; top: 18px; left: 0; right: 0; text-align: center;
-  font-family: Impact, "Arial Black", sans-serif; font-size: 132px; line-height: 1; letter-spacing: 8px;
+  font-family: "Full Automation", Impact, "Arial Black", sans-serif; font-size: 132px; line-height: 1; letter-spacing: 8px;
   color: #e08a1e;
-  background: linear-gradient(180deg, #f5b34a 8%, #e08a1e 45%, #9c5410 88%);
+  background: linear-gradient(155deg, #ffe9ad 4%, #f9c65f 12%, #efa332 24%, #df861c 52%, #a9580f 92%);
   -webkit-background-clip: text; -webkit-text-fill-color: transparent;
-  filter: drop-shadow(0 4px 0 #3a2008) drop-shadow(0 7px 6px rgba(0,0,0,.85)); }
+  filter: drop-shadow(0 -1px 0 rgba(255,255,255,.45)) drop-shadow(0 4px 0 #3a2008) drop-shadow(0 7px 6px rgba(0,0,0,.85)); }
 .title .gear { display: inline-block; width: 128px; height: 128px; vertical-align: -8px; margin: 0 -8px;
   background: url("assets/gear.png") no-repeat 0 0; background-size: 240px 128px;
   filter: sepia(1) saturate(4.2) hue-rotate(-14deg) brightness(1.02); }
@@ -60,38 +61,40 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 .slogan b { display: block; font-family: Impact, "Arial Black", sans-serif; font-size: 37px; letter-spacing: 2.5px; color: #e0961f; text-shadow: 0 3px 0 #2a1a08; }
 .slogan span { display: block; margin-top: 4px; font-size: 20px; letter-spacing: 3.5px; color: #cbc4b4; font-weight: bold; }
 .brand { width: 220px; height: 43px; margin-right: 22px; background: url("assets/logo.png") no-repeat center/contain; }
+[data-drag] { cursor: grab; touch-action: none; }
+[data-drag].is-dragging { cursor: grabbing; }
 </style>
 </head>
 <body>
   <div class="bg"></div>
 
-  <div class="title">NOT&nbsp;AL<span class="gear"></span>NE</div>
-  <div class="subtitle">A&nbsp;FACTORIO&nbsp;MOD</div>
+  <div class="title" data-drag="title">NOT&nbsp;AL<span class="gear" data-drag="gear"></span>NE</div>
+  <div class="subtitle" data-drag="subtitle">A&nbsp;FACTORIO&nbsp;MOD</div>
 
   <div class="factory">
-    <div class="sprite mate mate-mining"></div>
-    <div class="sprite mate mate-idle-1"></div>
-    <div class="sprite mate mate-idle-2"></div>
-    <div class="sprite mate mate-gun"></div>
+    <div class="sprite mate mate-mining" data-drag="miner"></div>
+    <div class="sprite mate mate-idle-1" data-drag="builder"></div>
+    <div class="sprite mate mate-idle-2" data-drag="carrier"></div>
+    <div class="sprite mate mate-gun" data-drag="soldier"></div>
   </div>
 
   <div class="cards">
-    <div class="card" style="--c:#e3a627">
+    <div class="card" data-drag="miner-card" style="--c:#e3a627">
       <div class="head"><div class="icon" style="background-image:url('assets/icon-miner.png')"></div><b>MINER</b></div>
       <p>Extracts resources from the ground.</p>
       <ul><li>Mines ore</li><li>Works mining drills</li><li>Gathers raw materials</li></ul>
     </div>
-    <div class="card" style="--c:#5c9fd6">
+    <div class="card" data-drag="builder-card" style="--c:#5c9fd6">
       <div class="head"><div class="icon" style="background-image:url('assets/icon-builder.png')"></div><b>BUILDER</b></div>
       <p>Builds and repairs structures.</p>
       <ul><li>Places entities</li><li>Repairs damage</li><li>Constructs the factory</li></ul>
     </div>
-    <div class="card" style="--c:#7fbf46">
+    <div class="card" data-drag="carrier-card" style="--c:#7fbf46">
       <div class="head"><div class="icon" style="background-image:url('assets/icon-carrier.png')"></div><b>CARRIER</b></div>
       <p>Moves items where they need to go.</p>
       <ul><li>Carries items</li><li>Feeds machines</li><li>Supports logistics</li></ul>
     </div>
-    <div class="card" style="--c:#d9573e">
+    <div class="card" data-drag="soldier-card" style="--c:#d9573e">
       <div class="head"><div class="icon" style="background-image:url('assets/icon-soldier.png')"></div><b>SOLDIER</b></div>
       <p>Protects the crew and the factory.</p>
       <ul><li>Fights biters</li><li>Defends bases</li><li>Keeps everyone alive</li></ul>
@@ -106,4 +109,123 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
     <div class="brand"></div>
   </div>
 </body>
+<script>
+(() => {
+  const storageKey = "not-alone-layout-v1";
+  const layoutName = "banner";
+  const historyKey = `${storageKey}-history`;
+  const stored = JSON.parse(localStorage.getItem(storageKey) || "{}");
+  const legacy = JSON.parse(localStorage.getItem("not-alone-banner-layout-v1") || "{}");
+  const saved = stored[layoutName] || legacy;
+  const history = JSON.parse(localStorage.getItem(historyKey) || "[]");
+  const elements = new Map();
+
+  const save = () => {
+    stored[layoutName] = saved;
+    localStorage.setItem(storageKey, JSON.stringify(stored));
+  };
+  const saveHistory = () => localStorage.setItem(historyKey, JSON.stringify(history));
+  const applyOffset = (element, name) => {
+    const offset = saved[name] || {x: 0, y: 0, scale: 1};
+    if (offset.scale === undefined) offset.scale = 1;
+    saved[name] = offset;
+    element.style.translate = `${offset.x}px ${offset.y}px`;
+    element.style.scale = String(offset.scale);
+  };
+  const record = (name, offset) => {
+    history.push({layout: layoutName, name, x: offset.x, y: offset.y, scale: offset.scale ?? 1});
+    if (history.length > 100) history.shift();
+    saveHistory();
+  };
+
+  document.querySelectorAll("[data-drag]").forEach((element) => {
+    const name = element.dataset.drag;
+    elements.set(name, element);
+    applyOffset(element, name);
+    element.addEventListener("pointerdown", (event) => {
+      if (name === "gear") event.stopPropagation();
+      element.setPointerCapture(event.pointerId);
+      element.classList.add("is-dragging");
+      const start = saved[name] || {x: 0, y: 0, scale: 1};
+      const originX = event.clientX;
+      const originY = event.clientY;
+      const axisLocked = event.ctrlKey;
+      let axis = null;
+      const move = (moveEvent) => {
+        const deltaX = moveEvent.clientX - originX;
+        const deltaY = moveEvent.clientY - originY;
+        if (axisLocked && !axis && (deltaX || deltaY)) {
+          axis = Math.abs(deltaX) >= Math.abs(deltaY) ? "x" : "y";
+        }
+        saved[name] = {
+          x: Math.round(start.x + (axis === "y" ? 0 : deltaX)),
+          y: Math.round(start.y + (axis === "x" ? 0 : deltaY)),
+          scale: start.scale ?? 1
+        };
+        applyOffset(element, name);
+      };
+      const end = () => {
+        element.classList.remove("is-dragging");
+        element.removeEventListener("pointermove", move);
+        element.removeEventListener("pointerup", end);
+        element.removeEventListener("pointercancel", end);
+        const finish = saved[name];
+        if (finish.x !== start.x || finish.y !== start.y) record(name, start);
+        save();
+      };
+      element.addEventListener("pointermove", move);
+      element.addEventListener("pointerup", end);
+      element.addEventListener("pointercancel", end);
+    });
+    element.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      const previous = saved[name] || {x: 0, y: 0, scale: 1};
+      if (previous.x || previous.y || previous.scale !== 1) record(name, previous);
+      saved[name] = {x: 0, y: 0, scale: 1};
+      applyOffset(element, name);
+      save();
+    });
+    let wheelStart = null;
+    let wheelTimer = null;
+    element.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const current = saved[name] || {x: 0, y: 0, scale: 1};
+      if (current.scale === undefined) current.scale = 1;
+      if (!wheelStart) wheelStart = {x: current.x, y: current.y, scale: current.scale};
+      const factor = event.deltaY < 0 ? 1.05 : 1 / 1.05;
+      const nextScale = Math.min(6, Math.max(0.15, Math.round(current.scale * factor * 100) / 100));
+      saved[name] = {x: current.x, y: current.y, scale: nextScale};
+      applyOffset(element, name);
+      clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(() => {
+        if (saved[name].scale !== wheelStart.scale) record(name, wheelStart);
+        wheelStart = null;
+        save();
+      }, 400);
+    }, {passive: false});
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!(event.ctrlKey && event.key.toLowerCase() === "z") || event.repeat) return;
+    event.preventDefault();
+    let actionIndex = -1;
+    for (let index = history.length - 1; index >= 0; index -= 1) {
+      if (history[index].layout === layoutName || !history[index].layout) {
+        actionIndex = index;
+        break;
+      }
+    }
+    if (actionIndex < 0) return;
+    const action = history.splice(actionIndex, 1)[0];
+    if (!action) return;
+    const element = elements.get(action.name);
+    if (!element) return;
+    saved[action.name] = {x: action.x, y: action.y, scale: action.scale ?? 1};
+    applyOffset(element, action.name);
+    save();
+    saveHistory();
+  });
+})();
+</script>
 </html>

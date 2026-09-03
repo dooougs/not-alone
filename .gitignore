@@ -1,0 +1,4 @@
+# Persistent Edge profile used by image-builder/edit.ps1 and the render
+# scripts so dragged thumbnail/banner positions survive between edit and
+# render. Binary browser state; not source-controlled.
+image-builder/.edge-profile/
