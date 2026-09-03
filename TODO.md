@@ -1,4 +1,0 @@
-- ensure builders building items that unlock research trigger that same unlock
-- ensure carriers check the output of furnaces and assembly machines to decide whether they need to move items to requester chests in the logistics network
-- ensure teammates do not collide with other teammates
-- ensure builders do not start building if they cannot find all required resources somewhere in the network

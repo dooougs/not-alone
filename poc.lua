@@ -3134,6 +3134,44 @@ local function get_requested_count(logistic_point, item_name, quality)
   return nil
 end
 
+local function carrier_request_key(target, item)
+  if not target or not target.valid or not item then
+    return nil
+  end
+  return tostring(target.unit_number) .. ":" .. item.name .. ":" .. (item.quality or "normal")
+end
+
+local function reserve_carrier_request(record, target, item, count)
+  local key = carrier_request_key(target, item)
+  if not key then
+    return false
+  end
+  storage.not_alone_carrier_requests = storage.not_alone_carrier_requests or {}
+  local existing = storage.not_alone_carrier_requests[key]
+  if existing and existing.record ~= record and existing.count > 0 and game.tick - existing.tick < 300 then
+    return false
+  end
+  storage.not_alone_carrier_requests[key] = {
+    record = record,
+    count = count,
+    tick = game.tick
+  }
+  record.carrier_request_key = key
+  return true
+end
+
+local function clear_carrier_request(record)
+  if not record or not record.carrier_request_key then
+    return
+  end
+  storage.not_alone_carrier_requests = storage.not_alone_carrier_requests or {}
+  local existing = storage.not_alone_carrier_requests[record.carrier_request_key]
+  if existing and existing.record == record then
+    storage.not_alone_carrier_requests[record.carrier_request_key] = nil
+  end
+  record.carrier_request_key = nil
+end
+
 local function find_carrier_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -3171,7 +3209,10 @@ local function find_carrier_job(record, surface, force, position)
         local source_inventory = get_logistics_source_inventory(source)
         local available = source_inventory and source_inventory.get_item_count(item_id) or 0
         if available > 0 then
-          return source, consumer, item_id, math.min(missing, available)
+          local claimed_count = math.min(missing, available)
+          if reserve_carrier_request(record, consumer, item_id, claimed_count) then
+            return source, consumer, item_id, claimed_count
+          end
         end
       end
     end
@@ -3199,6 +3240,7 @@ local function update_carrier(record)
     local inventory = get_logistics_source_inventory(source)
     if not source or not source.valid or not inventory
       or inventory.get_item_count(record.carrier_item) == 0 then
+      clear_carrier_request(record)
       record.carrier_state = nil
       record.carrier_source = nil
       record.carrier_target = nil
@@ -3214,6 +3256,7 @@ local function update_carrier(record)
         record.carrier_carried_count = removed
         record.carrier_state = "move-to-target"
       else
+        clear_carrier_request(record)
         record.carrier_state = nil
         record.carrier_source = nil
         record.carrier_target = nil
@@ -3238,6 +3281,7 @@ local function update_carrier(record)
       target_inventory = target and get_logistics_source_inventory(target)
     end
     if not target then
+      clear_carrier_request(record)
       record.carrier_state = nil
       record.carrier_source = nil
       record.carrier_item = nil
@@ -3252,6 +3296,7 @@ local function update_carrier(record)
       record.carrier_carried_count = record.carrier_carried_count - inserted
       stop_team_mate(record)
       if record.carrier_carried_count <= 0 then
+        clear_carrier_request(record)
         record.carrier_state = nil
         record.carrier_source = nil
         record.carrier_target = nil
@@ -3530,6 +3575,7 @@ function poc.on_init()
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_starter_inventory_pending = {}
   storage.not_alone_marked_resources = {}
+  storage.not_alone_carrier_requests = {}
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
@@ -3551,6 +3597,7 @@ function poc.on_configuration_changed()
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
+  storage.not_alone_carrier_requests = {}
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
