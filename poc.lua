@@ -3199,7 +3199,10 @@ local function update_builder(record)
       record.builder_plan_index = nil
       record.builder_state = "return-material"
     elseif builder_is_at_target(record, target) then
-      target.health = target.prototype.max_health
+      -- Factorio clamps an out-of-range write to the entity's real max
+      -- health; prototype.max_health isn't exposed for every entity type
+      -- that still reports get_health_ratio, so this avoids reading it.
+      target.health = target.health + 1e9
       record.builder_item = nil
       record.builder_carried_count = 0
       record.builder_source = nil
