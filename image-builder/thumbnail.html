@@ -1,0 +1,140 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+* { box-sizing: border-box; margin: 0; }
+html, body { width: 768px; height: 768px; overflow: hidden; }
+body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; background: #1a1611; }
+@font-face { font-family: "Full Automation"; src: url("assets/FullAutomation-Squared.otf") format("opentype"); font-weight: normal; font-style: normal; }
+
+/* Real game menu-background screenshot, darkened toward the card band */
+.bg { position: absolute; inset: 0; background: url("assets/bg.jpg") center/cover; }
+.bg:after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(180deg, rgba(20,14,8,.55) 0%, rgba(20,14,8,.25) 30%, rgba(12,9,6,.72) 62%, rgba(8,6,4,.88) 100%); }
+
+/* Title: stone-orange Factorio-style lettering, gear sprite as the O of ALONE */
+.title { position: absolute; z-index: 3; top: 18px; left: 0; right: 0; text-align: center;
+  font-family: "Full Automation", Impact, "Arial Black", sans-serif; font-size: 120px; line-height: 1; letter-spacing: 4px;
+  color: #e08a1e;
+  background: linear-gradient(155deg, #ffe9ad 4%, #f9c65f 12%, #efa332 24%, #df861c 52%, #a9580f 92%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 -1px 0 rgba(255,255,255,.45)) drop-shadow(0 4px 0 #3a2008) drop-shadow(0 7px 6px rgba(0,0,0,.85)); }
+.title .gear { display: inline-block; width: 94px; height: 94px; vertical-align: -1px; margin: 0 -4px;
+  background: url("assets/gear.png") no-repeat 0 0; background-size: 176px 94px;
+  filter: sepia(1) saturate(4.2) hue-rotate(-14deg) brightness(1.02); }
+.subtitle { position: absolute; z-index: 3; top: 128px; left: 0; right: 0; text-align: center;
+  font-family: Impact, "Arial Black", sans-serif; font-size: 27px; letter-spacing: 10px; color: #fffdf2;
+  text-shadow: 0 0 2px rgba(255,255,255,.95), 0 1px 0 #fff, 0 3px 0 #241a10, 0 5px 8px rgba(0,0,0,.9); }
+
+/* Team mates stand against the real factory background. */
+.factory { position: absolute; z-index: 1; top: 360px; left: 0; right: 0; height: 195px; }
+.sprite { position: absolute; background-repeat: no-repeat; filter: drop-shadow(0 6px 5px rgba(0,0,0,.55)); }
+
+/* Team mates: single frames cropped from real character sheets (row 5 = south facing) */
+.mate { position: absolute; background-repeat: no-repeat; filter: drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-mining { width: 196px; height: 194px; background-image: url("assets/mining.png"); background-position: -392px -776px; left: 96px; top: 80px; transform: translateX(-50%) scale(2.7); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(355deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-idle-1 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: 0 -464px; left: 288px; top: 75px; transform: translateX(-50%) scale(3.4); transform-origin: bottom center; filter: sepia(.7) saturate(2.5) hue-rotate(165deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-idle-2 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: -184px -580px; left: 480px; top: 75px; transform: translateX(-50%) scale(3.4); transform-origin: bottom center; filter: sepia(.7) saturate(2.8) hue-rotate(55deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-gun    { width: 110px; height: 128px; background-image: url("assets/idle_gun.png"); background-position: -220px -640px; left: 672px; top: 60px; transform: translateX(-50%) scale(3.2); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(325deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-squad-1, .mate-squad-2 { display: none; }
+
+/* Role cards: draft layout and text */
+.cards { position: absolute; z-index: 2; left: 24px; right: 24px; top: 390px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.card { border: 2px solid var(--c); border-radius: 6px; background: rgba(12, 14, 13, .82);
+  box-shadow: 0 4px 14px rgba(0,0,0,.6), inset 0 0 22px rgba(0,0,0,.5); padding: 8px; height: 52px; }
+.card .head { display: flex; align-items: center; justify-content: center; gap: 5px; height: 32px; }
+.card .icon { width: 28px; height: 28px; background-size: 56px 28px; background-repeat: no-repeat; background-position: 0 0;
+  border: 1px solid var(--c); border-radius: 4px; background-color: rgba(0,0,0,.45); background-origin: content-box; padding: 2px; }
+.card b { font-family: Impact, "Arial Black", sans-serif; font-size: 19px; letter-spacing: 1px; color: var(--c); }
+.card p { font-size: 14px; line-height: 1.22; color: #e4ddcc; margin-bottom: 7px; }
+.card ul { list-style: none; }
+.card li { font-size: 13px; line-height: 1.35; color: #cfc6b2; padding-left: 11px; position: relative; }
+.card li:before { content: "•"; position: absolute; left: 0; color: var(--c); }
+.card.na p { color: #bcd6ea; }
+.card.na p + p { color: #7fb3d8; margin-top: 8px; }
+
+[data-drag] { cursor: grab; touch-action: none; }
+[data-drag].is-dragging { cursor: grabbing; }
+
+</style>
+</head>
+<body>
+  <div class="bg"></div>
+
+  <div class="title" data-drag="title">NOT&nbsp;AL<span class="gear" data-drag="gear"></span>NE</div>
+  <div class="subtitle" data-drag="subtitle">A&nbsp;FACTORIO&nbsp;MOD</div>
+
+  <div class="factory">
+    <div class="sprite mate mate-mining" data-drag="miner"></div>
+    <div class="sprite mate mate-idle-1" data-drag="builder"></div>
+    <div class="sprite mate mate-idle-2" data-drag="carrier"></div>
+    <div class="sprite mate mate-gun" data-drag="soldier"></div>
+  </div>
+
+  <div class="cards">
+    <div class="card" data-drag="miner-card" style="--c:#e3a627">
+      <div class="head"><div class="icon" style="background-image:url('assets/icon-miner.png')"></div><b>MINER</b></div>
+    </div>
+    <div class="card" data-drag="builder-card" style="--c:#5c9fd6">
+      <div class="head"><div class="icon" style="background-image:url('assets/icon-builder.png')"></div><b>BUILDER</b></div>
+    </div>
+    <div class="card" data-drag="carrier-card" style="--c:#7fbf46">
+      <div class="head"><div class="icon" style="background-image:url('assets/icon-carrier.png')"></div><b>CARRIER</b></div>
+    </div>
+    <div class="card" data-drag="soldier-card" style="--c:#d9573e">
+      <div class="head"><div class="icon" style="background-image:url('assets/icon-soldier.png')"></div><b>SOLDIER</b></div>
+    </div>
+  </div>
+
+</body>
+<script>
+(() => {
+  const storageKey = "not-alone-thumbnail-layout-v1";
+  const saved = JSON.parse(localStorage.getItem(storageKey) || "{}");
+
+  const save = () => localStorage.setItem(storageKey, JSON.stringify(saved));
+  const applyOffset = (element, name) => {
+    const offset = saved[name] || {x: 0, y: 0};
+    saved[name] = offset;
+    element.style.translate = `${offset.x}px ${offset.y}px`;
+  };
+
+  document.querySelectorAll("[data-drag]").forEach((element) => {
+    const name = element.dataset.drag;
+    applyOffset(element, name);
+    element.addEventListener("pointerdown", (event) => {
+      if (name === "gear") event.stopPropagation();
+      element.setPointerCapture(event.pointerId);
+      element.classList.add("is-dragging");
+      const start = saved[name] || {x: 0, y: 0};
+      const originX = event.clientX;
+      const originY = event.clientY;
+      const move = (moveEvent) => {
+        saved[name] = {
+          x: Math.round(start.x + moveEvent.clientX - originX),
+          y: Math.round(start.y + moveEvent.clientY - originY)
+        };
+        applyOffset(element, name);
+      };
+      const end = () => {
+        element.classList.remove("is-dragging");
+        element.removeEventListener("pointermove", move);
+        element.removeEventListener("pointerup", end);
+        element.removeEventListener("pointercancel", end);
+        save();
+      };
+      element.addEventListener("pointermove", move);
+      element.addEventListener("pointerup", end);
+      element.addEventListener("pointercancel", end);
+    });
+    element.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      saved[name] = {x: 0, y: 0};
+      applyOffset(element, name);
+      save();
+    });
+  });
+})();
+</script>
+</html>
