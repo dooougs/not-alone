@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.10
+Date: 2026-09-03
+  Changes:
+    - Fixed the Lua startup crash by removing the file-scope local declaration overflow that caused the required file to fail under the Factorio runtime.
+    - Split the module bootstrap into a lightweight constants/utilities layer so the project is easier to extend without hitting the 200-local limit again.
+    - Kept the current gameplay behavior intact while making the codebase more maintainable for future releases.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.9
 Date: 2026-09-03
   Changes:
