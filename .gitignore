@@ -2,3 +2,6 @@
 # scripts so dragged thumbnail/banner positions survive between edit and
 # render. Binary browser state; not source-controlled.
 image-builder/.edge-profile/
+
+# Generated Factorio Mod Portal release archives.
+*.zip
