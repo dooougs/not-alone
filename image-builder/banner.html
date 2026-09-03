@@ -32,10 +32,10 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 
 /* Team mates: single frames cropped from real character sheets (row 5 = south facing) */
 .mate { position: absolute; background-repeat: no-repeat; filter: drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
-.mate-mining { width: 196px; height: 194px; background-image: url("assets/mining.png"); background-position: -392px -776px; left: 169px; top: -56px; transform: translateX(-50%) scale(3); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(355deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
-.mate-idle-1 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: 0 -464px; left: 430px; top: -50px; transform: translateX(-50%) scale(3); transform-origin: bottom center; filter: sepia(.7) saturate(2.5) hue-rotate(165deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
-.mate-idle-2 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: -184px -580px; left: 670px; top: -55px; transform: translateX(-50%) scale(3); transform-origin: bottom center; filter: sepia(.7) saturate(2.8) hue-rotate(55deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
-.mate-gun    { width: 110px; height: 128px; background-image: url("assets/idle_gun.png"); background-position: -220px -640px; left: 1000px; top: -80px; transform: translateX(-50%) scale(3); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(325deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-mining { width: 196px; height: 194px; background-image: url("assets/mining.png"); background-position: -392px -776px; left: 169px; top: 120px; transform: translateX(-50%) scale(4.5); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(355deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-idle-1 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: 0 -464px; left: 430px; top: 100px; transform: translateX(-50%) scale(4.5); transform-origin: bottom center; filter: sepia(.7) saturate(2.5) hue-rotate(165deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-idle-2 { width: 92px; height: 116px; background-image: url("assets/idle.png"); background-position: -184px -580px; left: 670px; top: 89px; transform: translateX(-50%) scale(4.5); transform-origin: bottom center; filter: sepia(.7) saturate(2.8) hue-rotate(55deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
+.mate-gun    { width: 110px; height: 128px; background-image: url("assets/idle_gun.png"); background-position: -220px -640px; left: 1000px; top: 50px; transform: translateX(-50%) scale(4.5); transform-origin: bottom center; filter: sepia(1) saturate(3) hue-rotate(325deg) drop-shadow(0 5px 4px rgba(0,0,0,.65)); }
 .mate-squad-1, .mate-squad-2 { display: none; }
 
 /* Role cards: draft layout and text */
@@ -54,7 +54,7 @@ body { position: relative; font-family: "Arial Narrow", Arial, sans-serif; backg
 .card.na p + p { color: #7fb3d8; margin-top: 8px; }
 
 /* Footer plate */
-.footer { position: absolute; left: 0; right: 0; bottom: 0; height: 118px; background: linear-gradient(180deg, #2c2a25, #181613);
+.footer { position: absolute; z-index: 10; left: 0; right: 0; bottom: 0; height: 118px; background: linear-gradient(180deg, #2c2a25, #181613);
   border-top: 5px solid #4a4237; display: flex; align-items: center; box-shadow: 0 -6px 18px rgba(0,0,0,.7); }
 .slogan { flex: 1; min-width: 0; padding-left: 30px; }
 .slogan b { display: block; font-family: Impact, "Arial Black", sans-serif; font-size: 37px; letter-spacing: 2.5px; color: #e0961f; text-shadow: 0 3px 0 #2a1a08; }
