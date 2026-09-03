@@ -547,7 +547,14 @@ local function update_builder_target_renderings(record)
   end
   progress = math.max(0, math.min(1, progress))
 
-  local signature = record.builder_item.name .. ":" .. string.format("%.3f", progress)
+  -- Reuse the existing render objects only when both the target entity and the
+  -- build progress are unchanged. Keying only on item name + progress can leave
+  -- stale renderings to the previous target behind after a save reload or a target swap.
+  local target_id = record.builder_target and record.builder_target.valid
+    and record.builder_target.unit_number or "none"
+  local signature = (record.builder_item and record.builder_item.name or "none")
+    .. ":" .. tostring(target_id)
+    .. ":" .. string.format("%.3f", progress)
   if record.builder_target_render_signature == signature
     and record.builder_target_render_ids
     and get_render_object(record.builder_target_render_ids[1]) then
