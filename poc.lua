@@ -1012,14 +1012,6 @@ local function update_building_requesters_for_network(surface, force, position, 
   end
 end
 
-local function update_building_requesters(record)
-  update_building_requesters_for_network(
-    record.entity.surface,
-    record.entity.force,
-    record.entity.position
-  )
-end
-
 local function find_logistics_return_source(record, item_name)
   -- Use the closest network, not just one that exactly covers this position:
   -- a full Miner/Builder may have wandered just outside coverage while
@@ -1230,8 +1222,7 @@ local function update_miner(record, player)
 
   if record.miner_state == "move-to-ore" then
     if not record.miner_target or not record.miner_target.valid
-      or not is_resource_marked(record.miner_target)
-      or get_resource_claimant(record.miner_target) ~= record then
+      or not is_resource_marked(record.miner_target) then
       record.miner_state = nil
       record.miner_target = nil
     elseif distance_squared(record.entity.position, record.miner_target.position)
@@ -1252,8 +1243,7 @@ local function update_miner(record, player)
     end
     local resource = record.miner_target
     if not resource or not resource.valid or resource.amount <= 0
-      or not is_resource_marked(resource)
-      or get_resource_claimant(resource) ~= record then
+      or not is_resource_marked(resource) then
       record.miner_state = nil
       record.miner_target = nil
       return true
@@ -3360,7 +3350,6 @@ local function update_team_mate(record, player)
   end
   update_inventory_renderings(record)
   update_builder_target_renderings(record)
-  update_building_requesters(record)
 
   local manual_destinations = get_manual_destinations(record)
   if record.route_render_ids == nil and #manual_destinations > 0 then
