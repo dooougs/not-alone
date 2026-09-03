@@ -766,21 +766,37 @@ local function get_logistics_contents(network)
   return contents
 end
 
+local function safe_recipe_value(recipe, key)
+  if not recipe then
+    return nil
+  end
+  local ok, value = pcall(function()
+    return recipe[key]
+  end)
+  if ok then
+    return value
+  end
+  return nil
+end
+
 local function recipe_produces_item(recipe, item_name)
   if not recipe then
     return false
   end
-  if recipe.name == item_name or recipe.result == item_name then
+  if recipe.name == item_name or safe_recipe_value(recipe, "result") == item_name then
     return true
   end
-  for _, result in pairs(recipe.results or {}) do
-    local result_name = result.name or result[1]
-    if result_name == item_name then
-      return true
+  local results = safe_recipe_value(recipe, "results") or {}
+  for _, result in pairs(results) do
+    if result then
+      local result_name = result.name or result[1]
+      if result_name == item_name then
+        return true
+      end
     end
   end
   for _, mode in pairs({"normal", "expensive"}) do
-    local recipe_mode = recipe[mode]
+    local recipe_mode = safe_recipe_value(recipe, mode)
     if recipe_mode and recipe_produces_item(recipe_mode, item_name) then
       return true
     end
