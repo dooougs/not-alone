@@ -215,6 +215,7 @@ dock_at_habitat = nil
 stop_team_mate = nil
 move_team_mate = nil
 update_mining_animation = nil
+update_vehicle_travel = nil
 require("lib/ui")
 require("lib/vehicle")
 require("lib/logistics")
@@ -232,7 +233,6 @@ require("lib/carrier")
 require("lib/lifecycle")
 require("lib/lifecycle_events")
 require("lib/lifecycle_handlers")
-update_vehicle_travel = nil
 
 function distance_squared(first, second)
   local delta_x = first.x - second.x

@@ -41,8 +41,15 @@ function get_mining_interval(player)
   return math.max(1, math.ceil(RESOURCE_MINING_TIME * 60 / effective_mining_speed))
 end
 
+function normalize_logistics_source(source)
+  if source and source.object_name == "LuaLogisticPoint" then
+    return source.owner
+  end
+  return source
+end
+
 function get_logistics_source_inventory(source)
-  source = source and source.owner or source
+  source = normalize_logistics_source(source)
   if not source or not source.valid then
     return nil
   end

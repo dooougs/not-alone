@@ -58,7 +58,7 @@ function find_logistics_item_source(record, item_name)
     end
   end
   local function consider_source(candidate)
-    candidate = candidate and candidate.owner or candidate
+    candidate = normalize_logistics_source(candidate)
     local candidate_inventory = get_logistics_source_inventory(candidate)
     if candidate_inventory and candidate_inventory.get_item_count(item_name) > 0 then
       local distance = distance_squared(record.entity.position, candidate.position)
