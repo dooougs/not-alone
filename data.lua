@@ -307,6 +307,25 @@ local hidden_animation_layer = {
 hidden_team_mate.run_animation = {layers = {hidden_animation_layer}}
 hidden_team_mate.attack_parameters.animation = {layers = {hidden_animation_layer}}
 
+local vehicle_driver = table.deepcopy(data.raw.character.character)
+vehicle_driver.name = "not-alone-vehicle-driver"
+vehicle_driver.localised_name = {"entity-name.not-alone-team-mate"}
+vehicle_driver.hidden_in_factoriopedia = true
+vehicle_driver.collision_mask = {layers = {}}
+vehicle_driver.selection_box = {{0, 0}, {0, 0}}
+vehicle_driver.collision_box = {{0, 0}, {0, 0}}
+vehicle_driver.inventory_size = 1
+for _, animation_set in pairs(vehicle_driver.animations or {}) do
+	for _, animation_name in pairs({
+		"idle", "idle_with_gun", "walking", "walking_with_gun",
+		"running", "running_with_gun", "mining", "mining_with_gun"
+	}) do
+		if animation_set[animation_name] then
+			animation_set[animation_name] = {layers = {hidden_animation_layer}}
+		end
+	end
+end
+
 -- Bounce (forward then backward) with a 1-frame hold at the top of the swing
 -- before it comes back down, approximating the native player's brief pause.
 local mining_bounce_sequence = {}
@@ -627,6 +646,7 @@ data:extend({
 	table.unpack(building_requester_variants),
 	team_mate,
 	hidden_team_mate,
+	vehicle_driver,
 	mining_sound,
 	command_tool
 })

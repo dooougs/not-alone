@@ -26,6 +26,7 @@ $includedFiles = @(
     'control.lua'
     'data.lua'
     'data-final-fixes.lua'
+    'settings.lua'
     'poc.lua'
     'changelog.txt'
     'README.md'
