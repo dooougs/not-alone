@@ -37,6 +37,7 @@ $includedDirectories = @(
     'graphics'
     'lib'
     'locale'
+    'prototypes'
 )
 
 $files = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
