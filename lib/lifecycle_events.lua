@@ -107,7 +107,8 @@ function update_team_mate(record, player)
   rescue_immobile_team_mate(record)
   destroy_color_marker(record)
   -- Older saves deployed the untinted generic unit; swap in the role variant.
-  if not record.mining_hidden and record.kind ~= "soldier" then
+  -- Never while driving: the swap would un-hide the vehicle proxy.
+  if not record.mining_hidden and not record.vehicle_state and record.kind ~= "soldier" then
     local wanted = TEAM_MATE_ENTITY_BY_KIND[record.kind]
     if wanted and character.name ~= wanted then
       if not replace_team_mate_entity(record, wanted) then
@@ -208,6 +209,22 @@ function notalone.on_init()
   storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
+function reset_stale_vehicle_travel()
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.vehicle_state then
+        abandon_vehicle_travel(record)
+        record.vehicle_failed_destination = nil
+      end
+      clear_vehicle_pickup(record)
+      record.vehicle_pickup_source = nil
+      record.vehicle_pending_destination = nil
+      record.vehicle_fuel_item = nil
+    end
+  end
+  storage.not_alone_vehicle_pickups = {}
+end
+
 function notalone.on_configuration_changed()
   rendering.clear("not-alone")
   storage.not_alone_habitats = nil
@@ -223,6 +240,7 @@ function notalone.on_configuration_changed()
   storage.not_alone_marked_resources = {}
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
+  reset_stale_vehicle_travel()
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do

@@ -1,4 +1,16 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.14
+Date: 2026-09-05
+  Changes:
+    - Team mates now collect fuel from the logistics network before deploying their car, refuel it on deployment, and reclaim unburned fuel when the car is picked back up.
+    - Cars now park farther from their destination and require clear space around the boarding spot before deploying.
+    - Driving cars steer around other cars and team mates, brake when boxed in, and reroute after a collision; if avoidance stays impossible the driver gets out and walks, and repeated collisions replan travel from scratch.
+  Bugfixes:
+    - Fixed team mates staying visible next to their deployed car instead of appearing to get in.
+    - Fixed cars never moving because they were deployed without fuel, and manual refueling being undone by car recovery.
+    - Fixed vehicle travel wedging permanently when a save was reloaded while a car path request was outstanding.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.13
 Date: 2026-09-05
   Bugfixes:

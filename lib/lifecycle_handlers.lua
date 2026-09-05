@@ -42,6 +42,7 @@ function notalone.on_script_path_request_finished(event)
           record.vehicle_path = event.path
           record.vehicle_path_index = 1
           record.vehicle_stuck_ticks = 0
+          record.vehicle_blocked_ticks = 0
           record.vehicle_last_position = nil
           record.vehicle_repath_attempts = 0
           record.vehicle_state = "driving-car"
@@ -155,6 +156,23 @@ end
 function notalone.on_entity_damaged(event)
   local entity = event.entity
   if not entity.valid or entity.health <= 0 then
+    return
+  end
+  -- A collision means the current plan is wrong: reroute the car, and after
+  -- repeated impacts get out and let default travel planning start over.
+  if entity.name == CAR_ENTITY_NAME and event.damage_type.name == "impact" then
+    local record = find_vehicle_record(entity.unit_number)
+    if record and record.vehicle_entity_unit_number == entity.unit_number
+      and record.vehicle_state == "driving-car" then
+      record.vehicle_repath_attempts = (record.vehicle_repath_attempts or 0) + 1
+      if record.vehicle_repath_attempts > 2 then
+        abandon_vehicle_travel(record)
+      else
+        record.vehicle_stuck_ticks = 0
+        record.vehicle_path = nil
+        record.vehicle_state = "requesting-car-path"
+      end
+    end
     return
   end
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
@@ -348,6 +366,7 @@ function notalone.register()
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}
   end
+  damage_filters[#damage_filters + 1] = {filter = "name", name = CAR_ENTITY_NAME}
   script.on_event(defines.events.on_entity_damaged, notalone.on_entity_damaged, damage_filters)
   script.on_event(defines.events.on_script_path_request_finished, notalone.on_script_path_request_finished)
   script.on_nth_tick(UPDATE_INTERVAL, notalone.on_update)

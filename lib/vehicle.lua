@@ -12,6 +12,42 @@ function get_vehicle_inventory(record)
   return record.vehicle_inventory
 end
 
+function get_vehicle_fuel_inventory(record)
+  if not record.vehicle_fuel_inventory or not record.vehicle_fuel_inventory.valid then
+    record.vehicle_fuel_inventory = game.create_inventory(1)
+  end
+  return record.vehicle_fuel_inventory
+end
+
+-- Best network fuel the car's burner accepts, judged by fuel value.
+function find_car_fuel_item(record)
+  local burner = prototypes.entity[CAR_ENTITY_NAME].burner_prototype
+  if not burner then
+    return nil
+  end
+  local network = record.entity.surface.find_closest_logistic_network_by_position(
+    position_table(record.entity.position),
+    record.entity.force
+  )
+  if not network then
+    return nil
+  end
+  local best_name
+  local best_priority
+  for _, item_name in ipairs(get_network_fuel_candidates(network, record.entity.force)) do
+    local prototype = prototypes.item[item_name]
+    if prototype and prototype.fuel_category
+      and burner.fuel_categories[prototype.fuel_category] then
+      local priority = fuel_priority(item_name)
+      if not best_priority or priority > best_priority then
+        best_name = item_name
+        best_priority = priority
+      end
+    end
+  end
+  return best_name
+end
+
 function vehicle_minimum_distance()
   local setting = settings.global["not-alone-car-minimum-distance"]
   return setting and setting.value or CAR_MINIMUM_DISTANCE
@@ -32,11 +68,35 @@ function find_vehicle_record(unit_number)
   return nil
 end
 
-function reserve_vehicle_pickup(record, source)
+-- The car footprint alone is not enough clearance: boarding beside other
+-- cars or team mates causes instant collisions on departure.
+function deployment_position_is_clear(record, surface, position)
+  for _, nearby in pairs(surface.find_entities_filtered({
+    position = position,
+    radius = CAR_DEPLOYMENT_CLEARANCE,
+    type = "car"
+  })) do
+    if nearby ~= record.vehicle_entity then
+      return false
+    end
+  end
+  for _, nearby in pairs(surface.find_entities_filtered({
+    position = position,
+    radius = CAR_DEPLOYMENT_CLEARANCE * 0.5,
+    type = "unit"
+  })) do
+    if nearby ~= record.entity and nearby.force == record.entity.force then
+      return false
+    end
+  end
+  return true
+end
+
+function reserve_vehicle_pickup(record, source, item_name)
   if not source or not source.valid or not source.unit_number then
     return false
   end
-  local key = tostring(source.unit_number) .. ":" .. CAR_ITEM_NAME
+  local key = tostring(source.unit_number) .. ":" .. (item_name or CAR_ITEM_NAME)
   storage.not_alone_vehicle_pickups = storage.not_alone_vehicle_pickups or {}
   local existing = storage.not_alone_vehicle_pickups[key]
   if existing and existing.record ~= record and game.tick - existing.tick < 300 then
@@ -92,6 +152,19 @@ function recover_vehicle(record)
   local inventory = get_vehicle_inventory(record)
   if inventory.insert({name = CAR_ITEM_NAME, count = 1}) ~= 1 then
     return false
+  end
+  -- Reclaim unburned fuel (including player-added fuel) before the car is
+  -- destroyed, so it survives recovery and the next deployment.
+  local car_fuel = vehicle.get_fuel_inventory()
+  if car_fuel then
+    local fuel_store = get_vehicle_fuel_inventory(record)
+    for slot = 1, #car_fuel do
+      local stack = car_fuel[slot]
+      if stack.valid_for_read then
+        local moved = fuel_store.insert({name = stack.name, count = stack.count})
+        stack.count = stack.count - moved
+      end
+    end
   end
   vehicle.destroy()
   record.vehicle_entity = nil
@@ -167,6 +240,7 @@ function request_vehicle_path(record)
     return abandon_vehicle_travel(record)
   end
   record.vehicle_path_request_id = request_id
+  record.vehicle_path_wait_ticks = 0
   record.vehicle_state = "waiting-for-car-path"
   return true
 end
@@ -175,7 +249,8 @@ function deploy_vehicle(record)
   local position = record.vehicle_deployment_position
   local surface = record.entity.surface
   local inventory = get_vehicle_inventory(record)
-  if not position or inventory.get_item_count(CAR_ITEM_NAME) < 1 then
+  if not position or inventory.get_item_count(CAR_ITEM_NAME) < 1
+    or get_vehicle_fuel_inventory(record).is_empty() then
     return abandon_vehicle_travel(record)
   end
   -- Remove first and roll back if either entity creation or driver creation
@@ -193,7 +268,7 @@ function deploy_vehicle(record)
     name = CAR_ENTITY_NAME,
     position = position,
     force = record.entity.force
-  }) then
+  }) or not deployment_position_is_clear(record, surface, position) then
     inventory.insert({name = CAR_ITEM_NAME, count = 1})
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
@@ -230,6 +305,17 @@ function deploy_vehicle(record)
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
+  local car_fuel = vehicle.get_fuel_inventory()
+  if car_fuel then
+    local fuel_store = get_vehicle_fuel_inventory(record)
+    for slot = 1, #fuel_store do
+      local stack = fuel_store[slot]
+      if stack.valid_for_read then
+        local moved = car_fuel.insert({name = stack.name, count = stack.count})
+        stack.count = stack.count - moved
+      end
+    end
+  end
   record.vehicle_entity = vehicle
   record.vehicle_entity_unit_number = vehicle.unit_number
   record.vehicle_driver = driver
@@ -253,12 +339,25 @@ function begin_vehicle_travel(record, destination)
   end
   if inventory.get_item_count(CAR_ITEM_NAME) < 1 then
     local source = find_logistics_item_source(record, CAR_ITEM_NAME)
-    if not source or not reserve_vehicle_pickup(record, source) then
+    if not source or not reserve_vehicle_pickup(record, source, CAR_ITEM_NAME) then
       return false
     end
     record.vehicle_pending_destination = position_table(destination)
     record.vehicle_pickup_source = source
     record.vehicle_state = "pickup-car"
+    move_team_mate(record, source.position, 2)
+    return true
+  end
+  if get_vehicle_fuel_inventory(record).is_empty() then
+    local fuel_name = find_car_fuel_item(record)
+    local source = fuel_name and find_logistics_item_source(record, fuel_name)
+    if not source or not reserve_vehicle_pickup(record, source, fuel_name) then
+      return false
+    end
+    record.vehicle_pending_destination = position_table(destination)
+    record.vehicle_pickup_source = source
+    record.vehicle_fuel_item = fuel_name
+    record.vehicle_state = "pickup-car-fuel"
     move_team_mate(record, source.position, 2)
     return true
   end
@@ -268,13 +367,34 @@ function begin_vehicle_travel(record, destination)
     CAR_DEPLOYMENT_SEARCH_RADIUS,
     1
   )
-  if not position then
+  if not position
+    or not deployment_position_is_clear(record, record.entity.surface, position) then
     return false
   end
   record.vehicle_destination = position_table(destination)
   record.vehicle_deployment_position = position_table(position)
   record.vehicle_state = "walking-to-car"
   move_team_mate(record, position, 1)
+  return true
+end
+
+-- Path plans only avoid static obstacles; moving cars and team mates need a
+-- steering-level dodge.
+function vehicle_probe_is_clear(record, vehicle, heading, angle_offset)
+  local angle = heading + angle_offset
+  local probe = {
+    x = vehicle.position.x + math.sin(angle) * CAR_AVOIDANCE_DISTANCE * 0.5,
+    y = vehicle.position.y - math.cos(angle) * CAR_AVOIDANCE_DISTANCE * 0.5
+  }
+  for _, obstacle in pairs(vehicle.surface.find_entities_filtered({
+    position = probe,
+    radius = CAR_AVOIDANCE_DISTANCE * 0.35,
+    type = {"car", "unit"}
+  })) do
+    if obstacle ~= vehicle and obstacle ~= record.entity then
+      return false
+    end
+  end
   return true
 end
 
@@ -323,6 +443,34 @@ function steer_vehicle(record)
   local acceleration = defines.riding.acceleration.accelerating
   if math.abs(difference) > 0.8 then
     acceleration = defines.riding.acceleration.braking
+  end
+  if vehicle_probe_is_clear(record, vehicle, current, 0) then
+    record.vehicle_blocked_ticks = 0
+  else
+    local left_clear = vehicle_probe_is_clear(record, vehicle, current, -CAR_AVOIDANCE_PROBE_ANGLE)
+    local right_clear = vehicle_probe_is_clear(record, vehicle, current, CAR_AVOIDANCE_PROBE_ANGLE)
+    if left_clear or right_clear then
+      if left_clear and right_clear then
+        direction = difference < 0 and defines.riding.direction.left
+          or defines.riding.direction.right
+      elseif left_clear then
+        direction = defines.riding.direction.left
+      else
+        direction = defines.riding.direction.right
+      end
+      -- Dodge at low speed so the turn happens before reaching the obstacle.
+      acceleration = math.abs(vehicle.speed or 0) > CAR_AVOIDANCE_MAX_SPEED
+        and defines.riding.acceleration.braking
+        or defines.riding.acceleration.accelerating
+      record.vehicle_blocked_ticks = 0
+    else
+      acceleration = defines.riding.acceleration.braking
+      record.vehicle_blocked_ticks = (record.vehicle_blocked_ticks or 0) + UPDATE_INTERVAL
+      if record.vehicle_blocked_ticks >= CAR_BLOCKED_TICKS then
+        -- Avoidance impossible: give up the car and finish the trip on foot.
+        return abandon_vehicle_travel(record)
+      end
+    end
   end
   vehicle.riding_state = {acceleration = acceleration, direction = direction}
 
@@ -380,6 +528,42 @@ update_vehicle_travel = function(record)
     end
     move_team_mate(record, source.position, 2)
     return true
+  elseif record.vehicle_state == "pickup-car-fuel" then
+    local source = record.vehicle_pickup_source
+    local fuel_name = record.vehicle_fuel_item
+    local source_inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not fuel_name or not source_inventory
+      or source_inventory.get_item_count(fuel_name) < 1 then
+      clear_vehicle_pickup(record)
+      record.vehicle_pickup_source = nil
+      record.vehicle_pending_destination = nil
+      record.vehicle_fuel_item = nil
+      record.vehicle_state = nil
+      return true
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      local removed = source_inventory.remove({name = fuel_name, count = FUEL_REQUEST_COUNT})
+      if removed > 0 then
+        local inserted = get_vehicle_fuel_inventory(record).insert({
+          name = fuel_name,
+          count = removed
+        })
+        if inserted < removed then
+          source_inventory.insert({name = fuel_name, count = removed - inserted})
+        end
+      end
+      local destination = record.vehicle_pending_destination
+      clear_vehicle_pickup(record)
+      record.vehicle_pickup_source = nil
+      record.vehicle_pending_destination = nil
+      record.vehicle_fuel_item = nil
+      record.vehicle_state = nil
+      if removed > 0 and destination then
+        begin_vehicle_travel(record, destination)
+      end
+      return true
+    end
+    move_team_mate(record, source.position, 2)
+    return true
   elseif record.vehicle_state == "walking-to-car" then
     if distance_squared(record.entity.position, record.vehicle_deployment_position) <= 4 then
       return deploy_vehicle(record)
@@ -389,6 +573,14 @@ update_vehicle_travel = function(record)
   elseif record.vehicle_state == "requesting-car-path" then
     return request_vehicle_path(record)
   elseif record.vehicle_state == "waiting-for-car-path" then
+    -- A reload discards pending pathfinder callbacks; re-request instead of
+    -- waiting forever on a request id that can no longer answer.
+    record.vehicle_path_wait_ticks = (record.vehicle_path_wait_ticks or 0) + UPDATE_INTERVAL
+    if record.vehicle_path_wait_ticks > 600 then
+      record.vehicle_path_wait_ticks = 0
+      record.vehicle_state = "requesting-car-path"
+      return request_vehicle_path(record)
+    end
     return true
   elseif record.vehicle_state == "driving-car" then
     return steer_vehicle(record)
