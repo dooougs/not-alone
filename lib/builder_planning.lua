@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_ghost_item(ghost)
   if not ghost or not ghost.valid or ghost.type ~= "entity-ghost" then

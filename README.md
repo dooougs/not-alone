@@ -7,7 +7,7 @@ A basic mod skeleton for Factorio 2.1.
 - `info.json` contains the mod metadata and dependencies.
 - `data.lua` is the entry point for prototype definitions.
 - `control.lua` is the entry point for runtime event handlers.
-- `poc.lua` contains experimental proof-of-concept runtime behavior.
+- `not-alone.lua` contains the mod runtime bootstrap and event registration.
 - `locale/en/not-alone.cfg` contains English localization.
 
 ## Current proof of concept

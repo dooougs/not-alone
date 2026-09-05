@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function create_team_mate(player, kind, index, spawn_center)
   -- Units do not collide with each other, so find_non_colliding_position

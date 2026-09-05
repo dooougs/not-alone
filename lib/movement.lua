@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function refresh_route_renderings(record, player_index)
   destroy_route_renderings(record)

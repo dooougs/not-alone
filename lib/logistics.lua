@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_consumer_inventory(consumer, mining_role)
   if consumer.name == BUILDING_REQUESTER_NAME

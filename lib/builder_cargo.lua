@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_builder_cargo(record)
   if not record.builder_cargo or not record.builder_cargo.valid then

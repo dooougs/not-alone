@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function find_logistics_return_source(record, item_name)
   -- Use the closest network, not just one that exactly covers this position:

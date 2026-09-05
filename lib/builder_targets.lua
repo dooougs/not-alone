@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function builder_target_is_claimed(target, current_record)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do

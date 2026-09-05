@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function queue_starter_inventory(player_index)
   storage.not_alone_starter_inventory_pending =

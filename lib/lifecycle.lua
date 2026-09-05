@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function assign_job(record, surface, force, position)
   if record.kind == "miner" then

@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function poc.on_reverse_selected_area(event)
   order_selected_team_mates(event, false)

@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function find_soldier_target(record, surface, force, position)
   local team_mate = record.entity

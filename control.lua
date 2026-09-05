@@ -1,3 +1,3 @@
-local poc = require("poc")
+local not_alone = require("not-alone")
 
-poc.register()
+not_alone.register()

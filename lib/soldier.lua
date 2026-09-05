@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function find_soldier_ammo_source(record, only_empty)
   for rank = #SOLDIER_WEAPONS, 1, -1 do

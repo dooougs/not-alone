@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_manual_destinations(record)
   record.manual_destinations = record.manual_destinations or {}

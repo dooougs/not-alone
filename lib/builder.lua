@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function builder_is_at_target(record, target)
   if target.type == "item-entity" then

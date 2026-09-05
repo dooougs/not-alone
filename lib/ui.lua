@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function flush_habitat_crew_records(habitat)
   local crews = storage.not_alone_habitat_crews

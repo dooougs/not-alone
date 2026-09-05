@@ -1,6 +1,6 @@
 ﻿-- Shared teammate prototype definitions.
 
--- Colors must match KIND_COLOR in poc.lua. The light-armor torso icon,
+-- Colors must match KIND_COLOR in not-alone.lua. The light-armor torso icon,
 -- tinted per role, echoes the look of basic armour.
 local TEAM_MATE_ICON = "__base__/graphics/icons/light-armor.png"
 local TEAM_MATE_ICON_SIZE = 64

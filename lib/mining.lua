@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_resource_info(resource_name)
   local resource_prototype = prototypes.entity[resource_name]

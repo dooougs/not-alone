@@ -1,4 +1,4 @@
-﻿-- Functional area extracted from poc.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function get_requested_count(logistic_point, item_name, quality)
   for _, filter in pairs(logistic_point.filters or {}) do
