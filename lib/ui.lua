@@ -350,8 +350,8 @@ function get_carried_items(record)
     end
   end
   if record.vehicle_inventory and record.vehicle_inventory.valid then
-    for item_name, count in pairs(record.vehicle_inventory.get_contents()) do
-      counts[item_name] = (counts[item_name] or 0) + count
+    for _, item in pairs(record.vehicle_inventory.get_contents()) do
+      counts[item.name] = (counts[item.name] or 0) + item.count
     end
   end
 

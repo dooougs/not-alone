@@ -68,7 +68,6 @@ function restore_vehicle_team_mate(record)
   record.vehicle_driver = nil
   record.vehicle_driver_unit_number = nil
   if record.entity and record.entity.valid then
-    record.entity.active = true
     if record.entity.name == HIDDEN_TEAM_MATE_NAME then
       replace_team_mate_entity(
         record,
@@ -188,7 +187,6 @@ function deploy_vehicle(record)
     record.vehicle_visible_name = nil
     return false
   end
-  record.entity.active = false
   local vehicle = surface.create_entity({
     name = CAR_ENTITY_NAME,
     position = position,
