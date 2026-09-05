@@ -238,6 +238,10 @@ local command_tool = {
 
 
 data:extend({
+	context.miner_item,
+	context.builder_item,
+	context.soldier_item,
+	context.carrier_item,
   context.team_mate,
   context.hidden_team_mate,
   context.vehicle_driver,

@@ -42,6 +42,7 @@ function get_mining_interval(player)
 end
 
 function get_logistics_source_inventory(source)
+  source = source and source.owner or source
   if not source or not source.valid then
     return nil
   end

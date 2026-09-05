@@ -212,6 +212,7 @@ function deploy_vehicle(record)
     restore_vehicle_team_mate(record)
     return false
   end
+  driver.color = {r = 1, g = 1, b = 1, a = 0}
   vehicle.set_driver(driver)
   if vehicle.get_driver() ~= driver then
     driver.destroy()

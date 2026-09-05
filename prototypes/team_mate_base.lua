@@ -185,16 +185,6 @@ vehicle_driver.collision_mask = {layers = {}}
 vehicle_driver.selection_box = {{0, 0}, {0, 0}}
 vehicle_driver.collision_box = {{0, 0}, {0, 0}}
 vehicle_driver.inventory_size = 1
-for _, animation_set in pairs(vehicle_driver.animations or {}) do
-	for _, animation_name in pairs({
-		"idle", "idle_with_gun", "walking", "walking_with_gun",
-		"running", "running_with_gun", "mining", "mining_with_gun"
-	}) do
-		if animation_set[animation_name] then
-			animation_set[animation_name] = {layers = {hidden_animation_layer}}
-		end
-	end
-end
 
 -- Bounce (forward then backward) with a 1-frame hold at the top of the swing
 -- before it comes back down, approximating the native player's brief pause.
@@ -272,6 +262,10 @@ local mining_sound = {
 
 
 return {
+	miner_item = miner_item,
+	builder_item = builder_item,
+	soldier_item = soldier_item,
+	carrier_item = carrier_item,
   team_mate = team_mate,
   hidden_team_mate = hidden_team_mate,
   vehicle_driver = vehicle_driver,
