@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.13
+Date: 2026-09-05
+  Bugfixes:
+    - Fixed a non-recoverable error when car steering treated Factorio pathfinder waypoints as direct map positions.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.12
 Date: 2026-09-05
   Bugfixes:

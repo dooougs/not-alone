@@ -297,14 +297,18 @@ function steer_vehicle(record)
 
   record.vehicle_path_index = record.vehicle_path_index or 1
   while record.vehicle_path_index < #path
-    and distance_squared(vehicle.position, path[record.vehicle_path_index]) < 9 do
+    and distance_squared(
+      vehicle.position,
+      path[record.vehicle_path_index].position or path[record.vehicle_path_index]
+    ) < 9 do
     record.vehicle_path_index = record.vehicle_path_index + 1
   end
   local target_index = math.min(
     record.vehicle_path_index + CAR_PATH_LOOKAHEAD,
     #path
   )
-  local target = path[target_index]
+  local waypoint = path[target_index]
+  local target = waypoint.position or waypoint
   local delta_x = target.x - vehicle.position.x
   local delta_y = target.y - vehicle.position.y
   local desired = math.atan2(delta_x, -delta_y)
