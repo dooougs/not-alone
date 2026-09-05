@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.11
+Date: 2026-09-05
+  Changes:
+    - Added optional long-distance car travel for team mates using cars collected from the logistics network.
+    - Added carried-car deployment, native vehicle pathfinding, proxy driving, recovery, and walking fallback.
+    - Split the runtime and data-stage Lua code into functional modules and renamed the runtime bootstrap to not-alone.lua.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.10
 Date: 2026-09-03
   Changes:

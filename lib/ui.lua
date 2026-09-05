@@ -168,7 +168,7 @@ function update_team_mate_panel(player)
   panel.rows.items = rows
 end
 
-function poc.on_gui_opened(event)
+function notalone.on_gui_opened(event)
   if event.gui_type ~= defines.gui_type.logistic then
     return
   end
@@ -180,7 +180,7 @@ function poc.on_gui_opened(event)
   end
 end
 
-function poc.on_gui_closed(event)
+function notalone.on_gui_closed(event)
   if storage.not_alone_logistics_gui_open then
     storage.not_alone_logistics_gui_open[event.player_index] = nil
   end

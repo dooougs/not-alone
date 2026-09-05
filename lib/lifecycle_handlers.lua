@@ -1,14 +1,14 @@
-﻿-- Functional area extracted from not-alone.lua.
+-- Functional area extracted from not-alone.lua.
 
-function poc.on_reverse_selected_area(event)
+function notalone.on_reverse_selected_area(event)
   order_selected_team_mates(event, false)
 end
 
-function poc.on_alt_reverse_selected_area(event)
+function notalone.on_alt_reverse_selected_area(event)
   order_selected_team_mates(event, true)
 end
 
-function poc.on_roboport_built(event)
+function notalone.on_roboport_built(event)
   local entity = event.entity
   if not entity or not entity.valid then
     return
@@ -30,7 +30,7 @@ function poc.on_roboport_built(event)
   end
 end
 
-function poc.on_script_path_request_finished(event)
+function notalone.on_script_path_request_finished(event)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       if record.vehicle_path_request_id == event.id then
@@ -52,7 +52,7 @@ function poc.on_script_path_request_finished(event)
   end
 end
 
-function poc.on_entity_died(event)
+function notalone.on_entity_died(event)
   local entity = event.entity
   if not entity then
     return
@@ -74,11 +74,11 @@ function poc.on_entity_died(event)
     restore_vehicle_team_mate(record)
   end
   if entity.name == LOGISTICS_HUB_NAME then
-    poc.on_habitat_removed(event)
+    notalone.on_habitat_removed(event)
   end
 end
 
-function poc.on_update(event)
+function notalone.on_update(event)
   queue_starter_inventory_migration()
   for player_index in pairs(storage.not_alone_starter_inventory_pending or {}) do
     if ensure_starter_inventory(game.get_player(player_index)) then
@@ -152,7 +152,7 @@ end
 
 -- A Soldier's armor absorbs part of every hit; units cannot wear real armor,
 -- so the mitigated fraction is healed straight back.
-function poc.on_entity_damaged(event)
+function notalone.on_entity_damaged(event)
   local entity = event.entity
   if not entity.valid or entity.health <= 0 then
     return
@@ -240,7 +240,7 @@ function get_crash_ship_rate(surface, distance_tiles)
   return local_rate * (1 - distance_tiles / cutoff_radius)
 end
 
-function poc.on_chunk_generated(event)
+function notalone.on_chunk_generated(event)
   local surface = event.surface
   if not surface.valid or surface.platform then
     return
@@ -266,7 +266,7 @@ end
 
 -- A removed Habitat drops its docked crew and lockers as real items so
 -- nothing is silently lost with the building.
-function poc.on_habitat_removed(event)
+function notalone.on_habitat_removed(event)
   local entity = event.entity
   if not entity or not entity.valid or entity.name ~= LOGISTICS_HUB_NAME
     or not entity.unit_number then
@@ -321,36 +321,34 @@ function poc.on_habitat_removed(event)
   end
 end
 
-function poc.register()
-  script.on_init(poc.on_init)
-  script.on_configuration_changed(poc.on_configuration_changed)
-  script.on_event(defines.events.on_player_created, poc.on_player_created)
-  script.on_event(defines.events.on_player_removed, poc.on_player_removed)
-  script.on_event(defines.events.on_player_selected_area, poc.on_selected_area)
-  script.on_event(defines.events.on_player_deconstructed_area, poc.on_deconstructed_area)
-  script.on_event(defines.events.on_player_reverse_selected_area, poc.on_reverse_selected_area)
+function notalone.register()
+  script.on_init(notalone.on_init)
+  script.on_configuration_changed(notalone.on_configuration_changed)
+  script.on_event(defines.events.on_player_created, notalone.on_player_created)
+  script.on_event(defines.events.on_player_removed, notalone.on_player_removed)
+  script.on_event(defines.events.on_player_selected_area, notalone.on_selected_area)
+  script.on_event(defines.events.on_player_deconstructed_area, notalone.on_deconstructed_area)
+  script.on_event(defines.events.on_player_reverse_selected_area, notalone.on_reverse_selected_area)
   script.on_event(
     defines.events.on_player_alt_reverse_selected_area,
-    poc.on_alt_reverse_selected_area
+    notalone.on_alt_reverse_selected_area
   )
-  script.on_event(defines.events.on_gui_opened, poc.on_gui_opened)
-  script.on_event(defines.events.on_gui_closed, poc.on_gui_closed)
-  script.on_event(defines.events.on_built_entity, poc.on_roboport_built)
-  script.on_event(defines.events.on_robot_built_entity, poc.on_roboport_built)
-  script.on_event(defines.events.script_raised_built, poc.on_roboport_built)
-  script.on_event(defines.events.script_raised_revive, poc.on_roboport_built)
-  script.on_event(defines.events.on_chunk_generated, poc.on_chunk_generated)
-  script.on_event(defines.events.on_entity_died, poc.on_entity_died)
+  script.on_event(defines.events.on_gui_opened, notalone.on_gui_opened)
+  script.on_event(defines.events.on_gui_closed, notalone.on_gui_closed)
+  script.on_event(defines.events.on_built_entity, notalone.on_roboport_built)
+  script.on_event(defines.events.on_robot_built_entity, notalone.on_roboport_built)
+  script.on_event(defines.events.script_raised_built, notalone.on_roboport_built)
+  script.on_event(defines.events.script_raised_revive, notalone.on_roboport_built)
+  script.on_event(defines.events.on_chunk_generated, notalone.on_chunk_generated)
+  script.on_event(defines.events.on_entity_died, notalone.on_entity_died)
   local habitat_filters = {{filter = "name", name = LOGISTICS_HUB_NAME}}
-  script.on_event(defines.events.on_player_mined_entity, poc.on_habitat_removed, habitat_filters)
-  script.on_event(defines.events.on_robot_mined_entity, poc.on_habitat_removed, habitat_filters)
+  script.on_event(defines.events.on_player_mined_entity, notalone.on_habitat_removed, habitat_filters)
+  script.on_event(defines.events.on_robot_mined_entity, notalone.on_habitat_removed, habitat_filters)
   local damage_filters = {}
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}
   end
-  script.on_event(defines.events.on_entity_damaged, poc.on_entity_damaged, damage_filters)
-  script.on_event(defines.events.on_script_path_request_finished, poc.on_script_path_request_finished)
-  script.on_nth_tick(UPDATE_INTERVAL, poc.on_update)
+  script.on_event(defines.events.on_entity_damaged, notalone.on_entity_damaged, damage_filters)
+  script.on_event(defines.events.on_script_path_request_finished, notalone.on_script_path_request_finished)
+  script.on_nth_tick(UPDATE_INTERVAL, notalone.on_update)
 end
-
-return poc

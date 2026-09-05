@@ -1,4 +1,4 @@
-﻿poc = {}
+notalone = {}
 
 local constants = require("lib/constants")
 local utils = require("lib/utils")
@@ -311,3 +311,5 @@ end
 -- Docked team mates are real items in the Habitat's material inventory, so
 -- they count as genuine network storage. Older builds briefly tracked them
 -- as script-side crew records; convert any such records back into items.
+
+return notalone

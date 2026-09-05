@@ -182,7 +182,7 @@ function update_team_mate(record, player)
   return dock_at_habitat(record)
 end
 
-function poc.on_init()
+function notalone.on_init()
   storage.not_alone_team_mates = {}
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_starter_inventory_pending = {}
@@ -196,7 +196,7 @@ function poc.on_init()
   storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
-function poc.on_configuration_changed()
+function notalone.on_configuration_changed()
   rendering.clear("not-alone")
   storage.not_alone_habitats = nil
   for _, requester_record in pairs(storage.not_alone_building_requesters or {}) do
@@ -217,13 +217,13 @@ function poc.on_configuration_changed()
   end
 end
 
-function poc.on_player_created(event)
+function notalone.on_player_created(event)
   local player = game.get_player(event.player_index)
   enable_logistics_network_gui(player.force)
   queue_starter_inventory(player.index)
 end
 
-function poc.on_player_removed(event)
+function notalone.on_player_removed(event)
   local team_mates = storage.not_alone_team_mates
     and storage.not_alone_team_mates[event.player_index]
   if team_mates then
@@ -251,7 +251,7 @@ function poc.on_player_removed(event)
   end
 end
 
-function poc.on_selected_area(event)
+function notalone.on_selected_area(event)
   if event.item ~= COMMAND_TOOL_NAME then
     return
   end
@@ -303,7 +303,7 @@ function deconstruction_planner_accepts(stack, resource_name)
   return not listed
 end
 
-function poc.on_deconstructed_area(event)
+function notalone.on_deconstructed_area(event)
   local changed_count = 0
   for _, resource in pairs(event.surface.find_entities_filtered({
     area = event.area,
@@ -319,9 +319,9 @@ function poc.on_deconstructed_area(event)
       end
     end
   end
-  if changed_count > 0 then
-    local player = game.get_player(event.player_index)
-    player.print({
+    if changed_count > 0 then
+      local player = game.get_player(event.player_index)
+      player.print({
       event.alt and "not-alone.resources-unmarked" or "not-alone.resources-marked",
       changed_count
     })
