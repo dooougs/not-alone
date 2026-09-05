@@ -167,6 +167,7 @@ end
 local hidden_team_mate = table.deepcopy(team_mate)
 hidden_team_mate.name = "not-alone-team-mate-hidden"
 hidden_team_mate.hidden_in_factoriopedia = true
+hidden_team_mate.collision_mask = {layers = {}}
 local hidden_animation_layer = {
 	filename = "__core__/graphics/empty.png",
 	width = 1,

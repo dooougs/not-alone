@@ -16,6 +16,17 @@ function queue_starter_inventory_migration()
   storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
+function migrate_car_minimum_distance()
+  if storage.not_alone_car_minimum_distance_migrated then
+    return
+  end
+  local setting = settings.global["not-alone-car-minimum-distance"]
+  if setting and setting.value == 80 then
+    settings.global["not-alone-car-minimum-distance"] = {value = CAR_MINIMUM_DISTANCE}
+  end
+  storage.not_alone_car_minimum_distance_migrated = true
+end
+
 function ensure_starter_inventory(player)
   if not player or not player.valid or not player.character or not player.character.valid then
     return false
@@ -188,6 +199,7 @@ function notalone.on_init()
   storage.not_alone_starter_inventory_pending = {}
   storage.not_alone_marked_resources = {}
   storage.not_alone_carrier_requests = {}
+  migrate_car_minimum_distance()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
@@ -210,6 +222,7 @@ function notalone.on_configuration_changed()
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
   storage.not_alone_carrier_requests = {}
+  migrate_car_minimum_distance()
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
   for _, player in pairs(game.players) do

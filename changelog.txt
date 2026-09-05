@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.12
+Date: 2026-09-05
+  Bugfixes:
+    - Fixed existing saves retaining the old 80-tile car travel threshold, which made Carriers walk for most logistics trips despite carrying a car.
+    - Fixed car deployment stalling at the deployment point or being blocked by the hidden team mate proxy.
+    - Fixed scripted car paths rejecting their own vehicle at the starting position, and kept the hidden team mate synchronized with the moving car.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.11
 Date: 2026-09-05
   Changes:

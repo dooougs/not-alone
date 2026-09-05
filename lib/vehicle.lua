@@ -99,8 +99,15 @@ function recover_vehicle(record)
   return true
 end
 
+function sync_team_mate_with_vehicle(record)
+  local vehicle = record.vehicle_entity
+  if vehicle and vehicle.valid and record.entity and record.entity.valid then
+    record.entity.teleport(vehicle.position)
+  end
+end
+
 function finish_vehicle_travel(record)
-  local completed_destination = record.vehicle_destination
+  sync_team_mate_with_vehicle(record)
   recover_vehicle(record)
   if record.vehicle_entity then
     record.vehicle_state = "recovering-car"
@@ -112,7 +119,7 @@ function finish_vehicle_travel(record)
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
   record.vehicle_deployment_position = nil
-  record.vehicle_completed_destination = completed_destination
+  record.vehicle_failed_destination = nil
   return false
 end
 
@@ -133,7 +140,7 @@ function abandon_vehicle_travel(record)
   record.vehicle_destination = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
-  record.vehicle_completed_destination = failed_destination
+  record.vehicle_failed_destination = failed_destination
   return false
 end
 
@@ -143,16 +150,19 @@ function request_vehicle_path(record)
   if not vehicle or not vehicle.valid or not destination then
     return abandon_vehicle_travel(record)
   end
-  local ok, request_id = pcall(vehicle.surface.request_path, vehicle.surface, {
-    bounding_box = vehicle.prototype.collision_box,
-    collision_mask = vehicle.prototype.collision_mask,
-    start = position_table(vehicle.position),
-    goal = destination,
-    force = vehicle.force,
-    radius = CAR_ARRIVAL_RADIUS,
-    can_open_gates = false,
-    pathfind_flags = {cache = false}
-  })
+  local ok, request_id = pcall(function()
+    return vehicle.surface.request_path({
+      bounding_box = vehicle.prototype.collision_box,
+      collision_mask = vehicle.prototype.collision_mask,
+      start = position_table(vehicle.position),
+      goal = destination,
+      force = vehicle.force,
+      radius = CAR_ARRIVAL_RADIUS,
+      can_open_gates = false,
+      pathfind_flags = {cache = false},
+      entity_to_ignore = vehicle
+    })
+  end)
   if not ok or not request_id then
     return abandon_vehicle_travel(record)
   end
@@ -168,14 +178,6 @@ function deploy_vehicle(record)
   if not position or inventory.get_item_count(CAR_ITEM_NAME) < 1 then
     return abandon_vehicle_travel(record)
   end
-  if not surface.can_place_entity({
-    name = CAR_ENTITY_NAME,
-    position = position,
-    force = record.entity.force
-  }) then
-    return abandon_vehicle_travel(record)
-  end
-
   -- Remove first and roll back if either entity creation or driver creation
   -- fails, so a deployed car and an inventory car cannot coexist.
   if inventory.remove({name = CAR_ITEM_NAME, count = 1}) ~= 1 then
@@ -185,7 +187,16 @@ function deploy_vehicle(record)
   if not replace_team_mate_entity(record, HIDDEN_TEAM_MATE_NAME) then
     inventory.insert({name = CAR_ITEM_NAME, count = 1})
     record.vehicle_visible_name = nil
-    return false
+    return abandon_vehicle_travel(record)
+  end
+  if not surface.can_place_entity({
+    name = CAR_ENTITY_NAME,
+    position = position,
+    force = record.entity.force
+  }) then
+    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    restore_vehicle_team_mate(record)
+    return abandon_vehicle_travel(record)
   end
   local vehicle = surface.create_entity({
     name = CAR_ENTITY_NAME,
@@ -196,7 +207,7 @@ function deploy_vehicle(record)
   if not vehicle then
     inventory.insert({name = CAR_ITEM_NAME, count = 1})
     restore_vehicle_team_mate(record)
-    return false
+    return abandon_vehicle_travel(record)
   end
   local driver = surface.create_entity({
     name = CAR_DRIVER_NAME,
@@ -208,7 +219,7 @@ function deploy_vehicle(record)
     vehicle.destroy()
     inventory.insert({name = CAR_ITEM_NAME, count = 1})
     restore_vehicle_team_mate(record)
-    return false
+    return abandon_vehicle_travel(record)
   end
   driver.color = {r = 1, g = 1, b = 1, a = 0}
   vehicle.set_driver(driver)
@@ -217,7 +228,7 @@ function deploy_vehicle(record)
     vehicle.destroy()
     inventory.insert({name = CAR_ITEM_NAME, count = 1})
     restore_vehicle_team_mate(record)
-    return false
+    return abandon_vehicle_travel(record)
   end
   record.vehicle_entity = vehicle
   record.vehicle_entity_unit_number = vehicle.unit_number
@@ -231,8 +242,8 @@ function begin_vehicle_travel(record, destination)
   if record.vehicle_state then
     return false
   end
-  if record.vehicle_completed_destination
-    and distance_squared(record.vehicle_completed_destination, destination) <= 4 then
+  if record.vehicle_failed_destination
+    and distance_squared(record.vehicle_failed_destination, destination) <= 4 then
     return false
   end
   local inventory = get_vehicle_inventory(record)
@@ -273,6 +284,7 @@ function steer_vehicle(record)
   if not vehicle or not vehicle.valid or not path or #path == 0 then
     return abandon_vehicle_travel(record)
   end
+  sync_team_mate_with_vehicle(record)
   if distance_squared(vehicle.position, record.vehicle_destination)
     <= CAR_ARRIVAL_RADIUS * CAR_ARRIVAL_RADIUS then
     record.vehicle_state = "stopping-car"
@@ -365,7 +377,7 @@ update_vehicle_travel = function(record)
     move_team_mate(record, source.position, 2)
     return true
   elseif record.vehicle_state == "walking-to-car" then
-    if distance_squared(record.entity.position, record.vehicle_deployment_position) <= 1 then
+    if distance_squared(record.entity.position, record.vehicle_deployment_position) <= 4 then
       return deploy_vehicle(record)
     end
     move_team_mate(record, record.vehicle_deployment_position, 1)
