@@ -19,7 +19,7 @@ local function make_team_mate_item(kind, tint, order_suffix)
 			tint = tint
 		}
 	}
-	item.flags = {"hidden"}
+	item.hidden = true
 	item.hidden_in_factoriopedia = true
 	item.subgroup = "tool"
 	item.order = "z[not-alone]-" .. order_suffix
