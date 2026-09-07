@@ -8,6 +8,12 @@ Date: 2026-09-07
     - Optimized marked-resource assignment for large Miner crews, removing a quadratic claim scan and reducing unnecessary game API calls.
 
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.18
+Date: 2026-09-07
+  Bugfixes:
+    - Repackaged the deconstruction inventory lookup fix for Factorio 2.1 compatibility.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.17
 Date: 2026-09-07
   Bugfixes:
