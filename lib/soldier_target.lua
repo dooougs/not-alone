@@ -14,8 +14,11 @@ function find_soldier_target(record, surface, force, position)
   local nearest_distance
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
+      -- Pad past the network edge: worms out-range the boundary and would
+      -- otherwise shell the base from just outside the scan.
       local radius = math.max(cell.logistic_radius, cell.construction_radius)
       if radius > 0 then
+        radius = radius + ENGAGEMENT_RADIUS
         for _, enemy in pairs(surface.find_enemy_units(cell.owner.position, radius, force)) do
           if enemy.valid then
             local current_distance = distance_squared(position, enemy.position)
@@ -36,6 +39,7 @@ function find_soldier_target(record, surface, force, position)
       if cell.valid and cell.owner.valid then
         local radius = math.max(cell.logistic_radius, cell.construction_radius)
         if radius > 0 then
+          radius = radius + ENGAGEMENT_RADIUS
           for _, base in pairs(surface.find_entities_filtered({
             position = cell.owner.position,
             radius = radius,
