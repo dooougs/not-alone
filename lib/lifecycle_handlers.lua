@@ -44,7 +44,6 @@ function notalone.on_script_path_request_finished(event)
           record.vehicle_stuck_ticks = 0
           record.vehicle_blocked_ticks = 0
           record.vehicle_last_position = nil
-          record.vehicle_repath_attempts = 0
           record.vehicle_state = "driving-car"
         end
         return
@@ -71,8 +70,11 @@ function notalone.on_entity_died(event)
   elseif record and record.vehicle_driver_unit_number == entity.unit_number then
     record.vehicle_driver = nil
     record.vehicle_driver_unit_number = nil
-    record.vehicle_state = nil
-    restore_vehicle_team_mate(record)
+    record.vehicle_path = nil
+    record.vehicle_path_request_id = nil
+    -- Clearing state here abandoned the driverless car on the ground; let the
+    -- recovery state reclaim it into the team mate's inventory instead.
+    record.vehicle_state = "recovering-car"
   end
   if entity.name == LOGISTICS_HUB_NAME then
     notalone.on_habitat_removed(event)
@@ -160,12 +162,17 @@ function notalone.on_entity_damaged(event)
   end
   -- A collision means the current plan is wrong: reroute the car, and after
   -- repeated impacts get out and let default travel planning start over.
+  -- Collisions accumulate per trip so path resets cannot mask a crash loop.
   if entity.name == CAR_ENTITY_NAME and event.damage_type.name == "impact" then
     local record = find_vehicle_record(entity.unit_number)
     if record and record.vehicle_entity_unit_number == entity.unit_number
       and record.vehicle_state == "driving-car" then
-      record.vehicle_repath_attempts = (record.vehicle_repath_attempts or 0) + 1
-      if record.vehicle_repath_attempts > 2 then
+      entity.riding_state = {
+        acceleration = defines.riding.acceleration.braking,
+        direction = defines.riding.direction.straight
+      }
+      record.vehicle_collision_count = (record.vehicle_collision_count or 0) + 1
+      if record.vehicle_collision_count >= CAR_MAX_COLLISIONS then
         abandon_vehicle_travel(record)
       else
         record.vehicle_stuck_ticks = 0

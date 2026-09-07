@@ -354,6 +354,11 @@ function get_carried_items(record)
       counts[item.name] = (counts[item.name] or 0) + item.count
     end
   end
+  if record.vehicle_fuel_inventory and record.vehicle_fuel_inventory.valid then
+    for _, item in pairs(record.vehicle_fuel_inventory.get_contents()) do
+      counts[item.name] = (counts[item.name] or 0) + item.count
+    end
+  end
 
   local items = {}
   for name, count in pairs(counts) do
@@ -365,7 +370,13 @@ end
 
 function update_inventory_renderings(record)
   local items = get_carried_items(record)
-  local signature_parts = {}
+  -- The hidden driver only teleports to the car periodically; anchoring to
+  -- the car keeps icons from lagging and flashing behind it.
+  local anchor = record.entity
+  if record.vehicle_state and record.vehicle_entity and record.vehicle_entity.valid then
+    anchor = record.vehicle_entity
+  end
+  local signature_parts = {tostring(anchor.unit_number)}
   for _, item in pairs(items) do
     signature_parts[#signature_parts + 1] = item.name .. ":" .. item.count
   end
@@ -373,7 +384,7 @@ function update_inventory_renderings(record)
   local first_object = record.inventory_render_ids and record.inventory_render_ids[1]
     and rendering.get_object_by_id(record.inventory_render_ids[1])
   if record.inventory_render_signature == signature
-    and (signature == "" or first_object) then
+    and (#items == 0 or first_object) then
     return
   end
 
@@ -384,8 +395,8 @@ function update_inventory_renderings(record)
     local offset = {start_x + (index - 1) * INVENTORY_ICON_SPACING, -1.9}
     local icon = rendering.draw_sprite({
       sprite = "item." .. item.name,
-      target = {entity = record.entity, offset = offset},
-      surface = record.entity.surface,
+      target = {entity = anchor, offset = offset},
+      surface = anchor.surface,
       x_scale = INVENTORY_ICON_SCALE,
       y_scale = INVENTORY_ICON_SCALE,
       only_in_alt_mode = true,
@@ -393,8 +404,8 @@ function update_inventory_renderings(record)
     })
     local count = rendering.draw_text({
       text = tostring(item.count),
-      target = {entity = record.entity, offset = {offset[1] + 0.2, offset[2] + 0.2}},
-      surface = record.entity.surface,
+      target = {entity = anchor, offset = {offset[1] + 0.2, offset[2] + 0.2}},
+      surface = anchor.surface,
       color = {1, 1, 1},
       alignment = "center",
       vertical_alignment = "middle",

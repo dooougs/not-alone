@@ -50,7 +50,12 @@ end
 
 function vehicle_minimum_distance()
   local setting = settings.global["not-alone-car-minimum-distance"]
-  return setting and setting.value or CAR_MINIMUM_DISTANCE
+  -- Trips shorter than the arrival radius end the moment the car is boarded,
+  -- looping team mates in and out of cars forever; enforce a real drive.
+  return math.max(
+    setting and setting.value or CAR_MINIMUM_DISTANCE,
+    CAR_ARRIVAL_RADIUS + CAR_MINIMUM_TRIP_MARGIN
+  )
 end
 
 function find_vehicle_record(unit_number)
@@ -188,11 +193,18 @@ function finish_vehicle_travel(record)
   end
   restore_vehicle_team_mate(record)
   record.vehicle_state = nil
+  -- An abandoned trip must remember its destination through car recovery, or
+  -- the same doomed trip redeploys the moment the car is picked back up.
+  record.vehicle_failed_destination = record.vehicle_abandoned
+    and record.vehicle_destination or nil
+  record.vehicle_failed_destination_tick = record.vehicle_failed_destination
+    and game.tick or nil
+  record.vehicle_abandoned = nil
   record.vehicle_destination = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
   record.vehicle_deployment_position = nil
-  record.vehicle_failed_destination = nil
+  record.vehicle_collision_count = nil
   return false
 end
 
@@ -205,6 +217,7 @@ function abandon_vehicle_travel(record)
     end
     -- The car remains in the world if it cannot be recovered; no new item is
     -- created, preserving the ownership invariant without deleting equipment.
+    record.vehicle_abandoned = true
     record.vehicle_state = "recovering-car"
     return finish_vehicle_travel(record)
   end
@@ -213,7 +226,9 @@ function abandon_vehicle_travel(record)
   record.vehicle_destination = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
+  record.vehicle_collision_count = nil
   record.vehicle_failed_destination = failed_destination
+  record.vehicle_failed_destination_tick = failed_destination and game.tick or nil
   return false
 end
 
@@ -224,8 +239,14 @@ function request_vehicle_path(record)
     return abandon_vehicle_travel(record)
   end
   local ok, request_id = pcall(function()
+    local box = vehicle.prototype.collision_box
     return vehicle.surface.request_path({
-      bounding_box = vehicle.prototype.collision_box,
+      -- Grown box keeps planned routes clear of buildings the car would
+      -- clip while turning.
+      bounding_box = {
+        {box.left_top.x - CAR_PATH_CLEARANCE, box.left_top.y - CAR_PATH_CLEARANCE},
+        {box.right_bottom.x + CAR_PATH_CLEARANCE, box.right_bottom.y + CAR_PATH_CLEARANCE}
+      },
       collision_mask = vehicle.prototype.collision_mask,
       start = position_table(vehicle.position),
       goal = destination,
@@ -328,9 +349,15 @@ function begin_vehicle_travel(record, destination)
   if record.vehicle_state then
     return false
   end
-  if record.vehicle_failed_destination
-    and distance_squared(record.vehicle_failed_destination, destination) <= 4 then
-    return false
+  if record.vehicle_failed_destination then
+    -- Blocked routes get another chance later; the obstruction may be gone.
+    if game.tick - (record.vehicle_failed_destination_tick or 0)
+      > CAR_FAILED_DESTINATION_RETRY_TICKS then
+      record.vehicle_failed_destination = nil
+      record.vehicle_failed_destination_tick = nil
+    elseif distance_squared(record.vehicle_failed_destination, destination) <= 4 then
+      return false
+    end
   end
   local inventory = get_vehicle_inventory(record)
   if distance_squared(record.entity.position, destination)
@@ -369,6 +396,12 @@ function begin_vehicle_travel(record, destination)
   )
   if not position
     or not deployment_position_is_clear(record, record.entity.surface, position) then
+    return false
+  end
+  -- A boarding spot already inside the arrival radius makes the trip finish
+  -- instantly; walking is the honest plan.
+  if distance_squared(position, destination)
+    <= CAR_ARRIVAL_RADIUS * CAR_ARRIVAL_RADIUS then
     return false
   end
   record.vehicle_destination = position_table(destination)
@@ -441,7 +474,9 @@ function steer_vehicle(record)
     direction = defines.riding.direction.left
   end
   local acceleration = defines.riding.acceleration.accelerating
-  if math.abs(difference) > 0.8 then
+  -- Cars cannot rotate while stationary: braking on a sharp heading error at
+  -- standstill deadlocks the trip before it starts. Brake only when moving.
+  if math.abs(difference) > 0.8 and math.abs(vehicle.speed or 0) > 0.05 then
     acceleration = defines.riding.acceleration.braking
   end
   if vehicle_probe_is_clear(record, vehicle, current, 0) then
@@ -479,6 +514,9 @@ function steer_vehicle(record)
     record.vehicle_stuck_ticks = (record.vehicle_stuck_ticks or 0) + UPDATE_INTERVAL
   else
     record.vehicle_stuck_ticks = 0
+    -- Only real movement proves recovery; resetting on path acceptance let
+    -- a stationary car alternate stuck/repath forever.
+    record.vehicle_repath_attempts = 0
   end
   record.vehicle_last_position = position_table(vehicle.position)
   if (record.vehicle_stuck_ticks or 0) >= CAR_STUCK_TICKS then
@@ -573,6 +611,15 @@ update_vehicle_travel = function(record)
   elseif record.vehicle_state == "requesting-car-path" then
     return request_vehicle_path(record)
   elseif record.vehicle_state == "waiting-for-car-path" then
+    -- Kill leftover momentum so a post-collision car stops ramming while the
+    -- replacement route is computed.
+    local vehicle = record.vehicle_entity
+    if vehicle and vehicle.valid then
+      vehicle.riding_state = {
+        acceleration = defines.riding.acceleration.braking,
+        direction = defines.riding.direction.straight
+      }
+    end
     -- A reload discards pending pathfinder callbacks; re-request instead of
     -- waiting forever on a request id that can no longer answer.
     record.vehicle_path_wait_ticks = (record.vehicle_path_wait_ticks or 0) + UPDATE_INTERVAL

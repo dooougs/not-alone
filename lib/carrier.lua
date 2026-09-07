@@ -123,6 +123,113 @@ function clear_carrier_request(record)
   record.carrier_request_key = nil
 end
 
+function get_deconstruction_source_inventory(entity, item_name)
+  if not entity or not entity.valid or not item_name then
+    return nil
+  end
+  local inventory_ids = {
+    defines.inventory.chest,
+    defines.inventory.crafter_input,
+    defines.inventory.crafter_output,
+    defines.inventory.furnace_source,
+    defines.inventory.furnace_result,
+    defines.inventory.assembling_machine_input,
+    defines.inventory.assembling_machine_output,
+    defines.inventory.rocket_silo_input,
+    defines.inventory.rocket_silo_output
+  }
+  for _, inventory_id in ipairs(inventory_ids) do
+    local ok, inventory = pcall(function()
+      return entity.get_inventory(inventory_id)
+    end)
+    if ok and inventory and inventory.valid and inventory.get_item_count(item_name) > 0 then
+      return inventory
+    end
+  end
+  if entity.get_output_inventory then
+    local inventory = entity.get_output_inventory()
+    if inventory and inventory.valid and inventory.get_item_count(item_name) > 0 then
+      return inventory
+    end
+  end
+  if entity.get_input_inventory then
+    local inventory = entity.get_input_inventory()
+    if inventory and inventory.valid and inventory.get_item_count(item_name) > 0 then
+      return inventory
+    end
+  end
+  return nil
+end
+
+function get_carrier_source_inventory(source, item)
+  if not source or not source.valid then
+    return nil
+  end
+
+  local item_name = item
+  if type(item) == "table" then
+    item_name = item.name
+  end
+  if not item_name then
+    return nil
+  end
+
+  local standard_inventory = get_logistics_source_inventory(source)
+  if standard_inventory and standard_inventory.get_item_count(item_name) > 0 then
+    return standard_inventory
+  end
+
+  local is_deconstruction_target = false
+  if source.to_be_deconstructed then
+    is_deconstruction_target = source.to_be_deconstructed()
+  end
+  if not is_deconstruction_target and source.is_registered_for_deconstruction and source.force then
+    is_deconstruction_target = source.is_registered_for_deconstruction(source.force)
+  end
+
+  if is_deconstruction_target then
+    local deconstruction_inventory = get_deconstruction_source_inventory(source, item_name)
+    if deconstruction_inventory and deconstruction_inventory.get_item_count(item_name) > 0 then
+      return deconstruction_inventory
+    end
+  end
+
+  return nil
+end
+
+function find_deconstruction_source_for_item(surface, force, position, item_id)
+  local network = surface.find_logistic_network_by_position(position, force)
+  if not network then
+    return nil
+  end
+
+  local nearest_entity
+  local nearest_distance
+  for _, cell in pairs(network.cells or {}) do
+    if cell.valid and cell.owner.valid then
+      local radius = math.max(cell.logistic_radius, cell.construction_radius)
+      for _, entity in pairs(surface.find_entities_filtered({
+        force = force,
+        position = cell.owner.position,
+        radius = radius * 1.5,
+        to_be_deconstructed = true
+      })) do
+        if entity.valid and entity.is_registered_for_deconstruction(force) then
+          local inventory = get_deconstruction_source_inventory(entity, item_id.name)
+          if inventory and inventory.get_item_count(item_id) > 0 then
+            local distance = distance_squared(position, entity.position)
+            if not nearest_distance or distance < nearest_distance then
+              nearest_entity = entity
+              nearest_distance = distance
+            end
+          end
+        end
+      end
+    end
+  end
+  return nearest_entity
+end
+
 function find_carrier_job(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -152,7 +259,7 @@ function find_carrier_job(record, surface, force, position)
           include_buffers = true
         })
         local source = pickup_point and pickup_point.owner
-        local source_inventory = get_logistics_source_inventory(source)
+        local source_inventory = get_carrier_source_inventory(source, item_id)
         local available = source_inventory and source_inventory.get_item_count(item_id) or 0
         if available > 0 then
           local claimed_count = math.min(missing, available)
@@ -207,6 +314,51 @@ function find_carrier_job(record, surface, force, position)
     end
   end
 
+  -- If a chest or machine in the network is marked for deconstruction, carriers
+  -- should pull its items out and then follow the normal return-to-storage flow.
+  for _, entity in pairs(surface.find_entities_filtered({
+    force = force,
+    position = position,
+    radius = LOGISTICS_SEARCH_RADIUS,
+    to_be_deconstructed = true
+  })) do
+    if entity.valid and entity.is_registered_for_deconstruction(force) then
+      local item_names = {}
+      for _, inventory_id in ipairs({
+        defines.inventory.chest,
+        defines.inventory.crafter_input,
+        defines.inventory.crafter_output,
+        defines.inventory.furnace_source,
+        defines.inventory.furnace_result,
+        defines.inventory.assembling_machine_input,
+        defines.inventory.assembling_machine_output,
+        defines.inventory.rocket_silo_input,
+        defines.inventory.rocket_silo_output
+      }) do
+        local ok, inventory = pcall(function()
+          return entity.get_inventory(inventory_id)
+        end)
+        if ok and inventory and inventory.valid then
+          for _, stack in pairs(inventory.get_contents()) do
+            item_names[stack.name] = true
+          end
+        end
+      end
+      for item_name in pairs(item_names) do
+        local item_id = {name = item_name, quality = "normal"}
+        local source_inventory = get_deconstruction_source_inventory(entity, item_name)
+        local available = source_inventory and source_inventory.get_item_count(item_id) or 0
+        if available > 0 then
+          local return_target = find_logistics_return_source(record, item_name)
+          local claimed_count = math.min(available, CARRIER_CAPACITY)
+          if return_target and reserve_carrier_request(record, return_target, item_id, claimed_count) then
+            return entity, return_target, item_id, claimed_count
+          end
+        end
+      end
+    end
+  end
+
   return nil, nil, nil, nil
 end
 
@@ -227,7 +379,7 @@ end
 function update_carrier(record)
   if record.carrier_state == "move-to-source" then
     local source = record.carrier_source
-    local inventory = get_logistics_source_inventory(source)
+    local inventory = get_carrier_source_inventory(source, record.carrier_item)
       or get_producer_output_inventory(source)
     if not source or not source.valid or not inventory
       or inventory.get_item_count(record.carrier_item) == 0 then

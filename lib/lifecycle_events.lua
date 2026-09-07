@@ -17,14 +17,16 @@ function queue_starter_inventory_migration()
 end
 
 function migrate_car_minimum_distance()
-  if storage.not_alone_car_minimum_distance_migrated then
+  if storage.not_alone_car_minimum_distance_migration == 2 then
     return
   end
   local setting = settings.global["not-alone-car-minimum-distance"]
-  if setting and setting.value == 80 then
+  -- Raise stale old defaults (80, then 20) without overriding custom values.
+  if setting and (setting.value == 80 or setting.value == 20) then
     settings.global["not-alone-car-minimum-distance"] = {value = CAR_MINIMUM_DISTANCE}
   end
   storage.not_alone_car_minimum_distance_migrated = true
+  storage.not_alone_car_minimum_distance_migration = 2
 end
 
 function ensure_starter_inventory(player)

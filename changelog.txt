@@ -1,4 +1,14 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.15
+Date: 2026-09-06
+  Bugfixes:
+    - Fixed deployed cars never moving: sharp-turn braking at standstill deadlocked freshly boarded cars, which cannot rotate while stationary. Cars now only brake for sharp turns while moving.
+    - Fixed stationary cars silently replanning routes forever; failed replans now count and end with the driver getting out.
+    - Fixed team mates endlessly hopping in and out of cars: saves carrying an old car travel threshold below the enlarged parking radius made every trip "arrive" the moment the car was boarded. Stale thresholds are migrated, and trips must now always be longer than the parking radius.
+    - Fixed abandoned trips being retried at the same destination the moment the car was recovered; a failed destination now rests before another drive is attempted.
+    - Fixed cars being left on the ground when their hidden driver was destroyed mid-trip; the car is now reclaimed into the team mate's inventory.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.14
 Date: 2026-09-05
   Changes:
@@ -8,7 +18,10 @@ Date: 2026-09-05
   Bugfixes:
     - Fixed team mates staying visible next to their deployed car instead of appearing to get in.
     - Fixed cars never moving because they were deployed without fuel, and manual refueling being undone by car recovery.
+    - Fixed cars never moving because they were deployed without fuel, and manual refueling being undone by car recovery.
     - Fixed vehicle travel wedging permanently when a save was reloaded while a car path request was outstanding.
+    - Fixed cargo icons flashing behind moving cars; they now ride on the car and include the collected car fuel.
+    - Fixed cars repeatedly ramming buildings: routes now keep clearance around the car, corner-cutting is reduced, cars brake while a post-collision route is computed, and crash loops end with the driver getting out.
 
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.13
