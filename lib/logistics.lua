@@ -62,6 +62,107 @@ function get_logistics_source_inventory(source)
   return source.get_inventory(defines.inventory.chest)
 end
 
+function source_is_deconstruction_target(source, force)
+  return source and source.valid
+    and source.to_be_deconstructed
+    and source.to_be_deconstructed()
+    and source.is_registered_for_deconstruction
+    and source.is_registered_for_deconstruction(force or source.force)
+end
+
+function get_deconstruction_source_inventories(source)
+  if not source or not source.valid then
+    return {}
+  end
+  local inventories = {}
+  local seen = {}
+  local inventory_ids = {
+    defines.inventory.chest,
+    defines.inventory.crafter_input,
+    defines.inventory.crafter_output,
+    defines.inventory.furnace_source,
+    defines.inventory.furnace_result,
+    defines.inventory.assembling_machine_input,
+    defines.inventory.assembling_machine_output,
+    defines.inventory.rocket_silo_input,
+    defines.inventory.rocket_silo_output
+  }
+  for _, inventory_id in ipairs(inventory_ids) do
+    local ok, inventory = pcall(function()
+      return source.get_inventory(inventory_id)
+    end)
+    local key = inventory and tostring(inventory)
+    if ok and inventory and inventory.valid and not seen[key] then
+      seen[key] = true
+      inventories[#inventories + 1] = inventory
+    end
+  end
+  for _, getter in ipairs({"get_input_inventory", "get_output_inventory"}) do
+    if source[getter] then
+      local ok, inventory = pcall(function()
+        return source[getter]()
+      end)
+      local key = inventory and tostring(inventory)
+      if ok and inventory and inventory.valid and not seen[key] then
+        seen[key] = true
+        inventories[#inventories + 1] = inventory
+      end
+    end
+  end
+  return inventories
+end
+
+function get_deconstruction_source_inventory(source, item)
+  local item_name = type(item) == "table" and item.name or item
+  if not item_name or not source_is_deconstruction_target(source) then
+    return nil
+  end
+  for _, inventory in ipairs(get_deconstruction_source_inventories(source)) do
+    if inventory.get_item_count(item_name) > 0 then
+      return inventory
+    end
+  end
+  return nil
+end
+
+function get_logistics_or_deconstruction_source_inventory(source, item)
+  local item_name = type(item) == "table" and item.name or item
+  if not item_name then
+    return nil
+  end
+  local inventory = get_logistics_source_inventory(source)
+  if inventory and inventory.get_item_count(item_name) > 0 then
+    return inventory
+  end
+  return get_deconstruction_source_inventory(source, item_name)
+end
+
+function get_network_deconstruction_sources(network)
+  local sources = {}
+  local seen = {}
+  local force = network and network.force
+  for _, cell in pairs(network and network.cells or {}) do
+    if cell.valid and cell.owner.valid then
+      local radius = math.max(cell.logistic_radius, cell.construction_radius)
+      for _, source in pairs(cell.owner.surface.find_entities_filtered({
+        force = force,
+        position = cell.owner.position,
+        radius = radius * 1.5,
+        to_be_deconstructed = true
+      })) do
+        if source.unit_number and not seen[source.unit_number]
+          and source_is_deconstruction_target(source, force)
+          and (cell.is_in_logistic_range(source.position)
+            or cell.is_in_construction_range(source.position)) then
+          seen[source.unit_number] = true
+          sources[#sources + 1] = source
+        end
+      end
+    end
+  end
+  return sources
+end
+
 function get_network_furnaces(network)
   local furnaces = {}
   local seen = {}
@@ -89,6 +190,13 @@ function get_logistics_contents(network)
     local inventory = get_logistics_source_inventory(furnace)
     for _, item in pairs(inventory and inventory.get_contents() or {}) do
       contents[#contents + 1] = item
+    end
+  end
+  for _, source in pairs(get_network_deconstruction_sources(network)) do
+    for _, inventory in ipairs(get_deconstruction_source_inventories(source)) do
+      for _, item in pairs(inventory.get_contents()) do
+        contents[#contents + 1] = item
+      end
     end
   end
   return contents

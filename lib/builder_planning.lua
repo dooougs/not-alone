@@ -31,7 +31,7 @@ function find_builder_source(network, item, position)
   local nearest_source
   local nearest_distance
   local function consider(candidate)
-    local candidate_inventory = get_logistics_source_inventory(candidate)
+    local candidate_inventory = get_logistics_or_deconstruction_source_inventory(candidate, item_name)
     if candidate_inventory and candidate_inventory.get_item_count(item_name) > 0 then
       local distance = distance_squared(position, candidate.position)
       if not nearest_distance or distance < nearest_distance then
@@ -54,6 +54,11 @@ function find_builder_source(network, item, position)
   if not nearest_source then
     for _, storage_entity in pairs(network.storages) do
       consider(storage_entity)
+    end
+  end
+  if not nearest_source then
+    for _, source in pairs(get_network_deconstruction_sources(network)) do
+      consider(source)
     end
   end
   return nearest_source
@@ -212,13 +217,15 @@ function builder_plan_has_valid_sources(network, plan)
   -- action's full count on its own.
   local available = {}
   local seen = {}
+  local function add_inventory(inventory)
+    for _, item in pairs(inventory and inventory.get_contents() or {}) do
+      available[item.name] = (available[item.name] or 0) + item.count
+    end
+  end
   local function add_source(source)
     if source and source.valid and source.unit_number and not seen[source.unit_number] then
       seen[source.unit_number] = true
-      local inventory = get_logistics_source_inventory(source)
-      for _, item in pairs(inventory and inventory.get_contents() or {}) do
-        available[item.name] = (available[item.name] or 0) + item.count
-      end
+      add_inventory(get_logistics_source_inventory(source))
     end
   end
   for _, source in pairs(network.providers) do
@@ -229,6 +236,14 @@ function builder_plan_has_valid_sources(network, plan)
   end
   for _, furnace in pairs(get_network_furnaces(network)) do
     add_source(furnace)
+  end
+  for _, source in pairs(get_network_deconstruction_sources(network)) do
+    if source and source.valid and source.unit_number and not seen[source.unit_number] then
+      seen[source.unit_number] = true
+      for _, inventory in ipairs(get_deconstruction_source_inventories(source)) do
+        add_inventory(inventory)
+      end
+    end
   end
   for _, action in ipairs(plan) do
     if action.type == "fetch" then

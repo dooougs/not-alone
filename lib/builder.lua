@@ -133,8 +133,8 @@ function update_builder(record)
       return true
     end
     local source = record.builder_source
-    local inventory = get_logistics_source_inventory(source)
     local item_name = type(action.item) == "table" and action.item.name or action.item
+    local inventory = get_logistics_or_deconstruction_source_inventory(source, item_name)
     if not source or not source.valid or not inventory
       or inventory.get_item_count(item_name) < action.count then
       source = find_builder_source(
@@ -145,7 +145,7 @@ function update_builder(record)
         position_table(record.entity.position)
       )
       record.builder_source = source
-      inventory = get_logistics_source_inventory(source)
+      inventory = get_logistics_or_deconstruction_source_inventory(source, item_name)
     end
     if not source or not inventory then
       record.builder_state = nil
