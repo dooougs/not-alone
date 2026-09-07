@@ -28,37 +28,12 @@ end
 function update_habitat_crew_display(habitat)
   storage.not_alone_habitat_crew_renders = storage.not_alone_habitat_crew_renders or {}
   local renders = storage.not_alone_habitat_crew_renders
-  local inventory = get_habitat_inventory(habitat)
-  local parts = {}
-  for _, kind in pairs(TEAM_MATE_KINDS) do
-    local count = inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0
-    if count > 0 then
-      parts[#parts + 1] = (KIND_LABEL[kind] or kind) .. " " .. count
-    end
-  end
-  local text = table.concat(parts, "  ")
   local existing = renders[habitat.unit_number]
   local render_object = existing and rendering.get_object_by_id(existing)
-  if text == "" then
-    if render_object then
-      render_object.destroy()
-    end
-    renders[habitat.unit_number] = nil
-    return
-  end
   if render_object then
-    render_object.text = text
-  else
-    renders[habitat.unit_number] = rendering.draw_text({
-      text = text,
-      target = {entity = habitat, offset = {0, -2.4}},
-      surface = habitat.surface,
-      color = {1, 1, 1},
-      alignment = "center",
-      only_in_alt_mode = true,
-      scale = 0.8
-    }).id
+    render_object.destroy()
   end
+  renders[habitat.unit_number] = nil
 end
 
 TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
