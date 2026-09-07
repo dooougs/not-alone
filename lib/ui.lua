@@ -238,6 +238,17 @@ function update_builder_target_renderings(record)
     progress = 1
   end
   progress = math.max(0, math.min(1, progress))
+  if progress >= 1 then
+    for _, render_id in pairs(record.builder_target_render_ids or {}) do
+      local render_object = get_render_object(render_id)
+      if render_object then
+        render_object.destroy()
+      end
+    end
+    record.builder_target_render_ids = {}
+    record.builder_target_render_signature = nil
+    return
+  end
 
   -- Reuse the existing render objects only when both the target entity and the
   -- build progress are unchanged. Keying only on item name + progress can leave
