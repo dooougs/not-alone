@@ -15,7 +15,7 @@ function builder_target_destination(record, target)
   end
   local box = target.bounding_box
   local position = record.entity.position
-  return {
+  local destination = {
     x = math.max(
       box.left_top.x - BUILDER_TARGET_CLEARANCE,
       math.min(position.x, box.right_bottom.x + BUILDER_TARGET_CLEARANCE)
@@ -25,31 +25,47 @@ function builder_target_destination(record, target)
       math.min(position.y, box.right_bottom.y + BUILDER_TARGET_CLEARANCE)
     )
   }
+  -- Units walk through ghosts, so a builder already inside the footprint
+  -- would otherwise get its own position back and stand where the entity
+  -- must be placed; push the destination out through the nearest edge.
+  if destination.x > box.left_top.x and destination.x < box.right_bottom.x
+    and destination.y > box.left_top.y and destination.y < box.right_bottom.y then
+    local to_left = destination.x - box.left_top.x
+    local to_right = box.right_bottom.x - destination.x
+    local to_top = destination.y - box.left_top.y
+    local to_bottom = box.right_bottom.y - destination.y
+    local nearest = math.min(to_left, to_right, to_top, to_bottom)
+    if nearest == to_left then
+      destination.x = box.left_top.x - BUILDER_TARGET_CLEARANCE
+    elseif nearest == to_right then
+      destination.x = box.right_bottom.x + BUILDER_TARGET_CLEARANCE
+    elseif nearest == to_top then
+      destination.y = box.left_top.y - BUILDER_TARGET_CLEARANCE
+    else
+      destination.y = box.right_bottom.y + BUILDER_TARGET_CLEARANCE
+    end
+  end
+  return destination
 end
 
 function builder_ghost_standing_position(record, target)
   local box = target.bounding_box
   local position = record.entity.position
-  if position.x > box.left_top.x and position.x < box.right_bottom.x
-    and position.y > box.left_top.y and position.y < box.right_bottom.y then
-    -- Standing inside the footprint blocks revive; leave through the nearest edge.
-    local exits = {
-      {x = box.left_top.x - BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
-      {x = box.right_bottom.x + BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
-      {x = position.x, y = box.left_top.y - BUILDER_GHOST_ESCAPE_DISTANCE},
-      {x = position.x, y = box.right_bottom.y + BUILDER_GHOST_ESCAPE_DISTANCE}
-    }
-    local best, best_distance
-    for _, exit in pairs(exits) do
-      local exit_distance = distance_squared(position, exit)
-      if not best_distance or exit_distance < best_distance then
-        best = exit
-        best_distance = exit_distance
-      end
+  local exits = {
+    {x = box.left_top.x - BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
+    {x = box.right_bottom.x + BUILDER_GHOST_ESCAPE_DISTANCE, y = position.y},
+    {x = position.x, y = box.left_top.y - BUILDER_GHOST_ESCAPE_DISTANCE},
+    {x = position.x, y = box.right_bottom.y + BUILDER_GHOST_ESCAPE_DISTANCE}
+  }
+  local best, best_distance
+  for _, exit in pairs(exits) do
+    local exit_distance = distance_squared(position, exit)
+    if not best_distance or exit_distance < best_distance then
+      best = exit
+      best_distance = exit_distance
     end
-    return best
   end
-  return builder_target_destination(record, target)
+  return best
 end
 
 function update_builder(record)
@@ -217,9 +233,6 @@ function update_builder(record)
           quality = record.builder_item.quality,
           count = 1
         })
-        if record.builder_item and record.builder_item.name then
-          trigger_research_unlocks_for_item(record.entity.force, record.builder_item.name)
-        end
         record.builder_item = nil
         record.builder_carried_count = 0
         record.builder_source = nil

@@ -24,7 +24,7 @@ function find_builder_source(network, item, position)
     include_buffers = true
   })
   local source = pickup_point and pickup_point.owner
-  local inventory = get_logistics_source_inventory(source)
+  local inventory = get_logistics_or_deconstruction_source_inventory(source, item_name)
   if inventory and inventory.get_item_count(item_name) > 0 then
     return source
   end
