@@ -116,6 +116,7 @@ function update_builder(record)
       quality = action.product.quality,
       count = action.count
     })
+    progress_trigger_research(record.entity.force, "craft-item", action.product.name, action.count)
     record.builder_craft_ready_tick = nil
     record.builder_plan_index = record.builder_plan_index + 1
     record.builder_state = "execute-plan"
@@ -233,6 +234,7 @@ function update_builder(record)
           quality = record.builder_item.quality,
           count = 1
         })
+        progress_trigger_research(record.entity.force, "build-entity", revived_entity.name, 1)
         record.builder_item = nil
         record.builder_carried_count = 0
         record.builder_source = nil

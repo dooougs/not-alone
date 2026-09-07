@@ -218,6 +218,60 @@ function get_logistics_target_inventory(target, inventory_kind)
   return target.get_inventory(defines.inventory.crafter_input)
 end
 
+function research_prerequisites_met(technology)
+  for _, prerequisite in pairs(technology.prerequisites or {}) do
+    if not prerequisite.researched then
+      return false
+    end
+  end
+  return true
+end
+
+function announce_research_completed(force, technology)
+  force.print({"not-alone.research-completed", "[technology=" .. technology.name .. "]"})
+  pcall(function()
+    force.play_sound({path = "utility/research_completed"})
+  end)
+end
+
+-- Script crafting and revives bypass the engine's research-trigger tracking,
+-- so mirror it: progress matching trigger technologies and finish them with
+-- the normal completed-research announcement.
+function progress_trigger_research(force, trigger_type, name, count)
+  if not force or not force.valid or not name then
+    return
+  end
+  for _, technology in pairs(force.technologies) do
+    if technology.enabled and not technology.researched then
+      local ok, trigger = pcall(function()
+        return technology.prototype.research_trigger
+      end)
+      if ok and trigger and trigger.type == trigger_type then
+        local target = trigger.item or trigger.entity
+        if type(target) == "table" then
+          target = target.name
+        end
+        if target == name and research_prerequisites_met(technology) then
+          local required = trigger.count or 1
+          storage.not_alone_research_trigger_progress =
+            storage.not_alone_research_trigger_progress or {}
+          local force_progress =
+            storage.not_alone_research_trigger_progress[force.index] or {}
+          storage.not_alone_research_trigger_progress[force.index] = force_progress
+          local progress = (force_progress[technology.name] or 0) + (count or 1)
+          if progress >= required then
+            force_progress[technology.name] = nil
+            technology.researched = true
+            announce_research_completed(force, technology)
+          else
+            force_progress[technology.name] = progress
+          end
+        end
+      end
+    end
+  end
+end
+
 function item_is_fuel_for(item_name, burner)
   local item_prototype = prototypes.item[item_name]
   return item_prototype and item_prototype.fuel_category
