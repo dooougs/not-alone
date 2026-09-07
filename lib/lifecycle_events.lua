@@ -204,6 +204,9 @@ function notalone.on_init()
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
   configure_freeplay_starter_inventory()
+  for _, surface in pairs(game.surfaces) do
+    spawn_initial_crash_ships(surface)
+  end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
     queue_starter_inventory(player.index)
@@ -245,6 +248,9 @@ function notalone.on_configuration_changed()
   reset_stale_vehicle_travel()
   queue_starter_inventory_migration()
   configure_freeplay_starter_inventory()
+  for _, surface in pairs(game.surfaces) do
+    spawn_initial_crash_ships(surface)
+  end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
   end

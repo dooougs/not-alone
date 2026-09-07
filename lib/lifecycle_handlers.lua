@@ -196,8 +196,8 @@ function notalone.on_entity_damaged(event)
   end
 end
 
-function spawn_crash_ship(surface, area, rng)
-  local ship_target = {
+function spawn_crash_ship(surface, area, rng, ship_target)
+  ship_target = ship_target or {
     x = area.left_top.x + rng(4, 28),
     y = area.left_top.y + rng(4, 28)
   }
@@ -265,6 +265,63 @@ function get_crash_ship_rate(surface, distance_tiles)
   return local_rate * (1 - distance_tiles / cutoff_radius)
 end
 
+function get_crash_ship_spawn_positions(surface)
+  local positions = {}
+  local seen = {}
+  for _, force in pairs(game.forces) do
+    if force.name ~= "enemy" and force.name ~= "neutral" then
+      local position = force.get_spawn_position(surface)
+      local key = position.x .. "," .. position.y
+      if not seen[key] then
+        seen[key] = true
+        positions[#positions + 1] = position
+      end
+    end
+  end
+  return positions
+end
+
+function spawn_initial_crash_ships(surface)
+  if surface.platform or not prototypes.entity[CRASH_SHIP_NAME] then
+    return
+  end
+  storage.not_alone_crash_ship_starts = storage.not_alone_crash_ship_starts or {}
+  local spawned_starts = storage.not_alone_crash_ship_starts[surface.index] or {}
+  storage.not_alone_crash_ship_starts[surface.index] = spawned_starts
+  local starting_radius = surface.get_starting_area_radius()
+  if not starting_radius or starting_radius <= 0 then
+    return
+  end
+  for _, spawn in pairs(get_crash_ship_spawn_positions(surface)) do
+    local key = spawn.x .. "," .. spawn.y
+    if not spawned_starts[key] then
+      local rng = create_seeded_random(
+        surface.map_gen_settings.seed,
+        math.floor(spawn.x),
+        math.floor(spawn.y)
+      )
+      local placed = 0
+      for _ = 1, 64 do
+        if placed >= CRASH_SHIP_LOCAL_TARGET then
+          break
+        end
+        local angle = rng() * math.pi * 2
+        local distance = starting_radius + 8 + rng() * starting_radius * 2
+        local target = {
+          x = spawn.x + math.cos(angle) * distance,
+          y = spawn.y + math.sin(angle) * distance
+        }
+        if spawn_crash_ship(surface, nil, rng, target) then
+          placed = placed + 1
+        end
+      end
+      if placed == CRASH_SHIP_LOCAL_TARGET then
+        spawned_starts[key] = true
+      end
+    end
+  end
+end
+
 function notalone.on_chunk_generated(event)
   local surface = event.surface
   if not surface.valid or surface.platform then
@@ -276,12 +333,20 @@ function notalone.on_chunk_generated(event)
   end
   local seed = surface.map_gen_settings.seed
   local rng = create_seeded_random(seed, chunk.x, chunk.y)
-  local spawn = game.forces.player.get_spawn_position(surface)
   local chunk_center = {
     x = event.area.left_top.x + CHUNK_SIZE / 2,
     y = event.area.left_top.y + CHUNK_SIZE / 2
   }
-  local distance_tiles = math.sqrt(distance_squared(chunk_center, spawn))
+  local distance_tiles
+  for _, spawn in pairs(get_crash_ship_spawn_positions(surface)) do
+    local distance = math.sqrt(distance_squared(chunk_center, spawn))
+    if not distance_tiles or distance < distance_tiles then
+      distance_tiles = distance
+    end
+  end
+  if not distance_tiles then
+    return
+  end
   local chance = get_crash_ship_rate(surface, distance_tiles)
   if rng() >= chance then
     return
