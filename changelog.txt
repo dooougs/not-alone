@@ -8,6 +8,12 @@ Date: 2026-09-07
     - Optimized marked-resource assignment for large Miner crews, removing a quadratic claim scan and reducing unnecessary game API calls.
 
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.17
+Date: 2026-09-07
+  Bugfixes:
+    - Fixed a crash while scanning deconstruction targets caused by probing removed LuaEntity inventory accessor methods.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.15
 Date: 2026-09-06
   Bugfixes:

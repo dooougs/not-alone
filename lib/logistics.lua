@@ -97,21 +97,6 @@ function get_deconstruction_source_inventories(source)
       inventories[#inventories + 1] = inventory
     end
   end
-  for _, getter in ipairs({"get_input_inventory", "get_output_inventory"}) do
-    local getter_ok, getter_function = pcall(function()
-      return source[getter]
-    end)
-    if getter_ok and getter_function then
-      local ok, inventory = pcall(function()
-        return getter_function()
-      end)
-      local key = inventory and tostring(inventory)
-      if ok and inventory and inventory.valid and not seen[key] then
-        seen[key] = true
-        inventories[#inventories + 1] = inventory
-      end
-    end
-  end
   return inventories
 end
 
