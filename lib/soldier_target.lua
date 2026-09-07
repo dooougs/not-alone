@@ -12,6 +12,17 @@ function find_soldier_target(record, surface, force, position)
 
   local nearest_enemy
   local nearest_distance
+
+  local function consider(target)
+    if target.valid then
+      local current_distance = distance_squared(position, target.position)
+      if not nearest_distance or current_distance < nearest_distance then
+        nearest_enemy = target
+        nearest_distance = current_distance
+      end
+    end
+  end
+
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
       -- Pad past the network edge: worms out-range the boundary and would
@@ -20,11 +31,33 @@ function find_soldier_target(record, surface, force, position)
       if radius > 0 then
         radius = radius + ENGAGEMENT_RADIUS
         for _, enemy in pairs(surface.find_enemy_units(cell.owner.position, radius, force)) do
-          if enemy.valid then
-            local current_distance = distance_squared(position, enemy.position)
-            if not nearest_distance or current_distance < nearest_distance then
-              nearest_enemy = enemy
-              nearest_distance = current_distance
+          consider(enemy)
+        end
+      end
+    end
+  end
+
+  -- find_enemy_units excludes player characters. Scan only hostile player
+  -- forces so PvP combat does not turn into a whole-surface entity search.
+  for _, other_force in pairs(game.forces) do
+    if other_force ~= force
+      and other_force.name ~= "enemy"
+      and other_force.name ~= "neutral"
+      and not force.get_friend(other_force)
+      and not force.get_cease_fire(other_force)
+      and not other_force.get_cease_fire(force) then
+      for _, cell in pairs(network.cells) do
+        if cell.valid and cell.owner.valid then
+          local radius = math.max(cell.logistic_radius, cell.construction_radius)
+          if radius > 0 then
+            radius = radius + ENGAGEMENT_RADIUS
+            for _, target in pairs(surface.find_entities_filtered({
+              position = cell.owner.position,
+              radius = radius,
+              force = other_force,
+              type = {"character", "unit"}
+            })) do
+              consider(target)
             end
           end
         end
@@ -46,13 +79,7 @@ function find_soldier_target(record, surface, force, position)
             force = "enemy",
             type = {"unit-spawner", "turret"}
           })) do
-            if base.valid then
-              local current_distance = distance_squared(position, base.position)
-              if not nearest_distance or current_distance < nearest_distance then
-                nearest_enemy = base
-                nearest_distance = current_distance
-              end
-            end
+            consider(base)
           end
         end
       end
