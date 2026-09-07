@@ -1,3 +1,9 @@
+---------------------------------------------------------------------------------------------------
+Version: 0.1.19
+Date: 2026-09-07
+  Changes:
+    - Soldiers now target hostile players and hostile teams' deployed team mates within logistic-network coverage, while respecting force friendships and cease-fires.
+
 Version: 0.1.16
 Date: 2026-09-07
   Bugfixes:
