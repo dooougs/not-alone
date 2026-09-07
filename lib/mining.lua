@@ -44,6 +44,7 @@ function mark_resource_for_mining(resource)
   end
   marks[key] = {
     entity = resource,
+    position = position_table(resource.position),
     render_id = rendering.draw_rectangle({
       color = MARK_COLOR,
       filled = false,
@@ -86,22 +87,24 @@ function cleanup_marked_resources(surface_index)
   end
 end
 
-function get_resource_claimant(resource)
-  local claimant
+-- Active claims keyed by resource tile, built once per search; asking
+-- get_resource_claimant per candidate mark rescanned every team mate and
+-- made large crews quadratic.
+function get_claimed_resource_keys()
+  local claimed = {}
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, other_record in pairs(team_mates) do
       if other_record.kind == "miner"
-        and other_record.miner_target == resource
+        and other_record.miner_target
+        and other_record.miner_target.valid
         and (other_record.miner_state == "move-to-ore"
           or other_record.miner_state == "mine")
-        and other_record.entity and other_record.entity.valid
-        and (not claimant
-          or other_record.entity.unit_number < claimant.entity.unit_number) then
-        claimant = other_record
+        and other_record.entity and other_record.entity.valid then
+        claimed[resource_mark_key(other_record.miner_target)] = true
       end
     end
   end
-  return claimant
+  return claimed
 end
 
 function find_marked_resource(record, surface, force, position)
@@ -113,19 +116,28 @@ function find_marked_resource(record, surface, force, position)
     return nil
   end
   local marks = get_marked_resources(surface.index)
+  local claimed = get_claimed_resource_keys()
   local nearest_resource
   local nearest_distance
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
-      for _, mark in pairs(marks) do
-        local resource = mark.entity
-        if resource.valid and resource.amount > 0
-          and not get_resource_claimant(resource)
-          and cell.is_in_logistic_range(resource.position) then
-          local current_distance = distance_squared(position, resource.position)
+      for key, mark in pairs(marks) do
+        -- Cheap pure-Lua pruning first; entity validity and range checks hit
+        -- the game API and dominated large-crew searches.
+        local mark_position = mark.position
+        if not mark_position and mark.entity.valid then
+          mark_position = position_table(mark.entity.position)
+          mark.position = mark_position
+        end
+        if mark_position and not claimed[key] then
+          local current_distance = distance_squared(position, mark_position)
           if not nearest_distance or current_distance < nearest_distance then
-            nearest_resource = resource
-            nearest_distance = current_distance
+            local resource = mark.entity
+            if resource.valid and resource.amount > 0
+              and cell.is_in_logistic_range(mark_position) then
+              nearest_resource = resource
+              nearest_distance = current_distance
+            end
           end
         end
       end
