@@ -145,6 +145,17 @@ function assign_miner_job(record, surface, force, position)
   return true
 end
 
+-- Ore tiles are only 1 tile apart, so miners on adjacent tiles contest each
+-- other's dead-center standing spots and shove one another off arrival points.
+-- Offset the standing spot vertically by column parity: horizontal neighbors
+-- separate to ~1.4 tiles and no other pairing gets closer than the original.
+function miner_standing_position(resource)
+  local position = resource.position
+  local parity = math.floor(position.x) % 2
+  local offset = parity == 0 and -MINER_STANDING_OFFSET or MINER_STANDING_OFFSET
+  return {x = position.x, y = position.y + offset}
+end
+
 function update_miner(record, player)
   update_mining_animation(record, record.miner_state == "mine")
 
@@ -153,13 +164,19 @@ function update_miner(record, player)
       or not is_resource_marked(record.miner_target) then
       record.miner_state = nil
       record.miner_target = nil
-    elseif distance_squared(record.entity.position, record.miner_target.position)
-      <= MINER_ORE_STOPPING_DISTANCE * MINER_ORE_STOPPING_DISTANCE then
-      record.miner_state = "mine"
-      record.next_mining_tick = game.tick + math.random(get_mining_interval(player))
-      stop_team_mate(record)
     else
-      move_team_mate(record, record.miner_target.position, MINER_ORE_STOPPING_DISTANCE)
+      local standing_position = miner_standing_position(record.miner_target)
+      -- Mining is script-driven, so exact reach is unnecessary; accepting
+      -- arrival looser than the aim radius stops the endless move retries
+      -- when a neighbor's collision box nudges a miner off its exact spot.
+      if distance_squared(record.entity.position, standing_position)
+        <= MINER_ORE_ARRIVAL_DISTANCE * MINER_ORE_ARRIVAL_DISTANCE then
+        record.miner_state = "mine"
+        record.next_mining_tick = game.tick + math.random(get_mining_interval(player))
+        stop_team_mate(record)
+      else
+        move_team_mate(record, standing_position, MINER_ORE_STOPPING_DISTANCE)
+      end
     end
     return true
   end
