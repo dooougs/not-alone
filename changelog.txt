@@ -1,3 +1,12 @@
+Version: 0.1.16
+Date: 2026-09-07
+  Bugfixes:
+    - Fixed internal team mate items failing to load in Factorio 2.1 and kept them hidden from player-facing item selections.
+    - Fixed Soldiers not deploying to attack worms positioned just outside a logistic network's boundary.
+    - Fixed the Habitat Factoriopedia page linking to a nonexistent Soldier entity.
+  Changes:
+    - Optimized marked-resource assignment for large Miner crews, removing a quadratic claim scan and reducing unnecessary game API calls.
+
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.15
 Date: 2026-09-06

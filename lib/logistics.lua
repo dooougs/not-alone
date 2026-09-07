@@ -98,9 +98,12 @@ function get_deconstruction_source_inventories(source)
     end
   end
   for _, getter in ipairs({"get_input_inventory", "get_output_inventory"}) do
-    if source[getter] then
+    local getter_ok, getter_function = pcall(function()
+      return source[getter]
+    end)
+    if getter_ok and getter_function then
       local ok, inventory = pcall(function()
-        return source[getter]()
+        return getter_function()
       end)
       local key = inventory and tostring(inventory)
       if ok and inventory and inventory.valid and not seen[key] then
