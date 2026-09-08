@@ -475,6 +475,9 @@ function notalone.on_gui_click(event)
       if given < removed then
         inventory.insert({name = item_name, count = removed - given})
       end
+    elseif item_name == ITEM_NAME_BY_KIND.soldier
+      and entity.name == OUTPOST_NAME then
+      take_outpost_soldier(player, entity)
     end
   end
   update_team_mate_request_gui(player)
@@ -485,6 +488,59 @@ function notalone.on_gui_text_changed(event)
   if element and element.valid then
     update_team_mate_request(game.get_player(event.player_index), element)
   end
+end
+
+local function take_outpost_soldier(player, outpost)
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for index, record in pairs(team_mates) do
+      if record.kind == "soldier"
+        and record.entity and record.entity.valid
+        and (record.home_base == outpost or record.pending_home_base == outpost) then
+        if player.insert({name = ITEM_NAME_BY_KIND.soldier, count = 1}) ~= 1 then
+          return false
+        end
+
+        local surface = record.entity.surface
+        local position = position_table(record.entity.position)
+        local function spill(item_name, count)
+          if count and count > 0 and prototypes.item[item_name] then
+            surface.spill_item_stack({
+              position = position,
+              stack = {name = item_name, count = count}
+            })
+          end
+        end
+        for weapon_kind in pairs(record.soldier_weapons or {}) do
+          local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
+          if weapon then
+            spill(weapon.gun, 1)
+          end
+        end
+        for ammo_name, count in pairs(record.soldier_ammo or {}) do
+          spill(ammo_name, count)
+        end
+        if record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor] then
+          spill(SOLDIER_ARMORS[record.soldier_armor].item, 1)
+        end
+        destroy_route_renderings(record)
+        destroy_inventory_renderings(record)
+        destroy_color_marker(record)
+        if record.vehicle_inventory and record.vehicle_inventory.valid then
+          surface.spill_inventory({position = position, inventory = record.vehicle_inventory})
+          record.vehicle_inventory.destroy()
+        end
+        if record.vehicle_fuel_inventory and record.vehicle_fuel_inventory.valid then
+          surface.spill_inventory({position = position, inventory = record.vehicle_fuel_inventory})
+          record.vehicle_fuel_inventory.destroy()
+        end
+        record.entity.destroy()
+        table.remove(team_mates, index)
+        fulfill_base_requests(outpost)
+        return true
+      end
+    end
+  end
+  return false
 end
 
 function notalone.on_gui_opened(event)

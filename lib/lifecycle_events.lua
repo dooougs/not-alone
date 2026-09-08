@@ -10,6 +10,11 @@ function ensure_command_tool_quickbar(player)
   if not player or not player.valid then
     return
   end
+  local inventory = player.get_main_inventory()
+  local command_tool_stack = inventory and inventory.find_item_stack(COMMAND_TOOL_NAME)
+  if not command_tool_stack then
+    return
+  end
   local width = player.quick_bar_width or 10
   for page = 1, 10 do
     for slot = 1, width do
@@ -22,10 +27,7 @@ function ensure_command_tool_quickbar(player)
   for page = 1, 10 do
     for slot = 1, width do
       if not player.get_quick_bar_slot(page, slot) then
-        player.set_quick_bar_slot(page, slot, {
-          type = "item",
-          item = COMMAND_TOOL_NAME
-        })
+        player.set_quick_bar_slot(page, slot, command_tool_stack)
         return
       end
     end
@@ -156,6 +158,17 @@ function update_team_mate(record, player)
   end
   update_inventory_renderings(record)
   update_builder_target_renderings(record)
+
+  -- Soldiers interrupt wandering and manual travel to engage any hostile
+  -- unit, including characters and team mates from non-friendly forces.
+  if record.kind == "soldier" and not record.soldier_state then
+    local soldier_target = find_soldier_target(record)
+    if soldier_target then
+      attack_with_team_mate(record, soldier_target)
+      update_soldier(record)
+      return true
+    end
+  end
 
   local manual_destinations = get_manual_destinations(record)
   if record.route_render_ids == nil and #manual_destinations > 0 then
