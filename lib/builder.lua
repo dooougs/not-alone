@@ -5,12 +5,16 @@ function builder_is_at_target(record, target)
     return distance_squared(record.entity.position, target.position)
       <= BUILDER_ITEM_PICKUP_DISTANCE * BUILDER_ITEM_PICKUP_DISTANCE
   end
+  if target.type == "fish" then
+    return distance_squared(record.entity.position, target.position)
+      <= BUILDER_FISHING_DISTANCE * BUILDER_FISHING_DISTANCE
+  end
   return distance_squared_to_box(record.entity.position, target.bounding_box)
     <= BUILDER_TARGET_INTERACTION_DISTANCE * BUILDER_TARGET_INTERACTION_DISTANCE
 end
 
 function builder_target_destination(record, target)
-  if target.type == "item-entity" then
+  if target.type == "item-entity" or target.type == "fish" then
     return position_table(target.position)
   end
   local box = target.bounding_box
@@ -224,7 +228,7 @@ function update_builder(record)
     if not target or not target.valid then
       record.builder_state = "return-material"
     elseif builder_is_at_target(record, target) then
-      record.builder_approach_position = nil
+      record.builder_approach_progress = nil
       record.builder_approach_stalls = nil
       local _, revived_entity = target.revive({raise_revive = true})
       if revived_entity then
@@ -261,8 +265,12 @@ function update_builder(record)
       -- forever; give up like the deconstruction path does and let another
       -- job (or a later retry) have a turn.
       local position = record.entity.position
-      if record.builder_approach_position
-        and distance_squared(position, record.builder_approach_position) < 0.01 then
+      local progress = distance_squared(position, target.position)
+      -- Judge stalls by progress toward the target, not a frozen position:
+      -- a unit whose path fails falls back to wandering (and belts drag
+      -- riders), so its position keeps changing while it gets nowhere.
+      if record.builder_approach_progress
+        and progress >= record.builder_approach_progress then
         record.builder_approach_stalls = (record.builder_approach_stalls or 0) + 1
         if record.builder_approach_stalls >= 30 then
           record.builder_unreachable = record.builder_unreachable or {}
@@ -270,7 +278,7 @@ function update_builder(record)
             entity = target,
             tick = game.tick
           }
-          record.builder_approach_position = nil
+          record.builder_approach_progress = nil
           record.builder_approach_stalls = nil
           record.builder_ghost_attempts = nil
           record.builder_state = "return-material"
@@ -278,7 +286,7 @@ function update_builder(record)
           return true
         end
       else
-        record.builder_approach_position = position_table(position)
+        record.builder_approach_progress = progress
         record.builder_approach_stalls = 0
       end
       move_team_mate(record, builder_target_destination(record, target), 0.2)
@@ -322,10 +330,10 @@ function update_builder(record)
       record.builder_deconstruction_started = nil
       record.builder_target = nil
       record.builder_state = nil
-      record.builder_approach_position = nil
+      record.builder_approach_progress = nil
       record.builder_approach_stalls = nil
     elseif builder_is_at_target(record, target) then
-      record.builder_approach_position = nil
+      record.builder_approach_progress = nil
       record.builder_approach_stalls = nil
       if target.type == "item-entity" then
         local cargo = get_builder_cargo(record)
@@ -356,8 +364,10 @@ function update_builder(record)
       end
     else
       local position = record.entity.position
-      if record.builder_approach_position
-        and distance_squared(position, record.builder_approach_position) < 0.01 then
+      local progress = distance_squared(position, target.position)
+      -- Progress-based stall detection: see the move-to-ghost branch.
+      if record.builder_approach_progress
+        and progress >= record.builder_approach_progress then
         record.builder_approach_stalls = (record.builder_approach_stalls or 0) + 1
         if record.builder_approach_stalls >= 30 then
           -- This builder cannot path to the target; release the claim so
@@ -370,16 +380,20 @@ function update_builder(record)
           record.builder_deconstruction_started = nil
           record.builder_target = nil
           record.builder_state = nil
-          record.builder_approach_position = nil
+          record.builder_approach_progress = nil
           record.builder_approach_stalls = nil
           stop_team_mate(record)
           return true
         end
       else
-        record.builder_approach_position = position_table(position)
+        record.builder_approach_progress = progress
         record.builder_approach_stalls = 0
       end
-      move_team_mate(record, builder_target_destination(record, target), 0.2)
+      -- Fish live on unwalkable water: a wide radius lets the pathfinder
+      -- stop at the nearest shore tile still within fishing reach.
+      local stopping_distance = target.type == "fish"
+        and BUILDER_FISHING_DISTANCE - 0.5 or 0.2
+      move_team_mate(record, builder_target_destination(record, target), stopping_distance)
     end
     return true
   end

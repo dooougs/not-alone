@@ -164,6 +164,11 @@ function soldier_needs_ammo(record)
 end
 
 function update_soldier(record)
+  if record.manual_hold then
+    stop_team_mate(record)
+    return true
+  end
+
   if record.home_base_type == "outpost" then
     local target = find_soldier_target(record)
     if target then

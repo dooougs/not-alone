@@ -222,12 +222,14 @@ function update_team_mate(record, player)
       if #manual_destinations == 0 then
         record.manual_surface_index = nil
         if joined_base then
+          record.manual_hold = nil
           if get_base_type(joined_base) == "outpost" then
             wander_team_mate(record)
           else
             dock_at_habitat(record)
           end
         else
+          record.manual_hold = true
           stop_team_mate(record)
         end
       else
@@ -505,6 +507,7 @@ function order_selected_team_mates(event, append)
         record.home_base_type = nil
         record.pending_home_base = nil
       end
+      record.manual_hold = nil
       local manual_destinations = get_manual_destinations(record)
       if not append then
         manual_destinations = {}

@@ -48,6 +48,9 @@ constants.BUILDER_ITEM_PICKUP_DISTANCE = 0.5
 constants.BUILDER_TARGET_CLEARANCE = 0.4
 constants.BUILDER_GHOST_ESCAPE_DISTANCE = 1
 constants.BUILDER_TARGET_INTERACTION_DISTANCE = 0.7
+-- How far a builder's fishing line reaches over water from where it stands;
+-- fish farther than this from any walkable tile cannot be caught.
+constants.BUILDER_FISHING_DISTANCE = 15
 constants.REPAIR_PACK_ITEM_NAME = "repair-pack"
 constants.MINING_ANIMATION_FRAMES = 51
 constants.MINING_ANIMATION_SPEED = 51 / 60

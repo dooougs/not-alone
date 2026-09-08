@@ -88,6 +88,35 @@ function find_builder_job(record, surface, force, position)
   return nil, nil, nil
 end
 
+-- A water target (fish, item spilled offshore) is workable only from land:
+-- some walkable tile center must sit within fishing reach of the target.
+function builder_fishing_spot_exists(surface, position)
+  local reach = BUILDER_FISHING_DISTANCE - 0.5
+  local x0 = math.floor(position.x)
+  local y0 = math.floor(position.y)
+  local span = math.ceil(reach)
+  for dx = -span, span do
+    for dy = -span, span do
+      local center_x = x0 + dx + 0.5
+      local center_y = y0 + dy + 0.5
+      local offset_x = center_x - position.x
+      local offset_y = center_y - position.y
+      if offset_x * offset_x + offset_y * offset_y <= reach * reach
+        and not surface.get_tile(x0 + dx, y0 + dy).collides_with("player") then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function builder_target_is_reachable_terrain(surface, target)
+  if not surface.get_tile(target.position.x, target.position.y).collides_with("player") then
+    return true
+  end
+  return builder_fishing_spot_exists(surface, target.position)
+end
+
 function find_builder_deconstruction_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
@@ -138,7 +167,9 @@ function find_builder_deconstruction_target(record, surface, force, position)
           and (habitat_cell and cell.is_in_logistic_range(target.position)
             or not habitat_cell and cell.is_in_construction_range(target.position))
           and not builder_target_is_claimed(target, record)
-          and (not nearest_distance or distance < nearest_distance) then
+          and (not nearest_distance or distance < nearest_distance)
+          -- Terrain probe last: water targets scan surrounding tiles.
+          and builder_target_is_reachable_terrain(surface, target) then
           nearest_target = target
           nearest_distance = distance
         end
