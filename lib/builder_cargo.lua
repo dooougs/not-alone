@@ -193,20 +193,21 @@ function return_builder_material(record)
 end
 
 dock_at_habitat = function(record)
-  local habitat = find_nearest_habitat(record)
-  if not habitat then
+  local base = record.home_base or find_nearest_base(record, record.kind)
+  local policy = get_base_policy(base)
+  if not base or not policy or not policy.returns_team_mates then
     stop_team_mate(record)
     return true
   end
-  if distance_squared(record.entity.position, habitat.position) > 9 then
-    move_team_mate(record, habitat.position, 3)
+  if distance_squared(record.entity.position, base.position) > 9 then
+    move_team_mate(record, base.position, 3)
     return true
   end
 
   stop_team_mate(record)
   update_mining_animation(record, false)
-  local inventory = get_habitat_inventory(habitat)
-  if not habitat.unit_number or not inventory
+  local inventory = get_base_inventory(base)
+  if not base.unit_number or not inventory
     or inventory.insert({name = ITEM_NAME_BY_KIND[record.kind], count = 1}) ~= 1 then
     -- No room: stay deployed and wait by the habitat.
     return true
@@ -218,13 +219,13 @@ dock_at_habitat = function(record)
       or (record.soldier_ammo and next(record.soldier_ammo))
       or record.soldier_armor) then
     storage.not_alone_soldier_lockers = storage.not_alone_soldier_lockers or {}
-    local lockers = storage.not_alone_soldier_lockers[habitat.unit_number] or {}
+    local lockers = storage.not_alone_soldier_lockers[base.unit_number] or {}
     lockers[#lockers + 1] = {
       weapons = record.soldier_weapons,
       ammo = record.soldier_ammo,
       armor = record.soldier_armor
     }
-    storage.not_alone_soldier_lockers[habitat.unit_number] = lockers
+    storage.not_alone_soldier_lockers[base.unit_number] = lockers
   end
   destroy_route_renderings(record)
   destroy_inventory_renderings(record)
@@ -234,7 +235,7 @@ dock_at_habitat = function(record)
     -- spill anything left at the habitat rather than deleting it.
     if not record.builder_cargo.is_empty() then
       record.entity.surface.spill_inventory({
-        position = position_table(habitat.position),
+        position = position_table(base.position),
         inventory = record.builder_cargo
       })
     end
@@ -245,8 +246,8 @@ dock_at_habitat = function(record)
     if car_count > 0 then
       local inserted = inventory.insert({name = CAR_ITEM_NAME, count = car_count})
       if inserted < car_count then
-        record.entity.surface.spill_item_stack({
-          position = position_table(habitat.position),
+          record.entity.surface.spill_item_stack({
+            position = position_table(base.position),
           stack = {name = CAR_ITEM_NAME, count = car_count - inserted}
         })
       end

@@ -225,6 +225,7 @@ stop_team_mate = nil
 move_team_mate = nil
 update_mining_animation = nil
 update_vehicle_travel = nil
+require("lib/bases")
 require("lib/ui")
 require("lib/vehicle")
 require("lib/logistics")
@@ -275,45 +276,6 @@ function create_mining_particles(surface, position, particle_name)
       vertical_speed = 0.08 + math.random() * 0.04,
       frame_speed = 1
     })
-  end
-end
-
-function get_habitat_inventory(habitat)
-  return habitat and habitat.valid
-    and habitat.get_inventory(defines.inventory.roboport_material)
-    or nil
-end
-
--- Whole-surface habitat scans dominated update time; track Habitats in a
--- registry maintained by build/remove events instead (lazy-built for old saves).
-function get_habitat_registry()
-  local registry = storage.not_alone_habitats
-  if not registry then
-    registry = {}
-    for _, surface in pairs(game.surfaces) do
-      for _, habitat in pairs(surface.find_entities_filtered({name = LOGISTICS_HUB_NAME})) do
-        if habitat.unit_number then
-          registry[habitat.unit_number] = habitat
-        end
-      end
-    end
-    storage.not_alone_habitats = registry
-  end
-  return registry
-end
-
-function each_habitat()
-  local registry = get_habitat_registry()
-  local key, habitat
-  return function()
-    repeat
-      key, habitat = next(registry, key)
-      if habitat and not habitat.valid then
-        registry[key] = nil
-        habitat = nil
-      end
-    until key == nil or habitat
-    return habitat
   end
 end
 

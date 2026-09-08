@@ -37,6 +37,266 @@ function update_habitat_crew_display(habitat)
 end
 
 TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
+TEAM_MATE_REQUEST_FRAME_NAME = "not-alone-team-mate-requests"
+
+local function is_team_mate_request_entity(entity)
+  return is_base(entity)
+end
+
+local function request_kinds_for_entity(entity)
+  local policy = get_base_policy(entity)
+  return policy and policy.allowed_kinds or {}
+end
+
+local function destroy_team_mate_request_gui(player)
+  local frame = player.gui.screen[TEAM_MATE_REQUEST_FRAME_NAME]
+  if frame then
+    frame.destroy()
+  end
+end
+
+local function team_mate_request_target(player)
+  local targets = storage.not_alone_team_mate_request_targets
+  local target = targets and targets[player.index]
+  local entity = target and target.entity
+  if entity and entity.valid then
+    return entity
+  end
+  return nil
+end
+
+local function allowed_request_item(entity, item_name)
+  for _, kind in ipairs(request_kinds_for_entity(entity)) do
+    if ITEM_NAME_BY_KIND[kind] == item_name then
+      return kind
+    end
+  end
+  return nil
+end
+
+local function member_slot_tooltip(kind)
+  return {
+    "",
+    KIND_LABEL[kind],
+    "\nClick to take out. Click holding ",
+    KIND_LABEL[kind],
+    " items to put them in."
+  }
+end
+
+local function refresh_player_inventory_grid(player, entity, grid)
+  local main = player.get_main_inventory()
+  if not main then
+    return
+  end
+  if #grid.children ~= #main then
+    grid.clear()
+    for index = 1, #main do
+      grid.add({
+        type = "sprite-button",
+        name = "not-alone-player-slot-" .. index,
+        style = "inventory_slot"
+      })
+    end
+  end
+  for index = 1, #main do
+    local button = grid.children[index]
+    local stack = main[index]
+    if stack.valid_for_read then
+      button.sprite = "item/" .. stack.name
+      button.number = stack.count
+      if allowed_request_item(entity, stack.name) then
+        button.tooltip = {"", prototypes.item[stack.name].localised_name,
+          "\nClick to station in this building."}
+      else
+        button.tooltip = prototypes.item[stack.name].localised_name
+      end
+    else
+      button.sprite = ""
+      button.number = nil
+      button.tooltip = ""
+    end
+  end
+end
+
+function update_team_mate_request_gui(player)
+  local frame = player.gui.screen[TEAM_MATE_REQUEST_FRAME_NAME]
+  if not frame then
+    return
+  end
+  local entity = team_mate_request_target(player)
+  if not entity then
+    frame.destroy()
+    return
+  end
+  local body = frame.body
+  if not body then
+    return
+  end
+  local inventory = get_base_inventory(entity)
+  local members = body.content
+    and body.content.members_frame
+    and body.content.members_frame.members
+  if members then
+    for _, kind in ipairs(request_kinds_for_entity(entity)) do
+      local button = members["not-alone-member-slot-" .. kind]
+      if button then
+        button.number = inventory
+          and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0
+      end
+    end
+  end
+  local grid = body.character
+    and body.character.inventory_scroll
+    and body.character.inventory_scroll.player_inventory
+  if grid then
+    refresh_player_inventory_grid(player, entity, grid)
+  end
+end
+
+function open_team_mate_request_gui(player, entity)
+  destroy_team_mate_request_gui(player)
+  storage.not_alone_team_mate_requests = storage.not_alone_team_mate_requests or {}
+  local requests = storage.not_alone_team_mate_requests[entity.unit_number] or {}
+  local inventory = entity.get_inventory(defines.inventory.roboport_material)
+  local kinds = request_kinds_for_entity(entity)
+
+  local frame = player.gui.screen.add({
+    type = "frame",
+    name = TEAM_MATE_REQUEST_FRAME_NAME,
+    direction = "vertical"
+  })
+  frame.auto_center = true
+
+  local titlebar = frame.add({type = "flow", direction = "horizontal"})
+  titlebar.drag_target = frame
+  titlebar.add({
+    type = "label",
+    caption = entity.localised_name,
+    style = "frame_title",
+    ignored_by_interaction = true
+  })
+  local drag = titlebar.add({
+    type = "empty-widget",
+    style = "draggable_space_header",
+    ignored_by_interaction = true
+  })
+  drag.style.horizontally_stretchable = true
+  drag.style.height = 24
+  titlebar.add({
+    type = "sprite-button",
+    name = "not-alone-request-close",
+    sprite = "utility/close",
+    style = "frame_action_button"
+  })
+
+  local body = frame.add({type = "flow", name = "body", direction = "horizontal"})
+
+  local character = body.add({
+    type = "frame",
+    name = "character",
+    style = "inside_shallow_frame_with_padding",
+    direction = "vertical"
+  })
+  character.add({
+    type = "label",
+    caption = "Character",
+    style = "caption_label"
+  })
+  local inventory_scroll = character.add({
+    type = "scroll-pane",
+    name = "inventory_scroll",
+    style = "shallow_slots_scroll_pane"
+  })
+  inventory_scroll.style.maximal_height = 420
+  local player_grid = inventory_scroll.add({
+    type = "table",
+    name = "player_inventory",
+    column_count = 10,
+    style = "filter_slot_table"
+  })
+
+  local content = body.add({
+    type = "frame",
+    name = "content",
+    style = "inside_shallow_frame_with_padding",
+    direction = "vertical"
+  })
+  content.style.minimal_width = 300
+
+  local status = content.add({type = "flow", direction = "horizontal"})
+  status.style.vertical_align = "center"
+  status.add({type = "sprite", sprite = "utility/status_working"})
+  status.add({type = "label", caption = "Working"})
+
+  local preview = content.add({type = "entity-preview", name = "preview"})
+  preview.style.height = 148
+  preview.style.horizontally_stretchable = true
+  preview.entity = entity
+
+  content.add({
+    type = "label",
+    caption = "Stationed team mates",
+    style = "caption_label"
+  })
+  local members_frame = content.add({
+    type = "frame",
+    name = "members_frame",
+    style = "inventory_frame"
+    --style = "slot_button_deep_frame"
+  })
+  local members = members_frame.add({
+    type = "table",
+    name = "members",
+    column_count = math.max(#kinds, 1),
+    style = "filter_slot_table"
+  })
+  for _, kind in ipairs(kinds) do
+    members.add({
+      type = "sprite-button",
+      name = "not-alone-member-slot-" .. kind,
+      sprite = "item/" .. ITEM_NAME_BY_KIND[kind],
+      style = "inventory_slot",
+      number = inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0,
+      tooltip = member_slot_tooltip(kind)
+    })
+  end
+
+  content.add({
+    type = "label",
+    caption = "Team mate requests",
+    style = "caption_label"
+  })
+  local request_rows = content.add({
+    type = "table",
+    name = "requests",
+    column_count = 3
+  })
+  for _, kind in ipairs(kinds) do
+    request_rows.add({
+      type = "sprite",
+      sprite = "item/" .. ITEM_NAME_BY_KIND[kind],
+      tooltip = KIND_LABEL[kind]
+    })
+    request_rows.add({
+      type = "label",
+      caption = KIND_LABEL[kind]
+    })
+    local count_field = request_rows.add({
+      type = "textfield",
+      name = "not-alone-request-count-" .. kind,
+      text = tostring(requests[kind] or 0),
+      numeric = true,
+      allow_decimal = false,
+      allow_negative = false
+    })
+    count_field.style.width = 60
+  end
+
+  refresh_player_inventory_grid(player, entity, player_grid)
+
+  player.opened = frame
+end
 
 function destroy_team_mate_panel(player)
   local panel = player.gui.relative[TEAM_MATE_PANEL_NAME]
@@ -90,11 +350,12 @@ function update_team_mate_panel(player)
     end
   end
 
-  for habitat in each_habitat() do
-    if habitat.surface == surface and habitat.force == player.force
-      and (not selected_network or habitat.logistic_network == selected_network) then
-      local inventory = get_habitat_inventory(habitat)
-      for _, kind in pairs(TEAM_MATE_KINDS) do
+  for base in each_base() do
+    if base.surface == surface and base.force == player.force
+      and (not selected_network or base.logistic_network == selected_network) then
+      local inventory = get_base_inventory(base)
+      local policy = get_base_policy(base)
+      for _, kind in ipairs(policy.allowed_kinds) do
         counts[kind].docked = counts[kind].docked
           + (inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0)
       end
@@ -143,7 +404,107 @@ function update_team_mate_panel(player)
   panel.rows.items = rows
 end
 
+local function update_team_mate_request(player, element)
+  local kind = element.name:match("^not%-alone%-request%-count%-(.+)$")
+  if not kind or not ITEM_NAME_BY_KIND[kind] then
+    return
+  end
+  local targets = storage.not_alone_team_mate_request_targets or {}
+  local target = targets[player.index]
+  local unit_number = target and target.unit_number
+  if not unit_number then
+    return
+  end
+  storage.not_alone_team_mate_requests = storage.not_alone_team_mate_requests or {}
+  local requests = storage.not_alone_team_mate_requests[unit_number] or {}
+  requests[kind] = math.max(0, math.floor(tonumber(element.text) or 0))
+  storage.not_alone_team_mate_requests[unit_number] = requests
+end
+
+function notalone.on_gui_click(event)
+  local element = event.element
+  if not element or not element.valid then
+    return
+  end
+  local player = game.get_player(event.player_index)
+  if not player then
+    return
+  end
+  if element.name == "not-alone-request-close" then
+    destroy_team_mate_request_gui(player)
+    return
+  end
+  local slot_index = element.name:match("^not%-alone%-player%-slot%-(%d+)$")
+  if slot_index then
+    local entity = team_mate_request_target(player)
+    local inventory = entity and get_base_inventory(entity)
+    local main = player.get_main_inventory()
+    local stack = main and main[tonumber(slot_index)]
+    if inventory and stack and stack.valid_for_read
+      and allowed_request_item(entity, stack.name) then
+      local inserted = inventory.insert({name = stack.name, count = stack.count})
+      if inserted > 0 then
+        stack.count = stack.count - inserted
+      end
+    end
+    update_team_mate_request_gui(player)
+    return
+  end
+  local kind = element.name:match("^not%-alone%-member%-slot%-(.+)$")
+  if not kind or not ITEM_NAME_BY_KIND[kind] then
+    return
+  end
+  local entity = team_mate_request_target(player)
+  local inventory = entity and get_base_inventory(entity)
+  if not inventory then
+    return
+  end
+  local cursor = player.cursor_stack
+  if cursor and cursor.valid_for_read then
+    if allowed_request_item(entity, cursor.name) then
+      local inserted = inventory.insert({name = cursor.name, count = cursor.count})
+      if inserted > 0 then
+        cursor.count = cursor.count - inserted
+      end
+    end
+  else
+    local item_name = ITEM_NAME_BY_KIND[kind]
+    local available = inventory.get_item_count(item_name)
+    if available > 0 then
+      local removed = inventory.remove({name = item_name, count = available})
+      local given = player.insert({name = item_name, count = removed})
+      if given < removed then
+        inventory.insert({name = item_name, count = removed - given})
+      end
+    end
+  end
+  update_team_mate_request_gui(player)
+end
+
+function notalone.on_gui_text_changed(event)
+  local element = event.element
+  if element and element.valid then
+    update_team_mate_request(game.get_player(event.player_index), element)
+  end
+end
+
 function notalone.on_gui_opened(event)
+  -- Roboport-derived buildings open as an entity GUI, not the logistics screen.
+  if event.gui_type == defines.gui_type.entity
+    and is_team_mate_request_entity(event.entity) then
+    local player = game.get_player(event.player_index)
+    if player then
+      storage.not_alone_team_mate_request_targets =
+        storage.not_alone_team_mate_request_targets or {}
+      storage.not_alone_team_mate_request_targets[player.index] = {
+        unit_number = event.entity.unit_number,
+        entity = event.entity
+      }
+      player.opened = nil
+      open_team_mate_request_gui(player, event.entity)
+    end
+    return
+  end
   if event.gui_type ~= defines.gui_type.logistic then
     return
   end
@@ -162,6 +523,7 @@ function notalone.on_gui_closed(event)
   local player = game.get_player(event.player_index)
   if player then
     destroy_team_mate_panel(player)
+    destroy_team_mate_request_gui(player)
   end
 end
 

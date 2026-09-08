@@ -8,9 +8,15 @@ function assign_job(record, surface, force, position)
   elseif record.kind == "carrier" then
     return assign_carrier_job(record, surface, force, position)
   elseif record.kind == "soldier" then
+    local base = record.entity
+    local policy = get_base_policy(base)
+    if policy and base_allows_kind(base, "soldier")
+      and not policy.uses_network_jobs then
+      return true
+    end
     local lockers = storage.not_alone_soldier_lockers
-      and record.entity.unit_number
-      and storage.not_alone_soldier_lockers[record.entity.unit_number]
+      and base.unit_number
+      and storage.not_alone_soldier_lockers[base.unit_number]
     if not lockers or #lockers == 0 then
       return true
     end
@@ -19,32 +25,35 @@ function assign_job(record, surface, force, position)
   return false
 end
 
-function auto_deploy_from_habitat(habitat)
-  local player = find_any_player_for_force(habitat.force)
-  if not player or not player.valid or not habitat.unit_number then
+function auto_deploy_from_base(base)
+  local player = find_any_player_for_force(base.force)
+  local policy = get_base_policy(base)
+  if not player or not player.valid or not base.unit_number or not policy
+    or not policy.deploys_team_mates then
     return
   end
-  local inventory = get_habitat_inventory(habitat)
+  local inventory = get_base_inventory(base)
   if not inventory then
     return
   end
 
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   local deployed = false
-  for _, kind in pairs(TEAM_MATE_KINDS) do
+  for _, kind in ipairs(policy.allowed_kinds) do
     local item_name = ITEM_NAME_BY_KIND[kind]
-    local job = {entity = habitat, kind = kind}
+    local job = {entity = base, kind = kind}
     if inventory.get_item_count(item_name) > 0
-      and assign_job(job, habitat.surface, habitat.force, position_table(habitat.position)) then
+      and assign_job(job, base.surface, base.force, position_table(base.position)) then
       local team_mates = storage.not_alone_team_mates[player.index] or {}
-      local record = create_team_mate(player, kind, #team_mates + 1, habitat.position)
+      local record = create_team_mate(player, kind, #team_mates + 1, base.position)
       if record and inventory.remove({name = item_name, count = 1}) == 1 then
         job.entity = nil
         job.kind = nil
         for key, value in pairs(job) do
           record[key] = value
         end
-        record.habitat = habitat
+        record.home_base = base
+        record.home_base_type = get_base_type(base)
         if inventory.get_item_count(CAR_ITEM_NAME) > 0 then
           local vehicle_inventory = get_vehicle_inventory(record)
           if inventory.remove({name = CAR_ITEM_NAME, count = 1}) == 1
@@ -55,7 +64,7 @@ function auto_deploy_from_habitat(habitat)
         -- Restore a docked Soldier's stashed weapons and ammo.
         if kind == "soldier" then
           local lockers = storage.not_alone_soldier_lockers
-            and storage.not_alone_soldier_lockers[habitat.unit_number]
+            and storage.not_alone_soldier_lockers[base.unit_number]
           if lockers and #lockers > 0 then
             local locker = table.remove(lockers)
             record.soldier_weapons = locker.weapons
@@ -73,6 +82,8 @@ function auto_deploy_from_habitat(habitat)
   end
   return deployed
 end
+
+auto_deploy_from_habitat = auto_deploy_from_base
 
 function configure_freeplay_starter_inventory()
   local freeplay = remote.interfaces.freeplay

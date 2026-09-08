@@ -16,8 +16,8 @@ function notalone.on_roboport_built(event)
   if entity.type ~= "roboport" then
     return
   end
-  if entity.name == LOGISTICS_HUB_NAME and entity.unit_number then
-    get_habitat_registry()[entity.unit_number] = entity
+  if entity.unit_number and is_base(entity) then
+    register_base(entity)
   end
   -- New coverage may reveal marked resources to miners still looking for ore.
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
@@ -76,8 +76,8 @@ function notalone.on_entity_died(event)
     -- recovery state reclaim it into the team mate's inventory instead.
     record.vehicle_state = "recovering-car"
   end
-  if entity.name == LOGISTICS_HUB_NAME then
-    notalone.on_habitat_removed(event)
+  if is_base(entity) then
+    notalone.on_base_removed(event)
   end
 end
 
@@ -91,29 +91,29 @@ function notalone.on_update(event)
 
   for _, player in pairs(game.connected_players) do
     update_team_mate_panel(player)
+    update_team_mate_request_gui(player)
   end
 
   for _, surface in pairs(game.surfaces) do
     cleanup_marked_resources(surface.index)
   end
-  for habitat in each_habitat() do
-    flush_habitat_crew_records(habitat)
-    update_habitat_crew_display(habitat)
-    update_building_requesters_for_network(
-      habitat.surface,
-      habitat.force,
-      habitat.position,
-      habitat.logistic_network
-    )
-    -- Deploy scans re-run every role's full job search; back off when a
-    -- habitat had nothing to deploy.
+  for base in each_base() do
+    if get_base_type(base) == "habitat" then
+      flush_habitat_crew_records(base)
+      update_habitat_crew_display(base)
+      update_building_requesters_for_network(
+        base.surface, base.force, base.position, base.logistic_network
+      )
+    end
+    -- Deploy scans re-run every role's full job search; back off when a base
+    -- had nothing to deploy.
     storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
     local deploy_ticks = storage.not_alone_habitat_deploy_ticks
-    if habitat.unit_number and game.tick >= (deploy_ticks[habitat.unit_number] or 0) then
-      if auto_deploy_from_habitat(habitat) then
-        deploy_ticks[habitat.unit_number] = nil
+    if base.unit_number and game.tick >= (deploy_ticks[base.unit_number] or 0) then
+      if auto_deploy_from_base(base) then
+        deploy_ticks[base.unit_number] = nil
       else
-        deploy_ticks[habitat.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
+        deploy_ticks[base.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
       end
     end
   end
@@ -356,15 +356,13 @@ end
 
 -- A removed Habitat drops its docked crew and lockers as real items so
 -- nothing is silently lost with the building.
-function notalone.on_habitat_removed(event)
+function notalone.on_base_removed(event)
   local entity = event.entity
-  if not entity or not entity.valid or entity.name ~= LOGISTICS_HUB_NAME
+  if not entity or not entity.valid or not is_base(entity)
     or not entity.unit_number then
     return
   end
-  if storage.not_alone_habitats then
-    storage.not_alone_habitats[entity.unit_number] = nil
-  end
+  unregister_base(entity)
   local surface = entity.surface
   local position = position_table(entity.position)
   local function spill(item_name, count)
@@ -373,6 +371,13 @@ function notalone.on_habitat_removed(event)
         position = position,
         stack = {name = item_name, count = count}
       })
+    end
+  end
+
+  local inventory = get_base_inventory(entity)
+  if inventory then
+    for item_name, count in pairs(inventory.get_contents()) do
+      spill(item_name, count)
     end
   end
 
@@ -385,7 +390,8 @@ function notalone.on_habitat_removed(event)
     crews[entity.unit_number] = nil
   end
 
-  local lockers = storage.not_alone_soldier_lockers
+  local lockers = get_base_type(entity) == "habitat"
+    and storage.not_alone_soldier_lockers
     and storage.not_alone_soldier_lockers[entity.unit_number]
   if lockers then
     for _, locker in pairs(lockers) do
@@ -425,15 +431,20 @@ function notalone.register()
   )
   script.on_event(defines.events.on_gui_opened, notalone.on_gui_opened)
   script.on_event(defines.events.on_gui_closed, notalone.on_gui_closed)
+  script.on_event(defines.events.on_gui_click, notalone.on_gui_click)
+  script.on_event(defines.events.on_gui_text_changed, notalone.on_gui_text_changed)
   script.on_event(defines.events.on_built_entity, notalone.on_roboport_built)
   script.on_event(defines.events.on_robot_built_entity, notalone.on_roboport_built)
   script.on_event(defines.events.script_raised_built, notalone.on_roboport_built)
   script.on_event(defines.events.script_raised_revive, notalone.on_roboport_built)
   script.on_event(defines.events.on_chunk_generated, notalone.on_chunk_generated)
   script.on_event(defines.events.on_entity_died, notalone.on_entity_died)
-  local habitat_filters = {{filter = "name", name = LOGISTICS_HUB_NAME}}
-  script.on_event(defines.events.on_player_mined_entity, notalone.on_habitat_removed, habitat_filters)
-  script.on_event(defines.events.on_robot_mined_entity, notalone.on_habitat_removed, habitat_filters)
+  local base_filters = {
+    {filter = "name", name = LOGISTICS_HUB_NAME},
+    {filter = "name", name = OUTPOST_NAME}
+  }
+  script.on_event(defines.events.on_player_mined_entity, notalone.on_base_removed, base_filters)
+  script.on_event(defines.events.on_robot_mined_entity, notalone.on_base_removed, base_filters)
   local damage_filters = {}
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}

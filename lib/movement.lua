@@ -100,20 +100,9 @@ move_team_mate = function(record, destination, stopping_distance)
 end
 
 function find_nearest_habitat(record)
-  local team_mate = record.entity
-  local nearest_habitat = nil
-  local nearest_distance = nil
-  for habitat in each_habitat() do
-    if habitat.surface == team_mate.surface and habitat.force == team_mate.force then
-      local distance = distance_squared(team_mate.position, habitat.position)
-      if not nearest_distance or distance < nearest_distance then
-        nearest_habitat = habitat
-        nearest_distance = distance
-      end
-    end
-  end
-  record.habitat = nearest_habitat
-  return nearest_habitat
+  local base = find_nearest_base(record, record.kind)
+  record.habitat = base
+  return base
 end
 
 function move_team_mate_toward_destination(record, destination)

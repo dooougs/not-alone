@@ -132,10 +132,65 @@ for _, target_name in pairs(requester_target_types) do
 end
 
 
+local outpost = table.deepcopy(data.raw.roboport.roboport)
+outpost.name = "not-alone-outpost"
+outpost.localised_name = {"entity-name.not-alone-outpost"}
+outpost.icon = "__not-alone__/graphics/icons/habitat.png"
+outpost.icon_size = 64
+outpost.minable = {mining_time = 0.1, result = "not-alone-outpost"}
+outpost.fast_replaceable_group = nil
+outpost.next_upgrade = nil
+outpost.energy_source = {type = "void"}
+outpost.energy_usage = "0W"
+outpost.recharge_minimum = "0J"
+outpost.charging_energy = "0W"
+outpost.charging_offsets = {}
+outpost.robot_slots_count = 0
+outpost.material_slots_count = 4
+outpost.construction_radius = 0
+
+local outpost_picture = {
+	filename = "__not-alone__/graphics/entity/outpost.png",
+	width = 256,
+	height = 256,
+	scale = 0.5,
+	shift = {0, -0.3}
+}
+outpost.factoriopedia_description = {"factoriopedia-description.not-alone-outpost"}
+outpost.base = outpost_picture
+outpost.base_animation = nil
+outpost.base_patch = nil
+outpost.door_animation_up = nil
+outpost.door_animation_down = nil
+
+local outpost_item = table.deepcopy(data.raw.item.roboport)
+outpost_item.name = "not-alone-outpost"
+outpost_item.localised_name = {"item-name.not-alone-outpost"}
+outpost_item.icon = "__not-alone__/graphics/icons/outpost.png"
+outpost_item.icon_size = 64
+outpost_item.place_result = "not-alone-outpost"
+outpost_item.order = "c[signal]-a[not-alone-outpost]"
+
+local outpost_recipe = {
+	type = "recipe",
+	name = "not-alone-outpost",
+	enabled = true,
+	ingredients = {
+		{type = "item", name = "steel-plate", amount = 50}
+	},
+	results = {
+		{type = "item", name = "not-alone-outpost", amount = 1}
+	}
+}
+
+
 data:extend({
   logistics_hub,
   logistics_hub_item,
   logistics_hub_recipe,
   table.unpack(building_requester_variants),
+  outpost,
+  outpost_item,
+  outpost_recipe,
 })
 require("prototypes/team_mate_variants")

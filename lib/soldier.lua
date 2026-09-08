@@ -164,6 +164,18 @@ function soldier_needs_ammo(record)
 end
 
 function update_soldier(record)
+  if record.home_base_type == "outpost" then
+    local target = find_soldier_target(record)
+    if target then
+      local weapon = select_soldier_weapon(record)
+      ensure_soldier_entity(record, weapon)
+      attack_with_team_mate(record, target)
+    else
+      stop_team_mate(record)
+    end
+    return true
+  end
+
   if record.soldier_state == "restock" then
     local source = record.soldier_ammo_source
     local inventory = get_logistics_source_inventory(source)
