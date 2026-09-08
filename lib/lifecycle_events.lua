@@ -24,7 +24,7 @@ function ensure_command_tool_quickbar(player)
       if not player.get_quick_bar_slot(page, slot) then
         player.set_quick_bar_slot(page, slot, {
           type = "item",
-          name = COMMAND_TOOL_NAME
+          item = COMMAND_TOOL_NAME
         })
         return
       end
