@@ -106,6 +106,7 @@ function configure_freeplay_starter_inventory()
     end
   end
   created_items[LOGISTICS_HUB_NAME] = INITIAL_HABITAT_COUNT
+  created_items[COMMAND_TOOL_NAME] = 1
   remote.call("freeplay", "set_created_items", created_items)
 end
 

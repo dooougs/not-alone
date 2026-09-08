@@ -53,7 +53,13 @@ function ensure_starter_inventory(player)
     player.insert({name = LOGISTICS_HUB_NAME, count = missing_habitats})
   end
 
-  return satisfied and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
+  if player.get_item_count(COMMAND_TOOL_NAME) == 0 then
+    player.insert({name = COMMAND_TOOL_NAME, count = 1})
+  end
+
+  return satisfied
+    and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
+    and player.get_item_count(COMMAND_TOOL_NAME) > 0
 end
 
 function rescue_immobile_team_mate(record)
