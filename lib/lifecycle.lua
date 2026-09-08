@@ -8,6 +8,12 @@ function assign_job(record, surface, force, position)
   elseif record.kind == "carrier" then
     return assign_carrier_job(record, surface, force, position)
   elseif record.kind == "soldier" then
+    local lockers = storage.not_alone_soldier_lockers
+      and record.entity.unit_number
+      and storage.not_alone_soldier_lockers[record.entity.unit_number]
+    if not lockers or #lockers == 0 then
+      return true
+    end
     return assign_soldier_job(record, surface, force, position)
   end
   return false

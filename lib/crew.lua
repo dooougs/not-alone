@@ -20,8 +20,12 @@ function create_team_mate(player, kind, index, spawn_center)
     return nil
   end
 
+  local entity_name = TEAM_MATE_ENTITY_BY_KIND[kind]
+  if kind == "soldier" then
+    entity_name = "not-alone-team-mate-handgun"
+  end
   local character = player.surface.create_entity({
-    name = TEAM_MATE_ENTITY_BY_KIND[kind] or TEAM_MATE_NAME,
+    name = entity_name or TEAM_MATE_NAME,
     position = spawn_position,
     force = player.force,
     create_build_effect_smoke = false
@@ -32,6 +36,10 @@ function create_team_mate(player, kind, index, spawn_center)
 
   character.name_tag = (KIND_LABEL[kind] or "Team mate") .. " " .. index
   local record = {entity = character, kind = kind}
+  if kind == "soldier" then
+    record.soldier_weapons = {handgun = true}
+    record.soldier_ammo = {['firearm-magazine'] = 10}
+  end
   find_nearest_habitat(record)
   return record
 end

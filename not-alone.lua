@@ -69,6 +69,7 @@ KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-builder"] = "builder",
   ["not-alone-team-mate-carrier"] = "carrier",
   ["not-alone-team-mate-fists"] = "soldier",
+  ["not-alone-team-mate-handgun"] = "soldier",
   ["not-alone-team-mate-smg"] = "soldier",
   ["not-alone-team-mate-shotgun"] = "soldier",
   ["not-alone-team-mate-combat-shotgun"] = "soldier",
@@ -83,6 +84,7 @@ KIND_BY_ENTITY_NAME = {
 }
 for _, entity_name in pairs({
   "not-alone-team-mate-fists",
+  "not-alone-team-mate-handgun",
   "not-alone-team-mate-smg",
   "not-alone-team-mate-shotgun",
   "not-alone-team-mate-combat-shotgun",
@@ -125,6 +127,13 @@ KIND_COLOR = {
 -- weapon that still has ammo, and restock the best ammo tier listed first.
 -- Soldiers collect the vanilla gun item directly from logistics storage.
 SOLDIER_WEAPONS = {
+  {
+    kind = "handgun",
+    gun = "pistol",
+    entity = "not-alone-team-mate-handgun",
+    ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
+  },
+
   {
     kind = "smg",
     gun = "submachine-gun",

@@ -7,6 +7,7 @@
 -- force's weapon-damage and shooting-speed research applies automatically.
 -- The armor sheet grows with the tier so loadouts are tellable at a glance.
 local SOLDIER_WEAPONS = {
+	{suffix = "handgun", kind = "soldier-handgun", gun = "pistol", ammo = "firearm-magazine", order = "d[soldier-handgun]", sheet = "level1"},
 	{suffix = "smg", kind = "soldier-smg", gun = "submachine-gun", ammo = "firearm-magazine", order = "e[soldier-smg]", sheet = "level1"},
 	{suffix = "shotgun", kind = "soldier-shotgun", gun = "shotgun", ammo = "shotgun-shell", order = "f[soldier-shotgun]", sheet = "level2armor1and2"},
 	{suffix = "combat-shotgun", kind = "soldier-combat-shotgun", gun = "combat-shotgun", ammo = "piercing-shotgun-shell", order = "g[soldier-combat-shotgun]", sheet = "level2armor1and2"},
