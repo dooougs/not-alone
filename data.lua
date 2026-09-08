@@ -108,6 +108,7 @@ building_logistics_requester.hidden_in_factoriopedia = true
 local building_requester_variants = {}
 local requester_target_types = {
 	"stone-furnace", "steel-furnace", "electric-furnace",
+	"burner-mining-drill",
 	"assembling-machine-1", "assembling-machine-2", "assembling-machine-3",
 	"lab", "boiler", "burner-generator", "rocket-silo"
 }
