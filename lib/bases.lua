@@ -118,6 +118,50 @@ function find_nearest_base(record, kind)
   return nearest_base
 end
 
+function fulfill_base_requests(base)
+  if get_base_type(base) ~= "outpost" then
+    return false
+  end
+  local requests = storage.not_alone_team_mate_requests
+    and storage.not_alone_team_mate_requests[base.unit_number]
+  local inventory = get_base_inventory(base)
+  local network = base.logistic_network
+  if not requests or not inventory or not network then
+    return false
+  end
+
+  local moved = false
+  for _, kind in ipairs(get_base_policy(base).allowed_kinds) do
+    local item_name = ITEM_NAME_BY_KIND[kind]
+    local needed = math.max((requests[kind] or 0) - inventory.get_item_count(item_name), 0)
+    if needed > 0 then
+      for habitat in each_base() do
+        if needed == 0 then
+          break
+        end
+        if get_base_type(habitat) == "habitat"
+          and habitat.surface == base.surface
+          and habitat.force == base.force
+          and habitat.logistic_network == network then
+          local source_inventory = get_base_inventory(habitat)
+          if source_inventory then
+            local removed = source_inventory.remove({name = item_name, count = needed})
+            if removed > 0 then
+              local inserted = inventory.insert({name = item_name, count = removed})
+              if inserted < removed then
+                source_inventory.insert({name = item_name, count = removed - inserted})
+              end
+              needed = needed - inserted
+              moved = moved or inserted > 0
+            end
+          end
+        end
+      end
+    end
+  end
+  return moved
+end
+
 function each_habitat()
   local function habitats()
     for base in each_base() do

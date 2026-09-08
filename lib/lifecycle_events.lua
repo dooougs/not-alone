@@ -98,6 +98,8 @@ function rescue_immobile_team_mate(record)
   end
 end
 
+local find_outpost_at
+
 function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
@@ -147,14 +149,26 @@ function update_team_mate(record, player)
   if #manual_destinations > 0 then
     if character.surface_index == record.manual_surface_index then
       local route_changed = false
+      local joined_outpost = false
       -- The engine parks units near, not on, a waypoint; a finished move
       -- command also counts as arrival so crowded routes cannot loop forever.
       while #manual_destinations > 0
         and (distance_squared(character.position, manual_destinations[1]) <= 4
           or (record.command_kind == "move"
             and not character.commandable.has_command)) do
+        local arrived_at = manual_destinations[1]
         table.remove(manual_destinations, 1)
         route_changed = true
+        if record.kind == "soldier" then
+          local outpost = find_outpost_at(character.surface, arrived_at)
+          if outpost and outpost.force == character.force then
+            record.home_base = outpost
+            record.home_base_type = "outpost"
+            manual_destinations = {}
+            record.manual_destinations = manual_destinations
+            joined_outpost = true
+          end
+        end
       end
 
       if route_changed then
@@ -165,7 +179,11 @@ function update_team_mate(record, player)
 
       if #manual_destinations == 0 then
         record.manual_surface_index = nil
-        stop_team_mate(record)
+        if joined_outpost then
+          wander_team_mate(record)
+        else
+          stop_team_mate(record)
+        end
       else
         move_team_mate_toward_destination(record, manual_destinations[1])
       end
@@ -296,8 +314,12 @@ function notalone.on_player_removed(event)
   end
 end
 
+local function is_command_tool_event(event)
+  return event.item == COMMAND_TOOL_NAME
+end
+
 function notalone.on_selected_area(event)
-  if event.item ~= COMMAND_TOOL_NAME then
+  if not is_command_tool_event(event) then
     return
   end
 
@@ -373,8 +395,43 @@ function notalone.on_deconstructed_area(event)
   end
 end
 
+local function is_building_at(surface, position)
+  for _, entity in pairs(surface.find_entities_filtered({position = position, radius = 1})) do
+    if entity.valid and entity.name ~= OUTPOST_NAME
+      and entity.type ~= "unit"
+      and entity.type ~= "character"
+      and entity.type ~= "resource"
+      and entity.type ~= "tree"
+      and entity.type ~= "simple-entity"
+      and entity.type ~= "simple-entity-with-force"
+      and entity.type ~= "simple-entity-with-owner"
+      and entity.type ~= "item-entity"
+      and entity.type ~= "corpse"
+      and entity.type ~= "decorative" then
+      return true
+    end
+  end
+  return false
+end
+
+find_outpost_at = function(surface, position)
+  local outposts = surface.find_entities_filtered({
+    name = OUTPOST_NAME,
+    position = position,
+    radius = 32
+  })
+  for _, outpost in pairs(outposts) do
+    local box = outpost.bounding_box
+    if position.x >= box.left_top.x and position.x <= box.right_bottom.x
+      and position.y >= box.left_top.y and position.y <= box.right_bottom.y then
+      return outpost
+    end
+  end
+  return nil
+end
+
 function order_selected_team_mates(event, append)
-  if event.item ~= COMMAND_TOOL_NAME then
+  if not is_command_tool_event(event) then
     return
   end
 
@@ -390,12 +447,17 @@ function order_selected_team_mates(event, append)
     x = (event.area.left_top.x + event.area.right_bottom.x) / 2,
     y = (event.area.left_top.y + event.area.right_bottom.y) / 2
   }
+  local blocked_soldier_waypoint = false
   local ordered_count = 0
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
     if entity.valid
       and selected[record.entity.unit_number]
       and entity.surface_index == event.surface.index then
+      if record.kind == "soldier" and is_building_at(event.surface, destination) then
+        blocked_soldier_waypoint = true
+        goto continue
+      end
       local manual_destinations = get_manual_destinations(record)
       if not append then
         manual_destinations = {}
@@ -412,8 +474,12 @@ function order_selected_team_mates(event, append)
       refresh_route_renderings(record, event.player_index)
       ordered_count = ordered_count + 1
     end
+    ::continue::
   end
 
+  if blocked_soldier_waypoint then
+    player.print({"not-alone.soldier-building-waypoint"})
+  end
   if append then
     player.print({"not-alone.team-mates-waypoint-added", ordered_count})
   else

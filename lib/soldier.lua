@@ -171,7 +171,7 @@ function update_soldier(record)
       ensure_soldier_entity(record, weapon)
       attack_with_team_mate(record, target)
     else
-      stop_team_mate(record)
+      wander_team_mate(record)
     end
     return true
   end
@@ -346,15 +346,14 @@ function update_soldier(record)
     return true
   end
 
-  -- No target and no preparation work: return to the Habitat, but only
-  -- once a sustained drought confirms there is nothing left to do nearby.
+  -- Outpost Soldiers wander outside; Habitat Soldiers return to storage.
   if not select_soldier_weapon(record)
     and game.tick >= (record.next_job_search_tick or 0)
     and start_soldier_restock(record) then
     return true
   end
-  if (record.idle_search_failures or 0) < IDLE_DOCK_AFTER_FAILURES then
-    stop_team_mate(record)
+  if record.home_base_type == "outpost" then
+    wander_team_mate(record)
     return true
   end
   return dock_at_habitat(record)

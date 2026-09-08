@@ -222,6 +222,7 @@ RECIPE_ENTITY_TYPES = {
 }
 dock_at_habitat = nil
 stop_team_mate = nil
+wander_team_mate = nil
 move_team_mate = nil
 update_mining_animation = nil
 update_vehicle_travel = nil

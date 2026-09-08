@@ -110,6 +110,7 @@ function notalone.on_update(event)
     storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
     local deploy_ticks = storage.not_alone_habitat_deploy_ticks
     if base.unit_number and game.tick >= (deploy_ticks[base.unit_number] or 0) then
+      fulfill_base_requests(base)
       if auto_deploy_from_base(base) then
         deploy_ticks[base.unit_number] = nil
       else
@@ -423,6 +424,7 @@ function notalone.register()
   script.on_event(defines.events.on_player_created, notalone.on_player_created)
   script.on_event(defines.events.on_player_removed, notalone.on_player_removed)
   script.on_event(defines.events.on_player_selected_area, notalone.on_selected_area)
+  script.on_event(defines.events.on_player_alt_selected_area, notalone.on_selected_area)
   script.on_event(defines.events.on_player_deconstructed_area, notalone.on_deconstructed_area)
   script.on_event(defines.events.on_player_reverse_selected_area, notalone.on_reverse_selected_area)
   script.on_event(

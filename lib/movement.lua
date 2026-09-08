@@ -50,6 +50,18 @@ stop_team_mate = function(record)
   end
 end
 
+wander_team_mate = function(record)
+  if record.command_kind ~= "wander" then
+    record.entity.commandable.set_command({
+      type = defines.command.wander,
+      distraction = defines.distraction.by_enemy
+    })
+    record.command_kind = "wander"
+    record.command_destination = nil
+    record.command_target = nil
+  end
+end
+
 move_team_mate = function(record, destination, stopping_distance)
   if not record.vehicle_state
     and distance_squared(record.entity.position, destination)
