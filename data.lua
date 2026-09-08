@@ -188,6 +188,7 @@ data:extend({
   logistics_hub,
   logistics_hub_item,
   logistics_hub_recipe,
+	building_logistics_requester,
   table.unpack(building_requester_variants),
   outpost,
   outpost_item,
