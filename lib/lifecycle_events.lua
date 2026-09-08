@@ -22,7 +22,10 @@ function ensure_command_tool_quickbar(player)
   for page = 1, 10 do
     for slot = 1, width do
       if not player.get_quick_bar_slot(page, slot) then
-        player.set_quick_bar_slot(page, slot, {name = COMMAND_TOOL_NAME})
+        player.set_quick_bar_slot(page, slot, {
+          type = "item",
+          name = COMMAND_TOOL_NAME
+        })
         return
       end
     end
