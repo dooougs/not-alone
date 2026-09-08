@@ -88,6 +88,51 @@ function find_soldier_target(record, surface, force, position)
   return nearest_enemy
 end
 
+function find_soldier_immediate_target(record)
+  local entity = record.entity
+  local surface = entity.surface
+  local force = entity.force
+  local position = position_table(entity.position)
+  local nearest_target
+  local nearest_distance
+
+  local function consider(target)
+    if target and target.valid then
+      local distance = distance_squared(position, target.position)
+      if distance <= ENGAGEMENT_RADIUS * ENGAGEMENT_RADIUS
+        and (not nearest_distance or distance < nearest_distance) then
+        nearest_target = target
+        nearest_distance = distance
+      end
+    end
+  end
+
+  consider(surface.find_nearest_enemy({
+    position = position,
+    max_distance = ENGAGEMENT_RADIUS,
+    force = force
+  }))
+
+  for _, other_force in pairs(game.forces) do
+    if other_force ~= force
+      and other_force.name ~= "enemy"
+      and other_force.name ~= "neutral"
+      and not force.get_friend(other_force)
+      and not force.get_cease_fire(other_force)
+      and not other_force.get_cease_fire(force) then
+      for _, target in pairs(surface.find_entities_filtered({
+        position = position,
+        radius = ENGAGEMENT_RADIUS,
+        force = other_force,
+        type = {"character", "unit", "turret", "unit-spawner"}
+      })) do
+        consider(target)
+      end
+    end
+  end
+  return nearest_target
+end
+
 function attack_with_team_mate(record, enemy)
   if record.command_kind == "attack"
     and record.command_target

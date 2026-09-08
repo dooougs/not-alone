@@ -420,6 +420,8 @@ local function update_team_mate_request(player, element)
   storage.not_alone_team_mate_requests[unit_number] = requests
 end
 
+local take_outpost_soldier
+
 function notalone.on_gui_click(event)
   local element = event.element
   if not element or not element.valid then
@@ -490,7 +492,7 @@ function notalone.on_gui_text_changed(event)
   end
 end
 
-local function take_outpost_soldier(player, outpost)
+take_outpost_soldier = function(player, outpost)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for index, record in pairs(team_mates) do
       if record.kind == "soldier"

@@ -1,4 +1,18 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.20
+Date: 2026-09-08
+  Features:
+    - Added Outposts with Soldier-only membership, request fulfillment, native idle wandering, and custom management UI.
+    - Added native-style team mate management panels for Habitats and Outposts, including membership counts and inventory transfers.
+    - Added command-tool quickbar placement and Soldier waypoint control with route resumption after combat.
+  Changes:
+    - Unified Habitat and Outpost lifecycle behavior through shared base policies and registries.
+    - Soldiers now defend while wandering or following waypoints and can engage hostile units and team mates from other forces.
+    - Soldiers can travel between compatible bases to satisfy Outpost requests, while Outpost membership is tracked as virtual inventory.
+  Bugfixes:
+    - Fixed Outpost Soldier removal, request replacement, exact base arrival binding, and quickbar migration errors.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.19
 Date: 2026-09-07
   Changes:

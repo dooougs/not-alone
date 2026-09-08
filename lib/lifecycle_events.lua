@@ -161,8 +161,9 @@ function update_team_mate(record, player)
 
   -- Soldiers interrupt wandering and manual travel to engage any hostile
   -- unit, including characters and team mates from non-friendly forces.
-  if record.kind == "soldier" and not record.soldier_state then
+  if record.kind == "soldier" then
     local soldier_target = find_soldier_target(record)
+      or find_soldier_immediate_target(record)
     if soldier_target then
       attack_with_team_mate(record, soldier_target)
       update_soldier(record)
@@ -486,6 +487,7 @@ function order_selected_team_mates(event, append)
     y = (event.area.left_top.y + event.area.right_bottom.y) / 2
   }
   local blocked_soldier_waypoint = false
+  local departed_outposts = {}
   local ordered_count = 0
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     local entity = record.entity
@@ -495,6 +497,13 @@ function order_selected_team_mates(event, append)
       if record.kind == "soldier" and is_building_at(event.surface, destination) then
         blocked_soldier_waypoint = true
         goto continue
+      end
+      if record.kind == "soldier" and record.home_base_type == "outpost"
+        and record.home_base and record.home_base.valid then
+        departed_outposts[record.home_base.unit_number] = record.home_base
+        record.home_base = nil
+        record.home_base_type = nil
+        record.pending_home_base = nil
       end
       local manual_destinations = get_manual_destinations(record)
       if not append then
@@ -517,6 +526,9 @@ function order_selected_team_mates(event, append)
 
   if blocked_soldier_waypoint then
     player.print({"not-alone.soldier-building-waypoint"})
+  end
+  for _, outpost in pairs(departed_outposts) do
+    fulfill_base_requests(outpost)
   end
   if append then
     player.print({"not-alone.team-mates-waypoint-added", ordered_count})
