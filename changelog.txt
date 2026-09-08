@@ -1,4 +1,11 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.21
+Date: 2026-09-08
+  Changes:
+    - Improved team mate waypoint behavior so Soldiers hold their final position after combat instead of returning to a base.
+    - Added shore-based fishing for Builders and recovery from unreachable construction and deconstruction targets.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.20
 Date: 2026-09-08
   Features:
