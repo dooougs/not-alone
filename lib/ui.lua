@@ -141,8 +141,7 @@ function update_team_mate_request_gui(player)
     for _, kind in ipairs(request_kinds_for_entity(entity)) do
       local button = members["not-alone-member-slot-" .. kind]
       if button then
-        button.number = inventory
-          and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0
+        button.number = get_base_member_count(entity, kind)
       end
     end
   end
@@ -257,7 +256,7 @@ function open_team_mate_request_gui(player, entity)
       name = "not-alone-member-slot-" .. kind,
       sprite = "item/" .. ITEM_NAME_BY_KIND[kind],
       style = "inventory_slot",
-      number = inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0,
+      number = get_base_member_count(entity, kind),
       tooltip = member_slot_tooltip(kind)
     })
   end

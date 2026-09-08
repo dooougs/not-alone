@@ -41,6 +41,18 @@ function get_base_inventory(base)
     or nil
 end
 
+function base_contains_position(base, position, padding)
+  if not is_base(base) then
+    return false
+  end
+  local box = base.bounding_box
+  padding = padding or 2
+  return position.x >= box.left_top.x - padding
+    and position.x <= box.right_bottom.x + padding
+    and position.y >= box.left_top.y - padding
+    and position.y <= box.right_bottom.y + padding
+end
+
 function base_allows_kind(base, kind)
   local policy = get_base_policy(base)
   if not policy then
@@ -118,44 +130,133 @@ function find_nearest_base(record, kind)
   return nearest_base
 end
 
+function count_base_bound_soldiers(base)
+  local count = 0
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    for _, record in pairs(team_mates) do
+      if record.kind == "soldier" and record.entity and record.entity.valid then
+        if record.home_base == base then
+          count = count + 1
+        elseif record.pending_home_base == base
+          and record.manual_destinations and #record.manual_destinations > 0 then
+          count = count + 1
+        end
+      end
+    end
+  end
+  return count
+end
+
+-- Outposts never store deployed Soldiers as items, so their wandering members
+-- (and those already walking over) count as virtual inventory.
+function get_base_member_count(base, kind)
+  local inventory = get_base_inventory(base)
+  local count = inventory and inventory.get_item_count(ITEM_NAME_BY_KIND[kind]) or 0
+  if kind == "soldier" and get_base_type(base) == "outpost" then
+    count = count + count_base_bound_soldiers(base)
+  end
+  return count
+end
+
+local function dispatch_record_to_base(record, base)
+  record.home_base = nil
+  record.home_base_type = nil
+  record.pending_home_base = base
+  record.manual_destinations = {{x = base.position.x, y = base.position.y}}
+  record.manual_surface_index = base.surface_index
+  move_team_mate_toward_destination(record, record.manual_destinations[1])
+end
+
+local function deploy_soldier_toward_base(habitat, base)
+  local player = find_any_player_for_force(base.force)
+  if not player or not player.valid then
+    return false
+  end
+  local inventory = get_base_inventory(habitat)
+  local item_name = ITEM_NAME_BY_KIND.soldier
+  if not inventory or inventory.get_item_count(item_name) == 0 then
+    return false
+  end
+  storage.not_alone_team_mates = storage.not_alone_team_mates or {}
+  local team_mates = storage.not_alone_team_mates[player.index] or {}
+  local record = create_team_mate(player, "soldier", #team_mates + 1, habitat.position)
+  if not record then
+    return false
+  end
+  if inventory.remove({name = item_name, count = 1}) ~= 1 then
+    record.entity.destroy()
+    return false
+  end
+  local lockers = storage.not_alone_soldier_lockers
+    and storage.not_alone_soldier_lockers[habitat.unit_number]
+  if lockers and #lockers > 0 then
+    local locker = table.remove(lockers)
+    record.soldier_weapons = locker.weapons
+    record.soldier_ammo = locker.ammo
+    record.soldier_armor = locker.armor
+  end
+  team_mates[#team_mates + 1] = record
+  storage.not_alone_team_mates[player.index] = team_mates
+  dispatch_record_to_base(record, base)
+  return true
+end
+
 function fulfill_base_requests(base)
   if get_base_type(base) ~= "outpost" then
     return false
   end
   local requests = storage.not_alone_team_mate_requests
     and storage.not_alone_team_mate_requests[base.unit_number]
-  local inventory = get_base_inventory(base)
   local network = base.logistic_network
-  if not requests or not inventory or not network then
+  if not requests or not network then
     return false
   end
 
+  local needed = (requests.soldier or 0) - get_base_member_count(base, "soldier")
   local moved = false
-  for _, kind in ipairs(get_base_policy(base).allowed_kinds) do
-    local item_name = ITEM_NAME_BY_KIND[kind]
-    local needed = math.max((requests[kind] or 0) - inventory.get_item_count(item_name), 0)
-    if needed > 0 then
-      for habitat in each_base() do
-        if needed == 0 then
+
+  -- Surplus wanderers at other Outposts on the network walk over first.
+  if needed > 0 then
+    for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+      if needed <= 0 then
+        break
+      end
+      for _, record in pairs(team_mates) do
+        if needed <= 0 then
           break
         end
-        if get_base_type(habitat) == "habitat"
-          and habitat.surface == base.surface
-          and habitat.force == base.force
-          and habitat.logistic_network == network then
-          local source_inventory = get_base_inventory(habitat)
-          if source_inventory then
-            local removed = source_inventory.remove({name = item_name, count = needed})
-            if removed > 0 then
-              local inserted = inventory.insert({name = item_name, count = removed})
-              if inserted < removed then
-                source_inventory.insert({name = item_name, count = removed - inserted})
-              end
-              needed = needed - inserted
-              moved = moved or inserted > 0
-            end
+        if record.kind == "soldier" and record.entity and record.entity.valid
+          and record.entity.surface == base.surface
+          and record.home_base and record.home_base.valid
+          and record.home_base ~= base
+          and get_base_type(record.home_base) == "outpost"
+          and record.home_base.logistic_network == network then
+          local source_requests = storage.not_alone_team_mate_requests
+            and storage.not_alone_team_mate_requests[record.home_base.unit_number]
+          local source_request = (source_requests and source_requests.soldier) or 0
+          if get_base_member_count(record.home_base, "soldier") > source_request then
+            dispatch_record_to_base(record, base)
+            needed = needed - 1
+            moved = true
           end
         end
+      end
+    end
+  end
+
+  -- Then stored Soldiers deploy from Habitats and walk over.
+  if needed > 0 then
+    for habitat in each_base() do
+      if needed <= 0 then
+        break
+      end
+      if get_base_type(habitat) == "habitat"
+        and habitat.surface == base.surface
+        and habitat.force == base.force
+        and habitat.logistic_network == network
+        and deploy_soldier_toward_base(habitat, base) then
+        needed = needed - 1
+        moved = true
       end
     end
   end

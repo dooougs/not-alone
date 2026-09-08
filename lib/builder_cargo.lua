@@ -199,7 +199,7 @@ dock_at_habitat = function(record)
     stop_team_mate(record)
     return true
   end
-  if distance_squared(record.entity.position, base.position) > 9 then
+  if not base_contains_position(base, record.entity.position, 2) then
     move_team_mate(record, base.position, 3)
     return true
   end

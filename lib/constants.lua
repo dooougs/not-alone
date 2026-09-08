@@ -2,7 +2,7 @@ local constants = {}
 
 constants.INITIAL_HABITAT_COUNT = 1
 constants.INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
-constants.STARTER_INVENTORY_VERSION = 6
+constants.STARTER_INVENTORY_VERSION = 7
 constants.UPDATE_INTERVAL = 10
 constants.IDLE_JOB_SEARCH_INTERVAL = 60
 constants.IDLE_DOCK_AFTER_FAILURES = 5

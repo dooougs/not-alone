@@ -6,6 +6,29 @@ function queue_starter_inventory(player_index)
   storage.not_alone_starter_inventory_pending[player_index] = true
 end
 
+function ensure_command_tool_quickbar(player)
+  if not player or not player.valid then
+    return
+  end
+  local width = player.quick_bar_width or 10
+  for page = 1, 10 do
+    for slot = 1, width do
+      local quick_bar_slot = player.get_quick_bar_slot(page, slot)
+      if quick_bar_slot and quick_bar_slot.filter == COMMAND_TOOL_NAME then
+        return
+      end
+    end
+  end
+  for page = 1, 10 do
+    for slot = 1, width do
+      if not player.get_quick_bar_slot(page, slot) then
+        player.set_quick_bar_slot(page, slot, {name = COMMAND_TOOL_NAME})
+        return
+      end
+    end
+  end
+end
+
 function queue_starter_inventory_migration()
   if storage.not_alone_starter_inventory_version == STARTER_INVENTORY_VERSION then
     return
@@ -56,6 +79,7 @@ function ensure_starter_inventory(player)
   if player.get_item_count(COMMAND_TOOL_NAME) == 0 then
     player.insert({name = COMMAND_TOOL_NAME, count = 1})
   end
+  ensure_command_tool_quickbar(player)
 
   return satisfied
     and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
@@ -98,7 +122,7 @@ function rescue_immobile_team_mate(record)
   end
 end
 
-local find_outpost_at
+local find_base_at
 
 function update_team_mate(record, player)
   local character = record.entity
@@ -149,7 +173,7 @@ function update_team_mate(record, player)
   if #manual_destinations > 0 then
     if character.surface_index == record.manual_surface_index then
       local route_changed = false
-      local joined_outpost = false
+      local joined_base
       -- The engine parks units near, not on, a waypoint; a finished move
       -- command also counts as arrival so crowded routes cannot loop forever.
       while #manual_destinations > 0
@@ -160,13 +184,14 @@ function update_team_mate(record, player)
         table.remove(manual_destinations, 1)
         route_changed = true
         if record.kind == "soldier" then
-          local outpost = find_outpost_at(character.surface, arrived_at)
-          if outpost and outpost.force == character.force then
-            record.home_base = outpost
-            record.home_base_type = "outpost"
+          local base = find_base_at(character.surface, arrived_at)
+          if base and base.force == character.force then
+            record.home_base = base
+            record.home_base_type = get_base_type(base)
+            record.pending_home_base = nil
             manual_destinations = {}
             record.manual_destinations = manual_destinations
-            joined_outpost = true
+            joined_base = base
           end
         end
       end
@@ -179,8 +204,12 @@ function update_team_mate(record, player)
 
       if #manual_destinations == 0 then
         record.manual_surface_index = nil
-        if joined_outpost then
-          wander_team_mate(record)
+        if joined_base then
+          if get_base_type(joined_base) == "outpost" then
+            wander_team_mate(record)
+          else
+            dock_at_habitat(record)
+          end
         else
           stop_team_mate(record)
         end
@@ -397,7 +426,7 @@ end
 
 local function is_building_at(surface, position)
   for _, entity in pairs(surface.find_entities_filtered({position = position, radius = 1})) do
-    if entity.valid and entity.name ~= OUTPOST_NAME
+    if entity.valid and not is_base(entity)
       and entity.type ~= "unit"
       and entity.type ~= "character"
       and entity.type ~= "resource"
@@ -414,17 +443,10 @@ local function is_building_at(surface, position)
   return false
 end
 
-find_outpost_at = function(surface, position)
-  local outposts = surface.find_entities_filtered({
-    name = OUTPOST_NAME,
-    position = position,
-    radius = 32
-  })
-  for _, outpost in pairs(outposts) do
-    local box = outpost.bounding_box
-    if position.x >= box.left_top.x and position.x <= box.right_bottom.x
-      and position.y >= box.left_top.y and position.y <= box.right_bottom.y then
-      return outpost
+find_base_at = function(surface, position)
+  for base in each_base() do
+    if base.surface == surface and base_contains_position(base, position, 2) then
+      return base
     end
   end
   return nil
