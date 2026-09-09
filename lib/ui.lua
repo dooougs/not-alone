@@ -40,12 +40,12 @@ TEAM_MATE_PANEL_NAME = "not-alone-team-mates-panel"
 TEAM_MATE_REQUEST_FRAME_NAME = "not-alone-team-mate-requests"
 
 local function is_team_mate_request_entity(entity)
-  return is_base(entity)
+  return is_base(entity) and get_base_type(entity) == "outpost"
 end
 
 local function request_kinds_for_entity(entity)
   local policy = get_base_policy(entity)
-  return policy and policy.allowed_kinds or {}
+  return get_base_type(entity) == "outpost" and policy and policy.allowed_kinds or {}
 end
 
 local function destroy_team_mate_request_gui(player)

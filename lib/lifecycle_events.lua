@@ -1,5 +1,39 @@
 ﻿-- Functional area extracted from not-alone.lua.
 
+function ensure_command_tool(player)
+  if not player or not player.valid then
+    return
+  end
+  local inventory = player.get_main_inventory()
+  if not inventory then
+    return
+  end
+  local command_tool_stack = inventory.find_item_stack(COMMAND_TOOL_NAME)
+  if not command_tool_stack then
+    if player.insert({name = COMMAND_TOOL_NAME, count = 1}) ~= 1 then
+      return
+    end
+    command_tool_stack = inventory.find_item_stack(COMMAND_TOOL_NAME)
+  end
+  local width = player.quick_bar_width or 10
+  for page = 1, 10 do
+    for slot = 1, width do
+      local quick_bar_slot = player.get_quick_bar_slot(page, slot)
+      if quick_bar_slot and quick_bar_slot.filter == COMMAND_TOOL_NAME then
+        return
+      end
+    end
+  end
+  for page = 1, 10 do
+    for slot = 1, width do
+      if not player.get_quick_bar_slot(page, slot) then
+        player.set_quick_bar_slot(page, slot, command_tool_stack)
+        return
+      end
+    end
+  end
+end
+
 function migrate_car_minimum_distance()
   if storage.not_alone_car_minimum_distance_migration == 2 then
     return
@@ -216,12 +250,19 @@ function notalone.on_init()
   storage.not_alone_selected_team_mates = {}
   storage.not_alone_marked_resources = {}
   storage.not_alone_carrier_requests = {}
+  for base in each_base() do
+    if get_base_type(base) == "habitat"
+      and storage.not_alone_team_mate_requests then
+      storage.not_alone_team_mate_requests[base.unit_number] = nil
+    end
+  end
   migrate_car_minimum_distance()
   for _, surface in pairs(game.surfaces) do
     spawn_initial_crash_ships(surface)
   end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
+    ensure_command_tool(player)
   end
 end
 
@@ -262,12 +303,14 @@ function notalone.on_configuration_changed()
   end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
+    ensure_command_tool(player)
   end
 end
 
 function notalone.on_player_created(event)
   local player = game.get_player(event.player_index)
   enable_logistics_network_gui(player.force)
+  ensure_command_tool(player)
 end
 
 function notalone.on_player_removed(event)
@@ -378,9 +421,13 @@ function collect_reverse_clicked_team_mate(event)
   if not player or not team_mates then
     return false
   end
+  local click_position = {
+    x = (event.area.left_top.x + event.area.right_bottom.x) / 2,
+    y = (event.area.left_top.y + event.area.right_bottom.y) / 2
+  }
   local targets = player.surface.find_entities_filtered({
-    name = TEAM_MATE_NAMES,
-    position = event.area.left_top,
+    name = TEAM_MATE_ENTITY_NAMES,
+    position = click_position,
     radius = 1
   })
   for _, entity in pairs(targets) do

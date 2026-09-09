@@ -82,6 +82,10 @@ constants.KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-rocket-mech"] = "soldier"
 }
 constants.TEAM_MATE_NAMES = {constants.TEAM_MATE_NAME}
+constants.TEAM_MATE_ENTITY_NAMES = {constants.TEAM_MATE_NAME}
+for entity_name in pairs(constants.KIND_BY_ENTITY_NAME) do
+  constants.TEAM_MATE_ENTITY_NAMES[#constants.TEAM_MATE_ENTITY_NAMES + 1] = entity_name
+end
 constants.COMMAND_TOOL_NAME = "not-alone-command-tool"
 constants.LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 constants.OUTPOST_NAME = "not-alone-outpost"
