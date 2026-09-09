@@ -85,28 +85,3 @@ end
 
 auto_deploy_from_habitat = auto_deploy_from_base
 
-function configure_freeplay_starter_inventory()
-  local freeplay = remote.interfaces.freeplay
-  if not freeplay or not freeplay.get_created_items or not freeplay.set_created_items then
-    return
-  end
-
-  local created_items = remote.call("freeplay", "get_created_items")
-  if not created_items then
-    return
-  end
-  -- Saves made before the per-kind items may still list the removed item.
-  created_items["not-alone-team-mate"] = nil
-  for kind, item_name in pairs(ITEM_NAME_BY_KIND) do
-    -- freeplay's insert_safe rejects a count of zero.
-    if INITIAL_COUNT_BY_KIND[kind] > 0 then
-      created_items[item_name] = INITIAL_COUNT_BY_KIND[kind]
-    else
-      created_items[item_name] = nil
-    end
-  end
-  created_items[LOGISTICS_HUB_NAME] = INITIAL_HABITAT_COUNT
-  created_items[COMMAND_TOOL_NAME] = 1
-  remote.call("freeplay", "set_created_items", created_items)
-end
-

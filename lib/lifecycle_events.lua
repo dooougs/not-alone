@@ -1,49 +1,5 @@
 ﻿-- Functional area extracted from not-alone.lua.
 
-function queue_starter_inventory(player_index)
-  storage.not_alone_starter_inventory_pending =
-    storage.not_alone_starter_inventory_pending or {}
-  storage.not_alone_starter_inventory_pending[player_index] = true
-end
-
-function ensure_command_tool_quickbar(player)
-  if not player or not player.valid then
-    return
-  end
-  local inventory = player.get_main_inventory()
-  local command_tool_stack = inventory and inventory.find_item_stack(COMMAND_TOOL_NAME)
-  if not command_tool_stack then
-    return
-  end
-  local width = player.quick_bar_width or 10
-  for page = 1, 10 do
-    for slot = 1, width do
-      local quick_bar_slot = player.get_quick_bar_slot(page, slot)
-      if quick_bar_slot and quick_bar_slot.filter == COMMAND_TOOL_NAME then
-        return
-      end
-    end
-  end
-  for page = 1, 10 do
-    for slot = 1, width do
-      if not player.get_quick_bar_slot(page, slot) then
-        player.set_quick_bar_slot(page, slot, command_tool_stack)
-        return
-      end
-    end
-  end
-end
-
-function queue_starter_inventory_migration()
-  if storage.not_alone_starter_inventory_version == STARTER_INVENTORY_VERSION then
-    return
-  end
-  for _, player in pairs(game.players) do
-    queue_starter_inventory(player.index)
-  end
-  storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
-end
-
 function migrate_car_minimum_distance()
   if storage.not_alone_car_minimum_distance_migration == 2 then
     return
@@ -55,40 +11,6 @@ function migrate_car_minimum_distance()
   end
   storage.not_alone_car_minimum_distance_migrated = true
   storage.not_alone_car_minimum_distance_migration = 2
-end
-
-function ensure_starter_inventory(player)
-  if not player or not player.valid or not player.character or not player.character.valid then
-    return false
-  end
-
-  local satisfied = true
-  for kind, item_name in pairs(ITEM_NAME_BY_KIND) do
-    local missing = math.max(INITIAL_COUNT_BY_KIND[kind] - player.get_item_count(item_name), 0)
-    if missing > 0 then
-      player.insert({name = item_name, count = missing})
-    end
-    if player.get_item_count(item_name) < INITIAL_COUNT_BY_KIND[kind] then
-      satisfied = false
-    end
-  end
-
-  local missing_habitats = math.max(
-    INITIAL_HABITAT_COUNT - player.get_item_count(LOGISTICS_HUB_NAME),
-    0
-  )
-  if missing_habitats > 0 then
-    player.insert({name = LOGISTICS_HUB_NAME, count = missing_habitats})
-  end
-
-  if player.get_item_count(COMMAND_TOOL_NAME) == 0 then
-    player.insert({name = COMMAND_TOOL_NAME, count = 1})
-  end
-  ensure_command_tool_quickbar(player)
-
-  return satisfied
-    and player.get_item_count(LOGISTICS_HUB_NAME) >= INITIAL_HABITAT_COUNT
-    and player.get_item_count(COMMAND_TOOL_NAME) > 0
 end
 
 function rescue_immobile_team_mate(record)
@@ -292,19 +214,15 @@ end
 function notalone.on_init()
   storage.not_alone_team_mates = {}
   storage.not_alone_selected_team_mates = {}
-  storage.not_alone_starter_inventory_pending = {}
   storage.not_alone_marked_resources = {}
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
-  configure_freeplay_starter_inventory()
   for _, surface in pairs(game.surfaces) do
     spawn_initial_crash_ships(surface)
   end
   for _, player in pairs(game.players) do
     enable_logistics_network_gui(player.force)
-    queue_starter_inventory(player.index)
   end
-  storage.not_alone_starter_inventory_version = STARTER_INVENTORY_VERSION
 end
 
 function reset_stale_vehicle_travel()
@@ -339,8 +257,6 @@ function notalone.on_configuration_changed()
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
   reset_stale_vehicle_travel()
-  queue_starter_inventory_migration()
-  configure_freeplay_starter_inventory()
   for _, surface in pairs(game.surfaces) do
     spawn_initial_crash_ships(surface)
   end
@@ -352,7 +268,6 @@ end
 function notalone.on_player_created(event)
   local player = game.get_player(event.player_index)
   enable_logistics_network_gui(player.force)
-  queue_starter_inventory(player.index)
 end
 
 function notalone.on_player_removed(event)

@@ -27,8 +27,8 @@ pistol-like physical damage.
 Factorio units do not have character gun or ammunition inventories. The unit conversion therefore
 replaces copied starter equipment and ammunition depletion with a built-in attack.
 
-Each player receives a **Team mate command tool**. Drag with the tool to select a group of your own
-team mates. A centered selected-team roster opens with one row per deployed team mate and iconized
+The **Team mate command tool** can be obtained from the mod's crew sources. Drag with the tool to
+select a group of your own team mates. A centered selected-team roster opens with one row per deployed team mate and iconized
 dropdowns for reassigning them to Logistics, a resource-specific Miner role, Security, Builder, or
 Scout. Its close button closes the roster and clears the selection; selecting an empty area does the
 same. Right-drag over any destination, including fogged or uncharted terrain, to send the selected

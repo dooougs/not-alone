@@ -10,9 +10,6 @@ for name, value in pairs(utils) do
   _G[name] = value
 end
 
-INITIAL_HABITAT_COUNT = 1
-INITIAL_COUNT_BY_KIND = {miner = 7, builder = 3, soldier = 7, carrier = 10}
-STARTER_INVENTORY_VERSION = 5
 UPDATE_INTERVAL = 10
 -- Idle units and empty habitats re-scan the whole network for work; doing
 -- that every update dominated frame time, so retries run on cooldowns.

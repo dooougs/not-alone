@@ -82,13 +82,6 @@ function notalone.on_entity_died(event)
 end
 
 function notalone.on_update(event)
-  queue_starter_inventory_migration()
-  for player_index in pairs(storage.not_alone_starter_inventory_pending or {}) do
-    if ensure_starter_inventory(game.get_player(player_index)) then
-      storage.not_alone_starter_inventory_pending[player_index] = nil
-    end
-  end
-
   for _, player in pairs(game.connected_players) do
     update_team_mate_panel(player)
     update_team_mate_request_gui(player)
