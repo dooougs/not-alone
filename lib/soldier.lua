@@ -169,6 +169,11 @@ function update_soldier(record)
     return true
   end
 
+  if record.manual_wander then
+    wander_team_mate(record)
+    return true
+  end
+
   if record.home_base_type == "outpost" then
     local target = find_soldier_target(record)
     if target then

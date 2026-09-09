@@ -207,6 +207,7 @@ function update_team_mate(record, player)
         else
           if record.kind == "soldier" then
             record.manual_hold = nil
+            record.manual_wander = true
             wander_team_mate(record)
           else
             record.manual_hold = true
@@ -594,6 +595,7 @@ function order_selected_team_mates(event, append)
       end
       record.route_rendering_suppressed = nil
       record.manual_hold = nil
+      record.manual_wander = nil
       local manual_destinations = get_manual_destinations(record)
       if not append then
         manual_destinations = {}
