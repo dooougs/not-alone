@@ -211,9 +211,15 @@ local command_tool = {
 	name = "not-alone-command-tool",
 	icons = {
 		{
+			icon = "__base__/graphics/icons/spidertron-remote.png",
+			icon_size = 64
+		},
+		{
 			icon = "__base__/graphics/icons/light-armor.png",
 			icon_size = 64,
-			tint = {r = 0.72, g = 0.08, b = 0.08, a = 1}
+			tint = {r = 0.72, g = 0.08, b = 0.08, a = 1},
+			scale = 0.42,
+			shift = {8, 8}
 		}
 	},
 	factoriopedia_description = {"factoriopedia-description.not-alone-command-tool"},
@@ -252,9 +258,9 @@ local command_tool_shortcut = {
 	action = "spawn-item",
 	localised_name = {"shortcut.make-not-alone-command-tool"},
 	item_to_spawn = "not-alone-command-tool",
-	icon = "__base__/graphics/icons/light-armor.png",
+	icon = "__not-alone__/graphics/icons/command-tool-shortcut-56.png",
 	icon_size = 56,
-	small_icon = "__base__/graphics/icons/light-armor.png",
+	small_icon = "__not-alone__/graphics/icons/command-tool-shortcut-24.png",
 	small_icon_size = 24
 }
 
