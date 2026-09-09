@@ -1,4 +1,12 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.23
+Date: 2026-09-09
+  Features:
+    - Added a Cloner with role-specific recipes that use a Miner and four ore types to produce new team mates.
+  Changes:
+    - Improved Soldier waypoint behavior with patrol loops, persistent route markers, combat resumption, and wandering at final non-loop waypoints.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.22
 Date: 2026-09-08
   Bugfixes:
