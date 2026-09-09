@@ -162,6 +162,8 @@ local function dispatch_record_to_base(record, base)
   record.home_base = nil
   record.home_base_type = nil
   record.pending_home_base = base
+  record.route_rendering_suppressed = true
+  destroy_route_renderings(record)
   record.manual_destinations = {{x = base.position.x, y = base.position.y}}
   record.manual_surface_index = base.surface_index
   move_team_mate_toward_destination(record, record.manual_destinations[1])

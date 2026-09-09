@@ -172,7 +172,8 @@ function update_team_mate(record, player)
   end
 
   local manual_destinations = get_manual_destinations(record)
-  if record.route_render_ids == nil and #manual_destinations > 0 then
+  if not record.route_rendering_suppressed
+    and record.route_render_ids == nil and #manual_destinations > 0 then
     refresh_route_renderings(record, player.index)
   end
 
@@ -216,7 +217,10 @@ function update_team_mate(record, player)
       if route_changed then
         record.command_kind = nil
         record.command_destination = nil
-        refresh_route_renderings(record, player.index)
+        destroy_route_renderings(record)
+        if not record.route_rendering_suppressed then
+          refresh_route_renderings(record, player.index)
+        end
       end
 
       if #manual_destinations == 0 then
@@ -239,7 +243,7 @@ function update_team_mate(record, player)
       record.manual_destinations = {}
       record.manual_surface_index = nil
       stop_team_mate(record)
-      refresh_route_renderings(record, player.index)
+      destroy_route_renderings(record)
     end
     return true
   end
@@ -507,6 +511,7 @@ function order_selected_team_mates(event, append)
         record.home_base_type = nil
         record.pending_home_base = nil
       end
+      record.route_rendering_suppressed = nil
       record.manual_hold = nil
       local manual_destinations = get_manual_destinations(record)
       if not append then
