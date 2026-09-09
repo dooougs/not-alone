@@ -3,7 +3,8 @@
 function refresh_route_renderings(record, player_index)
   destroy_route_renderings(record)
 
-  local destinations = get_manual_destinations(record)
+  local destinations = record.manual_loop and record.manual_loop_destinations
+    or get_manual_destinations(record)
   if #destinations == 0 or not record.entity.valid then
     return
   end
