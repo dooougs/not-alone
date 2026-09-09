@@ -8,6 +8,7 @@ constants.BUILDING_REQUESTER_UPDATE_INTERVAL = 60
 constants.ORPHAN_RECONCILE_INTERVAL = 600
 constants.ENGAGEMENT_RADIUS = 16
 constants.COMMAND_REFRESH_DISTANCE = 2
+constants.WAYPOINT_ARRIVAL_RADIUS = 2
 constants.CHUNK_SIZE = 32
 constants.SCOUT_WAYPOINT_DISTANCE = 64
 constants.SCOUT_GENERATION_RADIUS = 2
@@ -82,10 +83,6 @@ constants.KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-rocket-mech"] = "soldier"
 }
 constants.TEAM_MATE_NAMES = {constants.TEAM_MATE_NAME}
-constants.TEAM_MATE_ENTITY_NAMES = {constants.TEAM_MATE_NAME}
-for entity_name in pairs(constants.KIND_BY_ENTITY_NAME) do
-  constants.TEAM_MATE_ENTITY_NAMES[#constants.TEAM_MATE_ENTITY_NAMES + 1] = entity_name
-end
 constants.COMMAND_TOOL_NAME = "not-alone-command-tool"
 constants.LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 constants.OUTPOST_NAME = "not-alone-outpost"

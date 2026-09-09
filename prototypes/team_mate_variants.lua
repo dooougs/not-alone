@@ -49,6 +49,7 @@ end
 local fists_unit = table.deepcopy(context.team_mate)
 fists_unit.name = "not-alone-team-mate-fists"
 fists_unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
+fists_unit.flags = {"placeable-player", "placeable-off-grid", "not-repairable", "breaths-air"}
 fists_unit.hidden_in_factoriopedia = nil
 fists_unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-soldier"}
 context.set_team_mate_pedia_visuals(fists_unit, context.KIND_TINT.soldier, character_animations.level1)
@@ -175,6 +176,7 @@ for _, kind in pairs({"miner", "builder", "carrier"}) do
 	local unit = table.deepcopy(context.team_mate)
 	unit.name = "not-alone-team-mate-" .. kind
 	unit.localised_name = {"entity-name.not-alone-team-mate-" .. kind}
+	unit.flags = {"placeable-player", "placeable-off-grid", "not-repairable", "breaths-air"}
 	unit.hidden_in_factoriopedia = nil
 	unit.factoriopedia_description = {"factoriopedia-description.not-alone-team-mate-" .. kind}
 	context.set_team_mate_pedia_visuals(unit, context.KIND_TINT[kind], character_animations.level1)
@@ -207,7 +209,13 @@ end
 local command_tool = {
 	type = "selection-tool",
 	name = "not-alone-command-tool",
-	icon = "__base__/graphics/icons/spidertron-remote.png",
+	icons = {
+		{
+			icon = "__base__/graphics/icons/light-armor.png",
+			icon_size = 64,
+			tint = {r = 0.72, g = 0.08, b = 0.08, a = 1}
+		}
+	},
 	factoriopedia_description = {"factoriopedia-description.not-alone-command-tool"},
 	flags = {"not-stackable", "spawnable"},
 	subgroup = "tool",
@@ -244,9 +252,9 @@ local command_tool_shortcut = {
 	action = "spawn-item",
 	localised_name = {"shortcut.make-not-alone-command-tool"},
 	item_to_spawn = "not-alone-command-tool",
-	icon = "__base__/graphics/icons/shortcut-toolbar/mip/new-rts-tool-x56.png",
+	icon = "__base__/graphics/icons/light-armor.png",
 	icon_size = 56,
-	small_icon = "__base__/graphics/icons/shortcut-toolbar/mip/new-rts-tool-x24.png",
+	small_icon = "__base__/graphics/icons/light-armor.png",
 	small_icon_size = 24
 }
 

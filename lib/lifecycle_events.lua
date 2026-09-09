@@ -151,7 +151,8 @@ function update_team_mate(record, player)
       -- The engine parks units near, not on, a waypoint; a finished move
       -- command also counts as arrival so crowded routes cannot loop forever.
       while #manual_destinations > 0
-        and (distance_squared(character.position, manual_destinations[1]) <= 4
+        and (distance_squared(character.position, manual_destinations[1])
+            <= WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS
           or (record.command_kind == "move"
             and not character.commandable.has_command)) do
         local arrived_at = manual_destinations[1]
@@ -204,8 +205,13 @@ function update_team_mate(record, player)
             dock_at_habitat(record)
           end
         else
-          record.manual_hold = true
-          stop_team_mate(record)
+          if record.kind == "soldier" then
+            record.manual_hold = nil
+            wander_team_mate(record)
+          else
+            record.manual_hold = true
+            stop_team_mate(record)
+          end
         end
       else
         move_team_mate_toward_destination(record, manual_destinations[1])
@@ -426,7 +432,7 @@ function collect_reverse_clicked_team_mate(event)
     y = (event.area.left_top.y + event.area.right_bottom.y) / 2
   }
   local targets = player.surface.find_entities_filtered({
-    name = TEAM_MATE_ENTITY_NAMES,
+    type = "unit",
     position = click_position,
     radius = 1
   })
@@ -600,7 +606,8 @@ function order_selected_team_mates(event, append)
       if #manual_destinations >= 2 then
         local first = manual_destinations[1]
         local last = manual_destinations[#manual_destinations]
-        record.manual_loop = first.x == last.x and first.y == last.y
+        record.manual_loop = distance_squared(first, last)
+          <= WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS
         if record.manual_loop then
           record.manual_loop_destinations = {}
           for _, waypoint in ipairs(manual_destinations) do
