@@ -214,6 +214,21 @@ function update_team_mate(record, player)
         end
       end
 
+      if #manual_destinations == 0
+        and not joined_base
+        and record.manual_loop
+        and record.manual_loop_destinations then
+        manual_destinations = {}
+        for _, waypoint in ipairs(record.manual_loop_destinations) do
+          manual_destinations[#manual_destinations + 1] = {
+            x = waypoint.x,
+            y = waypoint.y
+          }
+        end
+        record.manual_destinations = manual_destinations
+        record.manual_hold = nil
+      end
+
       if route_changed then
         record.command_kind = nil
         record.command_destination = nil
@@ -242,6 +257,8 @@ function update_team_mate(record, player)
     else
       record.manual_destinations = {}
       record.manual_surface_index = nil
+      record.manual_loop = nil
+      record.manual_loop_destinations = nil
       stop_team_mate(record)
       destroy_route_renderings(record)
     end
@@ -522,6 +539,25 @@ function order_selected_team_mates(event, append)
         x = destination.x,
         y = destination.y
       }
+      if #manual_destinations >= 2 then
+        local first = manual_destinations[1]
+        local last = manual_destinations[#manual_destinations]
+        record.manual_loop = first.x == last.x and first.y == last.y
+        if record.manual_loop then
+          record.manual_loop_destinations = {}
+          for _, waypoint in ipairs(manual_destinations) do
+            record.manual_loop_destinations[#record.manual_loop_destinations + 1] = {
+              x = waypoint.x,
+              y = waypoint.y
+            }
+          end
+        else
+          record.manual_loop_destinations = nil
+        end
+      else
+        record.manual_loop = nil
+        record.manual_loop_destinations = nil
+      end
       record.manual_surface_index = event.surface.index
       if #manual_destinations == 1 then
         move_team_mate_toward_destination(record, destination)

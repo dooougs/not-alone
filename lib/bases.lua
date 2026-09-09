@@ -162,6 +162,8 @@ local function dispatch_record_to_base(record, base)
   record.home_base = nil
   record.home_base_type = nil
   record.pending_home_base = base
+  record.manual_loop = nil
+  record.manual_loop_destinations = nil
   record.route_rendering_suppressed = true
   destroy_route_renderings(record)
   record.manual_destinations = {{x = base.position.x, y = base.position.y}}

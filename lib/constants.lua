@@ -56,6 +56,7 @@ constants.MINING_ANIMATION_FRAMES = 51
 constants.MINING_ANIMATION_SPEED = 51 / 60
 constants.HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
 constants.ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
+constants.PATROL_ROUTE_COLOR = {r = 1, g = 0.75, b = 0.15, a = 0.95}
 constants.MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
 constants.INVENTORY_ICON_SCALE = 0.5
 constants.INVENTORY_ICON_SPACING = 0.65

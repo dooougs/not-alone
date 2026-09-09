@@ -10,9 +10,10 @@ function refresh_route_renderings(record, player_index)
 
   local surface = record.entity.surface
   local previous_target = record.entity
+  local route_color = record.manual_loop and PATROL_ROUTE_COLOR or ROUTE_COLOR
   for _, destination in ipairs(destinations) do
     local line = rendering.draw_line({
-      color = ROUTE_COLOR,
+      color = route_color,
       width = 3,
       from = previous_target,
       to = destination,
@@ -21,7 +22,7 @@ function refresh_route_renderings(record, player_index)
       draw_on_ground = true
     })
     local marker = rendering.draw_circle({
-      color = ROUTE_COLOR,
+      color = route_color,
       radius = 0.45,
       width = 3,
       filled = false,
