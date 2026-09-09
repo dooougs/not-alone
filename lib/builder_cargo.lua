@@ -194,6 +194,11 @@ end
 
 dock_at_habitat = function(record)
   local base = record.home_base or find_nearest_base(record, record.kind)
+  if base and not base_has_space_for_kind(base, record.kind) then
+    record.home_base = nil
+    record.home_base_type = nil
+    base = find_nearest_base(record, record.kind)
+  end
   local policy = get_base_policy(base)
   if not base or not policy or not policy.returns_team_mates then
     stop_team_mate(record)

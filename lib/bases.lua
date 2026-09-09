@@ -117,7 +117,8 @@ function find_nearest_base(record, kind)
   for base in each_base() do
     if base.surface == record.entity.surface
       and base.force == record.entity.force
-      and (not kind or base_allows_kind(base, kind)) then
+      and (not kind or base_allows_kind(base, kind))
+      and (not kind or base_has_space_for_kind(base, kind)) then
       local distance = distance_squared(record.entity.position, base.position)
       if not nearest_distance or distance < nearest_distance then
         nearest_base = base
@@ -158,7 +159,23 @@ function get_base_member_count(base, kind)
   return count
 end
 
+function base_has_space_for_kind(base, kind)
+  if not is_base(base) or not base_allows_kind(base, kind) then
+    return false
+  end
+  if get_base_type(base) == "outpost" then
+    local requests = storage.not_alone_team_mate_requests
+      and storage.not_alone_team_mate_requests[base.unit_number]
+    return requests and get_base_member_count(base, kind) < (requests[kind] or 0)
+  end
+  local inventory = get_base_inventory(base)
+  return inventory and inventory.get_insertable_count(ITEM_NAME_BY_KIND[kind]) > 0
+end
+
 local function dispatch_record_to_base(record, base)
+  if not base_has_space_for_kind(base, record.kind) then
+    return false
+  end
   record.home_base = nil
   record.home_base_type = nil
   record.pending_home_base = base
@@ -169,11 +186,12 @@ local function dispatch_record_to_base(record, base)
   record.manual_destinations = {{x = base.position.x, y = base.position.y}}
   record.manual_surface_index = base.surface_index
   move_team_mate_toward_destination(record, record.manual_destinations[1])
+  return true
 end
 
 local function deploy_soldier_toward_base(habitat, base)
   local player = find_any_player_for_force(base.force)
-  if not player or not player.valid then
+  if not player or not player.valid or not base_has_space_for_kind(base, "soldier") then
     return false
   end
   local inventory = get_base_inventory(habitat)
@@ -239,9 +257,10 @@ function fulfill_base_requests(base)
             and storage.not_alone_team_mate_requests[record.home_base.unit_number]
           local source_request = (source_requests and source_requests.soldier) or 0
           if get_base_member_count(record.home_base, "soldier") > source_request then
-            dispatch_record_to_base(record, base)
-            needed = needed - 1
-            moved = true
+            if dispatch_record_to_base(record, base) then
+              needed = needed - 1
+              moved = true
+            end
           end
         end
       end

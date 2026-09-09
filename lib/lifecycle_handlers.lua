@@ -1,10 +1,16 @@
 -- Functional area extracted from not-alone.lua.
 
 function notalone.on_reverse_selected_area(event)
+  if collect_reverse_clicked_team_mate(event) then
+    return
+  end
   order_selected_team_mates(event, false)
 end
 
 function notalone.on_alt_reverse_selected_area(event)
+  if collect_reverse_clicked_team_mate(event) then
+    return
+  end
   order_selected_team_mates(event, true)
 end
 

@@ -302,6 +302,102 @@ local function is_command_tool_event(event)
   return event.item == COMMAND_TOOL_NAME
 end
 
+local function collect_team_mate(player, team_mates, record)
+  local item_name = ITEM_NAME_BY_KIND[record.kind]
+  if not item_name or player.insert({name = item_name, count = 1}) ~= 1 then
+    return false
+  end
+
+  local surface = record.entity.surface
+  local position = position_table(record.entity.position)
+  local function give_or_spill(item)
+    if not item.count or item.count <= 0 then
+      return
+    end
+    local given = player.insert(item)
+    if given < item.count then
+      item.count = item.count - given
+      surface.spill_item_stack({position = position, stack = item})
+    end
+  end
+  if record.kind == "soldier" then
+    for weapon_kind in pairs(record.soldier_weapons or {}) do
+      local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
+      if weapon then
+        give_or_spill({name = weapon.gun, count = 1})
+      end
+    end
+    for ammo_name, count in pairs(record.soldier_ammo or {}) do
+      give_or_spill({name = ammo_name, count = count})
+    end
+    local armor = record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor]
+    if armor then
+      give_or_spill({name = armor.item, count = 1})
+    end
+  end
+  for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory"}) do
+    local inventory = record[inventory_name]
+    if inventory and inventory.valid then
+      for item, count in pairs(inventory.get_contents()) do
+        local stack = {name = item, count = count}
+        local removed = inventory.remove(stack)
+        stack.count = removed
+        give_or_spill(stack)
+      end
+      inventory.destroy()
+      record[inventory_name] = nil
+    end
+  end
+  if record.vehicle_state then
+    abandon_vehicle_travel(record)
+  end
+  destroy_route_renderings(record)
+  destroy_inventory_renderings(record)
+  destroy_color_marker(record)
+  local old_base = record.home_base or record.pending_home_base
+  record.entity.destroy()
+  for index, candidate in pairs(team_mates) do
+    if candidate == record then
+      table.remove(team_mates, index)
+      break
+    end
+  end
+  if old_base and old_base.valid and get_base_type(old_base) == "outpost" then
+    fulfill_base_requests(old_base)
+  end
+  return true
+end
+
+function collect_reverse_clicked_team_mate(event)
+  if not is_command_tool_event(event) then
+    return false
+  end
+  local player = game.get_player(event.player_index)
+  local team_mates = storage.not_alone_team_mates
+    and storage.not_alone_team_mates[event.player_index]
+  if not player or not team_mates then
+    return false
+  end
+  local targets = player.surface.find_entities_filtered({
+    name = TEAM_MATE_NAMES,
+    position = event.area.left_top,
+    radius = 1
+  })
+  for _, entity in pairs(targets) do
+    if entity.valid then
+      for _, record in pairs(team_mates) do
+        if record.entity == entity then
+          if not collect_team_mate(player, team_mates, record) then
+            player.print({"not-alone.team-mate-inventory-full"})
+          end
+          return true
+        end
+      end
+    end
+  end
+  return false
+end
+
 function notalone.on_selected_area(event)
   if not is_command_tool_event(event) then
     return
