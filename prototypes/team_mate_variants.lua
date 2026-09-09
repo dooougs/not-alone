@@ -237,6 +237,19 @@ local command_tool = {
 	}
 }
 
+local command_tool_shortcut = {
+	type = "shortcut",
+	name = "not-alone-command-tool-shortcut",
+	order = "e[not-alone-command-tool]",
+	action = "spawn-item",
+	localised_name = {"shortcut.make-not-alone-command-tool"},
+	item_to_spawn = "not-alone-command-tool",
+	icon = "__base__/graphics/icons/shortcut-toolbar/mip/new-rts-tool-x56.png",
+	icon_size = 56,
+	small_icon = "__base__/graphics/icons/shortcut-toolbar/mip/new-rts-tool-x24.png",
+	small_icon_size = 24
+}
+
 
 data:extend({
 	context.miner_item,
@@ -247,5 +260,6 @@ data:extend({
   context.hidden_team_mate,
   context.vehicle_driver,
   context.mining_sound,
-  command_tool
+	command_tool,
+	command_tool_shortcut
 })
