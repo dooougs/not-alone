@@ -23,7 +23,7 @@ BASE_POLICY = {
 }
 
 function get_base_type(base)
-  return base and BASE_TYPE_BY_ENTITY_NAME[base.name]
+  return base and base.valid and BASE_TYPE_BY_ENTITY_NAME[base.name]
 end
 
 function get_base_policy(base)

@@ -183,6 +183,128 @@ local outpost_recipe = {
 	}
 }
 
+local cloner = table.deepcopy(data.raw["assembling-machine"]["assembling-machine-1"])
+cloner.name = "not-alone-cloner"
+cloner.localised_name = {"entity-name.not-alone-cloner"}
+cloner.icon = "__not-alone__/graphics/icons/cloner.png"
+cloner.icon_size = 64
+cloner.crafting_categories = {"not-alone-cloning"}
+
+
+local cloner_picture = {
+	filename = "__not-alone__/graphics/entity/cloner.png",
+	width = 256,
+	height = 256,
+	scale = 0.5,
+	shift = {0, -0.3}
+}
+cloner.factoriopedia_description = {"factoriopedia-description.not-alone-cloner"}
+cloner.graphics_set = {
+	animation = {
+		layers = {cloner_picture}
+	}
+}
+cloner.working_visualisations = nil
+
+local cloner_item = table.deepcopy(data.raw.item.roboport)
+cloner_item.name = "not-alone-cloner"
+cloner_item.localised_name = {"item-name.not-alone-cloner"}
+cloner_item.icon = "__not-alone__/graphics/icons/cloner.png"
+cloner_item.icon_size = 64
+cloner_item.place_result = "not-alone-cloner"
+cloner_item.order = "c[signal]-a[not-alone-cloner]"
+
+local cloner_recipe = {
+	type = "recipe",
+	name = "not-alone-cloner",
+	enabled = true,
+	categories = {"crafting"},
+	ingredients = {
+		{type = "item", name = "uranium-ore", amount = 50},
+		{type = "item", name = "assembling-machine-1", amount = 1},
+		{type = "item", name = "raw-fish", amount = 1},
+	},
+	results = {
+		{type = "item", name = "not-alone-cloner", amount = 1}
+	}
+}
+
+local cloning_recipe_category = {
+	type = "recipe-category",
+	name = "not-alone-cloning"
+}
+
+local cloning_recipe_tints = {
+	["not-alone-miner"] = {r = 0.92, g = 0.42, b = 0.04, a = 1},
+	["not-alone-builder"] = {r = 0.87, g = 0.72, b = 0.2, a = 1},
+	["not-alone-carrier"] = {r = 0.2, g = 0.55, b = 0.85, a = 1},
+	["not-alone-soldier"] = {r = 0.72, g = 0.08, b = 0.08, a = 1}
+}
+
+local cloning_recipes = {
+	{
+		name = "not-alone-clone-miner",
+		result = "not-alone-miner",
+		iron = 10,
+		copper = 10,
+		coal = 5,
+		uranium = 50
+	},
+	{
+		name = "not-alone-clone-builder",
+		result = "not-alone-builder",
+		iron = 20,
+		copper = 15,
+		coal = 10,
+		uranium = 10
+	},
+	{
+		name = "not-alone-clone-carrier",
+		result = "not-alone-carrier",
+		iron = 30,
+		copper = 25,
+		coal = 15,
+		uranium = 15
+	},
+	{
+		name = "not-alone-clone-soldier",
+		result = "not-alone-soldier",
+		iron = 40,
+		copper = 35,
+		coal = 25,
+		uranium = 20
+	}
+}
+
+for _, cloning_recipe in pairs(cloning_recipes) do
+	local result_name = cloning_recipe.result
+	cloning_recipe.type = "recipe"
+	cloning_recipe.categories = {"not-alone-cloning"}
+	cloning_recipe.enabled = true
+	cloning_recipe.icons = {
+		{
+			icon = "__base__/graphics/icons/light-armor.png",
+			icon_size = 64,
+			tint = cloning_recipe_tints[result_name]
+		}
+	}
+	cloning_recipe.ingredients = {
+		{type = "item", name = "not-alone-miner", amount = 1},
+		{type = "item", name = "iron-ore", amount = cloning_recipe.iron},
+		{type = "item", name = "copper-ore", amount = cloning_recipe.copper},
+		{type = "item", name = "coal", amount = cloning_recipe.coal},
+		{type = "item", name = "uranium-ore", amount = cloning_recipe.uranium}
+	}
+	cloning_recipe.results = {
+		{type = "item", name = "not-alone-miner", amount = 1},
+		{type = "item", name = result_name, amount = 1}
+	}
+	cloning_recipe.result = nil
+	cloning_recipe.iron = nil
+	cloning_recipe.copper = nil
+	cloning_recipe.coal = nil
+	cloning_recipe.uranium = nil
+end
 
 data:extend({
   logistics_hub,
@@ -193,5 +315,10 @@ data:extend({
   outpost,
   outpost_item,
   outpost_recipe,
+  cloner,
+  cloner_item,
+  cloner_recipe,
+	cloning_recipe_category,
+	table.unpack(cloning_recipes),
 })
 require("prototypes/team_mate_variants")
