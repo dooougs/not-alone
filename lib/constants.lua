@@ -72,7 +72,8 @@ constants.LOGISTICS_SEARCH_RADIUS = 128
 constants.BUILDER_CARGO_SLOTS = 1
 constants.MAX_BUILDER_CARGO_SLOTS = 65535
 constants.FUEL_REQUEST_COUNT = 5
-constants.AMMO_REQUEST_COUNT = 10
+-- Radius in which soldiers salvage spilled ammo and vehicles off the ground.
+constants.GROUND_PICKUP_RADIUS = 32
 -- One shared threat scan serves every soldier; damage events invalidate it.
 constants.THREAT_SCAN_INTERVAL = 120
 constants.VEHICLE_COMBAT_HOLD_TICKS = 180
@@ -179,7 +180,6 @@ constants.SOLDIER_WEAPONS = {
   }
 }
 constants.SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
-constants.SOLDIER_AMMO_RESTOCK_COUNT = 20
 constants.SOLDIER_AMMO_TICKS_PER_ROUND = 30
 constants.SOLDIER_ARMORS = {
   {item = "light-armor", mitigation = 0.2},

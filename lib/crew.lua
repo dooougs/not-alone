@@ -115,6 +115,60 @@ end
 -- runs for tracked records, an orphan would otherwise sit frozen forever
 -- (e.g. a Miner stuck holding a full load it can never deliver). Re-adopt any
 -- such entity so it resumes normal behavior instead of staying stranded.
+-- Death drops everything where the team mate fell so squad mates can
+-- reclaim the gear, cargo, and vehicle from the ground.
+function spill_team_mate_loot(record, surface, position)
+  local function spill(item_name, count)
+    if item_name and count and count > 0 and prototypes.item[item_name] then
+      surface.spill_item_stack({
+        position = position,
+        stack = {name = item_name, count = count}
+      })
+    end
+  end
+  for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory",
+    "vehicle_fuel_inventory", "vehicle_ammo_inventory"}) do
+    local inventory = record[inventory_name]
+    if inventory and inventory.valid then
+      if not inventory.is_empty() then
+        surface.spill_inventory({position = position, inventory = inventory})
+      end
+      inventory.destroy()
+    end
+    record[inventory_name] = nil
+  end
+  for weapon_kind in pairs(record.soldier_weapons or {}) do
+    local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
+    if weapon then
+      spill(weapon.gun, 1)
+    end
+  end
+  for ammo_name, count in pairs(record.soldier_ammo or {}) do
+    spill(ammo_name, count)
+  end
+  if record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor] then
+    spill(SOLDIER_ARMORS[record.soldier_armor].item, 1)
+  end
+  record.soldier_weapons = nil
+  record.soldier_ammo = nil
+  record.soldier_armor = nil
+  local vehicle = record.vehicle_entity
+  if vehicle and vehicle.valid then
+    spill(record.vehicle_item_name or vehicle.name, 1)
+    for _, inventory in pairs({
+      vehicle.get_fuel_inventory(),
+      get_vehicle_entity_ammo_inventory(vehicle)
+    }) do
+      if inventory and not inventory.is_empty() then
+        surface.spill_inventory({position = position, inventory = inventory})
+      end
+    end
+    vehicle.destroy()
+  end
+  record.vehicle_entity = nil
+  record.vehicle_entity_unit_number = nil
+end
+
 function reconcile_orphaned_team_mates()
   local tracked = {}
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do

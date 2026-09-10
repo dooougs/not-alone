@@ -219,8 +219,8 @@ function vehicle_requires_fuel(record, item_name)
   return prototype and prototype.burner_prototype ~= nil
 end
 
--- Best network ammo accepted by any of the vehicle's guns.
-function find_vehicle_ammo_item(record, item_name)
+-- Ammo categories accepted by any gun on the vehicle the item deploys.
+function vehicle_gun_ammo_categories(record, item_name)
   local profile = vehicle_profile_for_item(record, item_name)
   local prototype = profile and prototypes.entity[profile.entity_name]
   if not prototype then
@@ -235,7 +235,13 @@ function find_vehicle_ammo_item(record, item_name)
       has_gun = true
     end
   end
-  if not has_gun then
+  return has_gun and accepted_categories or nil
+end
+
+-- Best network ammo accepted by any of the vehicle's guns.
+function find_vehicle_ammo_item(record, item_name)
+  local accepted_categories = vehicle_gun_ammo_categories(record, item_name)
+  if not accepted_categories then
     return nil
   end
   for _, candidate in ipairs(VEHICLE_AMMO_PRIORITY) do
@@ -354,6 +360,7 @@ function restore_vehicle_team_mate(record)
   record.vehicle_driver = nil
   record.vehicle_driver_unit_number = nil
   if record.entity and record.entity.valid then
+    record.entity.destructible = true
     if record.entity.name == HIDDEN_TEAM_MATE_NAME then
       replace_team_mate_entity(
         record,
@@ -493,8 +500,14 @@ function cancel_vehicle_travel(record)
     end
     recover_vehicle(record)
   end
-  restore_vehicle_team_mate(record)
-  record.vehicle_state = nil
+  -- Recovery can fail transiently (insert blocked, driver mid-eject); keep
+  -- the state machine on the vehicle rather than orphaning it ownerless.
+  if record.vehicle_entity and record.vehicle_entity.valid then
+    record.vehicle_state = "recovering-car"
+  else
+    restore_vehicle_team_mate(record)
+    record.vehicle_state = nil
+  end
   record.vehicle_destination = nil
   record.vehicle_path_goal = nil
   record.vehicle_path_goal_is_segment = nil
@@ -628,6 +641,9 @@ function deploy_vehicle(record)
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
+  -- The hidden rider is a proxy, not a combatant: splash damage killing it
+  -- dropped the record and left the vehicle permanently orphaned.
+  record.entity.destructible = false
   local car_fuel = vehicle.get_fuel_inventory()
   if car_fuel then
     local fuel_store = get_vehicle_fuel_inventory(record)
@@ -1140,7 +1156,11 @@ update_vehicle_travel = function(record)
       record.vehicle_state = nil
       return true
     elseif distance_squared(record.entity.position, source.position) <= 4 then
-      local removed = source_inventory.remove({name = ammo_name, count = AMMO_REQUEST_COUNT})
+      -- Always aim for a full stack so trips to the network are rare.
+      local removed = source_inventory.remove({
+        name = ammo_name,
+        count = prototypes.item[ammo_name].stack_size
+      })
       if removed > 0 then
         local inserted = get_vehicle_ammo_inventory(record).insert({
           name = ammo_name,

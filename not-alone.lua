@@ -167,7 +167,6 @@ for _, weapon in pairs(SOLDIER_WEAPONS) do
   SOLDIER_WEAPON_BY_KIND[weapon.kind] = weapon
 end
 SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
-SOLDIER_AMMO_RESTOCK_COUNT = 20
 SOLDIER_AMMO_TICKS_PER_ROUND = 30
 -- Armor tiers, worst to best; a Soldier wears the best suit it has found and
 -- shrugs off that fraction of every hit.

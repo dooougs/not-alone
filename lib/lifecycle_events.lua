@@ -139,11 +139,36 @@ local find_base_at
 function update_team_mate(record, player)
   local character = record.entity
   if not character.valid or character.type ~= "unit" then
+    clear_vehicle_pickup(record)
+    if record.soldier_reservation_key then
+      notalone._clear_soldier_pickup(record)
+    end
+    record.vehicle_state = nil
+    record.soldier_state = nil
     if record.vehicle_driver and record.vehicle_driver.valid then
       record.vehicle_driver.destroy()
     end
     record.vehicle_driver = nil
     record.vehicle_driver_unit_number = nil
+    local vehicle = record.vehicle_entity
+    if vehicle and vehicle.valid then
+      vehicle.destroy()
+    end
+    record.vehicle_entity = nil
+    record.vehicle_entity_unit_number = nil
+    for _, inventory_name in ipairs({
+      "builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory",
+      "vehicle_ammo_inventory"
+    }) do
+      local inventory = record[inventory_name]
+      if inventory and inventory.valid then
+        inventory.destroy()
+      end
+      record[inventory_name] = nil
+    end
+    record.soldier_weapons = nil
+    record.soldier_ammo = nil
+    record.soldier_armor = nil
     destroy_route_renderings(record)
     destroy_inventory_renderings(record)
     destroy_color_marker(record)
@@ -416,6 +441,8 @@ local function collect_team_mate(player, team_mates, record)
   if not item_name or player.insert({name = item_name, count = 1}) ~= 1 then
     return false
   end
+  -- Reclaim any deployed vehicle first or collecting the rider orphans it.
+  cancel_vehicle_travel(record)
 
   local surface = record.entity.surface
   local position = position_table(record.entity.position)

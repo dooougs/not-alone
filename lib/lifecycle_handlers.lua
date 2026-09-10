@@ -67,6 +67,16 @@ function notalone.on_entity_died(event)
   if not entity then
     return
   end
+  if entity.type == "unit" and entity.unit_number then
+    for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+      for _, record in pairs(team_mates) do
+        if record.entity == entity then
+          spill_team_mate_loot(record, entity.surface, position_table(entity.position))
+          break
+        end
+      end
+    end
+  end
   local record = find_vehicle_record(entity.unit_number)
   if record and record.vehicle_entity_unit_number == entity.unit_number then
     -- A destroyed deployed car is lost equipment, not an opportunity to

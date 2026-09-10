@@ -166,6 +166,117 @@ function soldier_needs_ammo(record)
   return false
 end
 
+-- Battlefield salvage: fallen squad mates spill their gear, so nearby ammo
+-- and vehicles on the ground are claimed before asking the network.
+function soldier_wants_ground_item(record, name)
+  if vehicle_profile_for_item(record, name)
+    and not find_carried_vehicle_item(record)
+    and not record.vehicle_entity then
+    return true
+  end
+  local prototype = prototypes.item[name]
+  if not prototype or not prototype.ammo_category then
+    return false
+  end
+  for _, weapon in ipairs(SOLDIER_WEAPONS) do
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind] then
+      for _, ammo_name in ipairs(weapon.ammo) do
+        if ammo_name == name
+          and ((record.soldier_ammo and record.soldier_ammo[name]) or 0)
+            < prototype.stack_size then
+          return true
+        end
+      end
+    end
+  end
+  local carried = find_carried_vehicle_item(record)
+  if carried and get_vehicle_ammo_inventory(record).is_empty() then
+    local categories = vehicle_gun_ammo_categories(record, carried)
+    if categories and categories[prototype.ammo_category.name] then
+      return true
+    end
+  end
+  return false
+end
+
+local function take_soldier_ground_item(record, name, count)
+  if vehicle_profile_for_item(record, name) then
+    return get_vehicle_inventory(record).insert({name = name, count = 1})
+  end
+  local prototype = prototypes.item[name]
+  local taken = 0
+  for _, weapon in ipairs(SOLDIER_WEAPONS) do
+    if record.soldier_weapons and record.soldier_weapons[weapon.kind] then
+      for _, ammo_name in ipairs(weapon.ammo) do
+        if ammo_name == name and taken == 0 then
+          local current = record.soldier_ammo and record.soldier_ammo[name] or 0
+          local wanted = math.min(count, math.max(prototype.stack_size - current, 0))
+          if wanted > 0 then
+            record.soldier_ammo = record.soldier_ammo or {}
+            record.soldier_ammo[name] = current + wanted
+            taken = wanted
+          end
+        end
+      end
+    end
+  end
+  if taken < count then
+    local carried = find_carried_vehicle_item(record)
+    local categories = carried and vehicle_gun_ammo_categories(record, carried)
+    if categories and prototype.ammo_category
+      and categories[prototype.ammo_category.name] then
+      taken = taken + get_vehicle_ammo_inventory(record).insert({
+        name = name,
+        count = count - taken
+      })
+    end
+  end
+  return taken
+end
+
+function try_soldier_ground_pickup(record)
+  local entity = record.entity
+  for _, ground in pairs(entity.surface.find_entities_filtered({
+    position = entity.position,
+    radius = GROUND_PICKUP_RADIUS,
+    name = "item-on-ground"
+  })) do
+    local stack = ground.valid and ground.stack
+    if stack and stack.valid_for_read
+      and soldier_wants_ground_item(record, stack.name) then
+      record.soldier_state = "pickup-ground"
+      record.soldier_ground_target = ground
+      move_team_mate(record, ground.position, 1)
+      return true
+    end
+  end
+  return false
+end
+
+function update_soldier_ground_pickup(record)
+  local ground = record.soldier_ground_target
+  local stack = ground and ground.valid and ground.stack
+  if not stack or not stack.valid_for_read
+    or not soldier_wants_ground_item(record, stack.name) then
+    record.soldier_state = nil
+    record.soldier_ground_target = nil
+  elseif distance_squared(record.entity.position, ground.position) <= 4 then
+    local name, count = stack.name, stack.count
+    local taken = take_soldier_ground_item(record, name, count)
+    if taken >= count then
+      ground.destroy()
+    elseif taken > 0 then
+      stack.count = count - taken
+    end
+    record.soldier_state = nil
+    record.soldier_ground_target = nil
+    stop_team_mate(record)
+  else
+    move_team_mate(record, ground.position, 1)
+  end
+  return true
+end
+
 function update_soldier(record)
   if record.vehicle_state then
     return true
@@ -173,6 +284,10 @@ function update_soldier(record)
   if record.manual_hold then
     stop_team_mate(record)
     return true
+  end
+
+  if record.soldier_state == "pickup-ground" then
+    return update_soldier_ground_pickup(record)
   end
 
   if record.soldier_state == "restock" then
@@ -185,9 +300,13 @@ function update_soldier(record)
       record.soldier_restock_name = nil
       notalone._clear_soldier_pickup(record)
     elseif distance_squared(record.entity.position, source.position) <= 4 then
+      -- Top up to a full stack so restock trips stay rare.
+      local current = record.soldier_ammo
+        and record.soldier_ammo[record.soldier_restock_name] or 0
+      local stack_size = prototypes.item[record.soldier_restock_name].stack_size
       local removed = inventory.remove({
         name = record.soldier_restock_name,
-        count = SOLDIER_AMMO_RESTOCK_COUNT
+        count = math.max(stack_size - current, 1)
       })
       if removed > 0 then
         record.soldier_ammo = record.soldier_ammo or {}
@@ -297,6 +416,11 @@ function update_soldier(record)
         return true
       end
       if try_soldier_vehicle_ammo_pickup(record) then
+        record.next_job_search_tick = nil
+        record.idle_search_failures = nil
+        return true
+      end
+      if try_soldier_ground_pickup(record) then
         record.next_job_search_tick = nil
         record.idle_search_failures = nil
         return true
