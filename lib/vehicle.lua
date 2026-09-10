@@ -498,6 +498,35 @@ function begin_vehicle_travel(record, destination)
   return true
 end
 
+function continue_patrol_vehicle_travel(record)
+  if not record.manual_loop or not record.vehicle_destination then
+    return false
+  end
+  local destinations = get_manual_destinations(record)
+  if #destinations == 0 then
+    return false
+  end
+  if distance_squared(record.vehicle_destination, destinations[1])
+    > WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS then
+    return false
+  end
+  table.remove(destinations, 1)
+  if #destinations == 0 then
+    for _, waypoint in ipairs(record.manual_loop_destinations or {}) do
+      destinations[#destinations + 1] = position_table(waypoint)
+    end
+  end
+  if #destinations == 0 then
+    return false
+  end
+  record.vehicle_destination = position_table(destinations[1])
+  record.vehicle_path = nil
+  record.vehicle_path_index = nil
+  record.vehicle_stuck_ticks = 0
+  record.vehicle_blocked_ticks = 0
+  return request_vehicle_path(record)
+end
+
 -- Path plans only avoid static obstacles; moving cars and team mates need a
 -- steering-level dodge.
 function vehicle_probe_is_clear(record, vehicle, heading, angle_offset)
@@ -527,6 +556,9 @@ function steer_vehicle(record)
   sync_team_mate_with_vehicle(record)
   if distance_squared(vehicle.position, record.vehicle_destination)
     <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
+    if continue_patrol_vehicle_travel(record) then
+      return true
+    end
     record.vehicle_state = "stopping-car"
     vehicle.riding_state = {
       acceleration = defines.riding.acceleration.braking,
