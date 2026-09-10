@@ -18,8 +18,25 @@ constants.CAR_DEPLOYMENT_SEARCH_RADIUS = 60
 constants.CAR_DEPLOYMENT_CLEARANCE = 12
 constants.CAR_ARRIVAL_RADIUS = 36
 constants.CAR_MINIMUM_TRIP_MARGIN = 24
-constants.PATROL_VEHICLE_ARRIVAL_RADIUS = 2
+constants.PATROL_VEHICLE_ARRIVAL_RADIUS = 8
 constants.PATROL_VEHICLE_MINIMUM_DISTANCE = 12
+-- Speed cap (tiles/tick) while coasting through a patrol waypoint waiting
+-- for the next leg's path.
+constants.PATROL_TRANSIT_MAX_SPEED = 0.2
+-- Start slowing this far from a patrol waypoint so the corner is taken at
+-- transit speed instead of flat out.
+constants.PATROL_CORNER_APPROACH_DISTANCE = 16
+-- Steer toward a node at least this far ahead; aiming at close nodes whips
+-- the heading around and turns sharp corners into full circles.
+constants.CAR_STEER_TARGET_MIN_DISTANCE = 6
+-- Speed band held through sharp turns: fast enough to keep rotating (cars
+-- cannot turn stationary), slow enough for a tight arc instead of a loop.
+-- Must stay well under rotation_speed * 2pi * target distance or slow
+-- turners (tanks) orbit their steering target forever.
+constants.CAR_TURN_MAX_SPEED = 0.06
+-- Cumulative sharp-turn rotation (in turns) that counts as an orbit; the
+-- vehicle then stops once and restarts its arc from standstill.
+constants.CAR_ORBIT_LIMIT = 1.0
 constants.CAR_FAILED_DESTINATION_RETRY_TICKS = 7200
 constants.CAR_AVOIDANCE_DISTANCE = 6
 constants.CAR_AVOIDANCE_PROBE_ANGLE = 0.6
@@ -66,9 +83,9 @@ constants.REPAIR_PACK_ITEM_NAME = "repair-pack"
 constants.MINING_ANIMATION_FRAMES = 51
 constants.MINING_ANIMATION_SPEED = 51 / 60
 constants.HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
-constants.ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.5}
-constants.PATROL_ROUTE_COLOR = {r = 1, g = 0.75, b = 0.15, a = 0.5}
-constants.MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
+constants.ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.15}
+constants.PATROL_ROUTE_COLOR = {r = 1, g = 0.75, b = 0.15, a = 0.15}
+constants.MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.3}
 constants.INVENTORY_ICON_SCALE = 0.5
 constants.INVENTORY_ICON_SPACING = 0.65
 constants.TEAM_MATE_NAME = "not-alone-team-mate"

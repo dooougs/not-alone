@@ -3,8 +3,9 @@
 function refresh_route_renderings(record, player_index)
   destroy_route_renderings(record)
 
-  local destinations = record.manual_loop and record.manual_loop_destinations
-    or get_manual_destinations(record)
+  local active_destinations = get_manual_destinations(record)
+  local loop_destinations = record.manual_loop and record.manual_loop_destinations
+  local destinations = loop_destinations or active_destinations
   if #destinations == 0 or not record.entity.valid then
     return
   end
@@ -12,7 +13,19 @@ function refresh_route_renderings(record, player_index)
   local surface = record.entity.surface
   local previous_target = record.entity
   local route_color = record.manual_loop and PATROL_ROUTE_COLOR or ROUTE_COLOR
-  for _, destination in ipairs(destinations) do
+  local first_index = 1
+  if loop_destinations and #active_destinations > 0 then
+    for index, waypoint in ipairs(loop_destinations) do
+      if distance_squared(waypoint, active_destinations[1])
+        <= WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS then
+        first_index = index
+        break
+      end
+    end
+  end
+  for offset = 0, #destinations - 1 do
+    local index = (first_index + offset - 1) % #destinations + 1
+    local destination = destinations[index]
     local line = rendering.draw_line({
       color = route_color,
       width = 3,

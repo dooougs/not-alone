@@ -150,16 +150,24 @@ function update_team_mate(record, player)
       local joined_base
       -- The engine parks units near, not on, a waypoint; a finished move
       -- command also counts as arrival so crowded routes cannot loop forever.
-      while #manual_destinations > 0
-        and (distance_squared(character.position, manual_destinations[1])
+      while #manual_destinations > 0 do
+        local waypoint = manual_destinations[1]
+        local waypoint_base = record.kind == "soldier"
+          and find_base_at(character.surface, waypoint)
+        local reached = waypoint_base and waypoint_base.force == character.force
+          and base_contains_position(waypoint_base, character.position, 0.5)
+          or distance_squared(character.position, waypoint)
             <= WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS
           or (record.command_kind == "move"
-            and not character.commandable.has_command)) do
+            and not character.commandable.has_command)
+        if not reached then
+          break
+        end
         local arrived_at = manual_destinations[1]
         table.remove(manual_destinations, 1)
         route_changed = true
         if record.kind == "soldier" then
-          local base = find_base_at(character.surface, arrived_at)
+          local base = waypoint_base or find_base_at(character.surface, arrived_at)
           if base and base.force == character.force then
             record.home_base = base
             record.home_base_type = get_base_type(base)

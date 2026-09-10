@@ -50,8 +50,8 @@ REPAIR_PACK_ITEM_NAME = "repair-pack"
 MINING_ANIMATION_FRAMES = 51
 MINING_ANIMATION_SPEED = 51 / 60
 HIDDEN_TEAM_MATE_NAME = "not-alone-team-mate-hidden"
-ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.9}
-MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.9}
+ROUTE_COLOR = {r = 0.2, g = 0.7, b = 1, a = 0.15}
+MARK_COLOR = {r = 1, g = 0.6, b = 0, a = 0.15}
 INVENTORY_ICON_SCALE = 0.5
 INVENTORY_ICON_SPACING = 0.65
 TEAM_MATE_NAME = "not-alone-team-mate"

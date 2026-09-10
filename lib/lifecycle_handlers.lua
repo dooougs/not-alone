@@ -46,10 +46,11 @@ function notalone.on_script_path_request_finished(event)
           abandon_vehicle_travel(record)
         else
           record.vehicle_path = event.path
-          record.vehicle_path_index = 1
+          record.vehicle_path_index = nearest_vehicle_path_index(event.path, record.vehicle_entity)
           record.vehicle_stuck_ticks = 0
           record.vehicle_blocked_ticks = 0
           record.vehicle_last_position = nil
+          record.vehicle_patrol_rolling = nil
           record.vehicle_state = "driving-car"
         end
         return

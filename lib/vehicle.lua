@@ -277,6 +277,7 @@ function finish_vehicle_travel(record)
   record.vehicle_path_request_id = nil
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
+  record.vehicle_patrol_rolling = nil
   record.vehicle_item_name = nil
   return false
 end
@@ -300,6 +301,7 @@ function abandon_vehicle_travel(record)
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
   record.vehicle_collision_count = nil
+  record.vehicle_patrol_rolling = nil
   record.vehicle_failed_destination = failed_destination
   record.vehicle_failed_destination_tick = failed_destination and game.tick or nil
   return false
@@ -524,11 +526,28 @@ function continue_patrol_vehicle_travel(record)
   record.vehicle_path_index = nil
   record.vehicle_stuck_ticks = 0
   record.vehicle_blocked_ticks = 0
-  record.vehicle_entity.riding_state = {
-    acceleration = defines.riding.acceleration.braking,
-    direction = defines.riding.direction.straight
-  }
+  -- Keep rolling through the waypoint; the fresh path is joined at its
+  -- nearest node, so leftover momentum cannot aim at nodes behind the car.
+  record.vehicle_patrol_rolling = true
   return request_vehicle_path(record)
+end
+
+-- Joining a fresh path at its nearest node keeps a still-moving vehicle from
+-- turning back toward nodes it already passed while the path was computed.
+function nearest_vehicle_path_index(path, vehicle)
+  if not vehicle or not vehicle.valid then
+    return 1
+  end
+  local best_index = 1
+  local best_distance
+  for index, waypoint in ipairs(path) do
+    local distance = distance_squared(vehicle.position, waypoint.position or waypoint)
+    if not best_distance or distance < best_distance then
+      best_distance = distance
+      best_index = index
+    end
+  end
+  return best_index
 end
 
 -- Path plans only avoid static obstacles; moving cars and team mates need a
@@ -572,17 +591,34 @@ function steer_vehicle(record)
   end
 
   record.vehicle_path_index = record.vehicle_path_index or 1
-  while record.vehicle_path_index < #path
-    and distance_squared(
-      vehicle.position,
-      path[record.vehicle_path_index].position or path[record.vehicle_path_index]
-    ) < 9 do
+  -- Consume reached nodes, and also nearby nodes already behind the car in
+  -- route progress: an overshoot during path computation otherwise leaves
+  -- the car chasing start nodes behind it, looping back to reach them.
+  local car_progress = distance_squared(vehicle.position, record.vehicle_destination)
+  while record.vehicle_path_index < #path do
+    local node = path[record.vehicle_path_index].position
+      or path[record.vehicle_path_index]
+    local node_distance = distance_squared(vehicle.position, node)
+    if node_distance >= 9
+      and not (node_distance < 256
+        and distance_squared(node, record.vehicle_destination) > car_progress) then
+      break
+    end
     record.vehicle_path_index = record.vehicle_path_index + 1
   end
   local target_index = math.min(
     record.vehicle_path_index + CAR_PATH_LOOKAHEAD,
     #path
   )
+  -- Aim past nearby nodes: chasing a close node behind or beside the car
+  -- demands instant heading changes it can only satisfy by looping.
+  while target_index < #path
+    and distance_squared(
+      vehicle.position,
+      path[target_index].position or path[target_index]
+    ) < CAR_STEER_TARGET_MIN_DISTANCE * CAR_STEER_TARGET_MIN_DISTANCE do
+    target_index = target_index + 1
+  end
   local waypoint = path[target_index]
   local target = waypoint.position or waypoint
   local delta_x = target.x - vehicle.position.x
@@ -598,9 +634,57 @@ function steer_vehicle(record)
   end
   local acceleration = defines.riding.acceleration.accelerating
   local profile = vehicle_profile_for_entity(vehicle.name)
-  -- Cars cannot rotate while stationary: braking on a sharp heading error at
-  -- standstill deadlocks the trip before it starts. Brake only when moving.
-  if math.abs(difference) > 0.8 and math.abs(vehicle.speed or 0) > 0.05 then
+
+  -- Orbit detection: accumulate rotation while the heading error stays
+  -- sharp. A full turn without converging means the steering target sits
+  -- inside this vehicle's turning circle; stop once and restart the arc
+  -- from standstill, which has the minimum radius.
+  if not (profile and profile.uses_ground_collision == false) then
+    local last_orientation = record.vehicle_last_orientation
+    local orientation = vehicle.orientation or 0
+    if last_orientation and math.abs(difference) > 0.5 then
+      local spin = orientation - last_orientation
+      if spin > 0.5 then spin = spin - 1 elseif spin < -0.5 then spin = spin + 1 end
+      record.vehicle_turn_accum = (record.vehicle_turn_accum or 0) + math.abs(spin)
+    elseif math.abs(difference) < 0.3 then
+      record.vehicle_turn_accum = 0
+    end
+    record.vehicle_last_orientation = orientation
+    if record.vehicle_orbit_recover then
+      if math.abs(vehicle.speed or 0) < 0.02 then
+        record.vehicle_orbit_recover = nil
+        record.vehicle_turn_accum = 0
+      else
+        vehicle.riding_state = {
+          acceleration = defines.riding.acceleration.braking,
+          direction = defines.riding.direction.straight
+        }
+        return true
+      end
+    elseif (record.vehicle_turn_accum or 0) >= CAR_ORBIT_LIMIT then
+      record.vehicle_orbit_recover = true
+      vehicle.riding_state = {
+        acceleration = defines.riding.acceleration.braking,
+        direction = defines.riding.direction.straight
+      }
+      return true
+    end
+  end
+
+  -- Sharp turn: hold a low steady speed. Braking to a stop deadlocks (cars
+  -- cannot rotate stationary) and brake/accelerate dithering crawls through
+  -- a wide sloppy loop; a constant low speed gives the tightest arc.
+  if math.abs(difference) > 0.8 then
+    if math.abs(vehicle.speed or 0) > CAR_TURN_MAX_SPEED then
+      acceleration = defines.riding.acceleration.braking
+    end
+  end
+  -- Slow into patrol corners so the arrival overshoot stays inside the
+  -- car's turning circle instead of forcing a loop to recover.
+  if record.manual_loop
+    and distance_squared(vehicle.position, record.vehicle_destination)
+      <= PATROL_CORNER_APPROACH_DISTANCE * PATROL_CORNER_APPROACH_DISTANCE
+    and math.abs(vehicle.speed or 0) > PATROL_TRANSIT_MAX_SPEED then
     acceleration = defines.riding.acceleration.braking
   end
   if profile and profile.uses_ground_collision == false then
@@ -739,13 +823,23 @@ update_vehicle_travel = function(record)
     return request_vehicle_path(record)
   elseif record.vehicle_state == "waiting-for-car-path" then
     -- Kill leftover momentum so a post-collision car stops ramming while the
-    -- replacement route is computed.
+    -- replacement route is computed. Patrol chaining instead coasts through
+    -- the waypoint at a capped speed for a smooth transition.
     local vehicle = record.vehicle_entity
     if vehicle and vehicle.valid then
-      vehicle.riding_state = {
-        acceleration = defines.riding.acceleration.braking,
-        direction = defines.riding.direction.straight
-      }
+      if record.vehicle_patrol_rolling then
+        vehicle.riding_state = {
+          acceleration = math.abs(vehicle.speed or 0) > PATROL_TRANSIT_MAX_SPEED
+            and defines.riding.acceleration.braking
+            or defines.riding.acceleration.nothing,
+          direction = defines.riding.direction.straight
+        }
+      else
+        vehicle.riding_state = {
+          acceleration = defines.riding.acceleration.braking,
+          direction = defines.riding.direction.straight
+        }
+      end
     end
     -- A reload discards pending pathfinder callbacks; re-request instead of
     -- waiting forever on a request id that can no longer answer.
