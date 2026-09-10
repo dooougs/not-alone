@@ -67,7 +67,7 @@ end
 move_team_mate = function(record, destination, stopping_distance)
   if not record.vehicle_state
     and distance_squared(record.entity.position, destination)
-      >= vehicle_minimum_distance() * vehicle_minimum_distance()
+      >= vehicle_minimum_distance(record) * vehicle_minimum_distance(record)
     and begin_vehicle_travel(record, destination) then
     return
   end

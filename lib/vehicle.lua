@@ -109,7 +109,17 @@ function find_vehicle_fuel_item(record, item_name)
   return best_name
 end
 
-function vehicle_minimum_distance()
+function vehicle_arrival_radius(record)
+  if record and record.kind == "soldier" and record.manual_loop then
+    return PATROL_VEHICLE_ARRIVAL_RADIUS
+  end
+  return CAR_ARRIVAL_RADIUS
+end
+
+function vehicle_minimum_distance(record)
+  if record and record.kind == "soldier" and record.manual_loop then
+    return PATROL_VEHICLE_MINIMUM_DISTANCE
+  end
   local setting = settings.global["not-alone-car-minimum-distance"]
   -- Trips shorter than the arrival radius end the moment the car is boarded,
   -- looping team mates in and out of cars forever; enforce a real drive.
@@ -317,7 +327,7 @@ function request_vehicle_path(record)
       start = position_table(vehicle.position),
       goal = destination,
       force = vehicle.force,
-      radius = CAR_ARRIVAL_RADIUS,
+      radius = vehicle_arrival_radius(record),
       can_open_gates = false,
       pathfind_flags = {cache = false},
       entity_to_ignore = vehicle
@@ -429,7 +439,7 @@ function begin_vehicle_travel(record, destination)
   end
   local inventory = get_vehicle_inventory(record)
   if distance_squared(record.entity.position, destination)
-      < vehicle_minimum_distance() * vehicle_minimum_distance() then
+      < vehicle_minimum_distance(record) * vehicle_minimum_distance(record) then
     return false
   end
   local item_name = find_carried_vehicle_item(record)
@@ -478,7 +488,7 @@ function begin_vehicle_travel(record, destination)
   -- A boarding spot already inside the arrival radius makes the trip finish
   -- instantly; walking is the honest plan.
   if distance_squared(position, destination)
-    <= CAR_ARRIVAL_RADIUS * CAR_ARRIVAL_RADIUS then
+    <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
     return false
   end
   record.vehicle_destination = position_table(destination)
@@ -516,7 +526,7 @@ function steer_vehicle(record)
   end
   sync_team_mate_with_vehicle(record)
   if distance_squared(vehicle.position, record.vehicle_destination)
-    <= CAR_ARRIVAL_RADIUS * CAR_ARRIVAL_RADIUS then
+    <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
     record.vehicle_state = "stopping-car"
     vehicle.riding_state = {
       acceleration = defines.riding.acceleration.braking,
