@@ -1,4 +1,10 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.25
+Date: 2026-09-10
+  Bugfixes:
+    - Added a collection of Spidertron fixes covering waypoint travel, combat behavior, vehicle recovery, ammunition and fuel handling, ground collection, and prevention of abandoned vehicles.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.24
 Date: 2026-09-10
   Features:
