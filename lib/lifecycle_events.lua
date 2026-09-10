@@ -473,6 +473,47 @@ function notalone.on_selected_area(event)
     end
   end
 
+  local area = event.area
+  local click_position = {
+    x = (area.left_top.x + area.right_bottom.x) / 2,
+    y = (area.left_top.y + area.right_bottom.y) / 2
+  }
+  local nearest_waypoint
+  local nearest_distance
+  if selected_count == 0
+    and area.right_bottom.x - area.left_top.x <= WAYPOINT_SELECTION_RADIUS * 2
+    and area.right_bottom.y - area.left_top.y <= WAYPOINT_SELECTION_RADIUS * 2 then
+    for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
+      local destinations = record.manual_loop and record.manual_loop_destinations
+        or get_manual_destinations(record)
+      for _, waypoint in ipairs(destinations) do
+        local distance = distance_squared(click_position, waypoint)
+        if distance <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS
+          and (not nearest_distance or distance < nearest_distance) then
+          nearest_waypoint = waypoint
+          nearest_distance = distance
+        end
+      end
+    end
+  end
+  if nearest_waypoint then
+    for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
+      local destinations = record.manual_loop and record.manual_loop_destinations
+        or get_manual_destinations(record)
+      for _, waypoint in ipairs(destinations) do
+        if distance_squared(nearest_waypoint, waypoint)
+          <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS then
+          selected[record.entity.unit_number] = true
+          break
+        end
+      end
+    end
+    selected_count = 0
+    for _ in pairs(selected) do
+      selected_count = selected_count + 1
+    end
+  end
+
   storage.not_alone_selected_team_mates = storage.not_alone_selected_team_mates or {}
   storage.not_alone_selected_team_mates[event.player_index] = selected
   local player = game.get_player(event.player_index)
