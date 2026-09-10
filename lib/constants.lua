@@ -38,7 +38,7 @@ constants.CAR_TURN_MAX_SPEED = 0.06
 -- vehicle then stops once and restarts its arc from standstill.
 constants.CAR_ORBIT_LIMIT = 1.0
 constants.VEHICLE_PATH_SEGMENT_DISTANCE = 256
-constants.VEHICLE_PATH_MAX_RETRIES = 3
+constants.VEHICLE_PATH_RETRY_TICKS = 120
 constants.CAR_FAILED_DESTINATION_RETRY_TICKS = 7200
 constants.CAR_AVOIDANCE_DISTANCE = 6
 constants.CAR_AVOIDANCE_PROBE_ANGLE = 0.6

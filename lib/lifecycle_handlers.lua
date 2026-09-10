@@ -43,20 +43,15 @@ function notalone.on_script_path_request_finished(event)
         record.vehicle_path_request_id = nil
         if record.vehicle_state ~= "waiting-for-car-path" then
           abandon_vehicle_travel(record)
-        elseif not event.path or #event.path == 0 then
-          record.vehicle_path_failures = (record.vehicle_path_failures or 0) + 1
-          if record.vehicle_path_failures < VEHICLE_PATH_MAX_RETRIES then
-            record.vehicle_state = "requesting-car-path"
-            request_vehicle_path(record)
-          else
-            abandon_vehicle_travel(record)
-          end
+        elseif not event.path or #event.path < 2 then
+          -- A one-node path has no forward waypoint. Keep the vehicle parked
+          -- and retry after moving obstacles have had time to clear.
+          record.vehicle_path_wait_ticks = 0
         else
           record.vehicle_path = event.path
           record.vehicle_path_index = nearest_vehicle_path_index(event.path, record.vehicle_entity)
           record.vehicle_stuck_ticks = 0
           record.vehicle_blocked_ticks = 0
-          record.vehicle_path_failures = nil
           record.vehicle_last_position = nil
           record.vehicle_patrol_rolling = nil
           record.vehicle_state = "driving-car"
@@ -376,19 +371,26 @@ function notalone.on_base_removed(event)
   unregister_base(entity)
   local surface = entity.surface
   local position = position_table(entity.position)
-  local function spill(item_name, count)
+  local function spill(item_name, count, quality)
     if count and count > 0 and prototypes.item[item_name] then
+      local stack = {
+        name = item_name,
+        count = count
+      }
+      if quality then
+        stack.quality = quality
+      end
       surface.spill_item_stack({
         position = position,
-        stack = {name = item_name, count = count}
+        stack = stack
       })
     end
   end
 
   local inventory = get_base_inventory(entity)
   if inventory then
-    for item_name, count in pairs(inventory.get_contents()) do
-      spill(item_name, count)
+    for _, item in pairs(inventory.get_contents()) do
+      spill(item.name, item.count, item.quality)
     end
   end
 

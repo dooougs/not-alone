@@ -276,7 +276,6 @@ function finish_vehicle_travel(record)
   record.vehicle_path_goal = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
-  record.vehicle_path_failures = nil
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
@@ -303,7 +302,6 @@ function abandon_vehicle_travel(record)
   record.vehicle_path_goal = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
-  record.vehicle_path_failures = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
   record.vehicle_failed_destination = failed_destination
@@ -866,7 +864,7 @@ update_vehicle_travel = function(record)
     -- A reload discards pending pathfinder callbacks; re-request instead of
     -- waiting forever on a request id that can no longer answer.
     record.vehicle_path_wait_ticks = (record.vehicle_path_wait_ticks or 0) + UPDATE_INTERVAL
-    if record.vehicle_path_wait_ticks > 600 then
+    if record.vehicle_path_wait_ticks > VEHICLE_PATH_RETRY_TICKS then
       record.vehicle_path_wait_ticks = 0
       record.vehicle_state = "requesting-car-path"
       return request_vehicle_path(record)

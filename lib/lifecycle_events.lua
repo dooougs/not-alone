@@ -467,7 +467,7 @@ function notalone.on_selected_area(event)
 
   local owned_team_mates = {}
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-    if record.entity.valid then
+    if record.kind == "soldier" and record.entity.valid then
       owned_team_mates[record.entity.unit_number] = true
     end
   end
@@ -492,8 +492,10 @@ function notalone.on_selected_area(event)
     and area.right_bottom.x - area.left_top.x <= WAYPOINT_SELECTION_RADIUS * 2
     and area.right_bottom.y - area.left_top.y <= WAYPOINT_SELECTION_RADIUS * 2 then
     for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-      local destinations = record.manual_loop and record.manual_loop_destinations
+      local destinations = record.kind == "soldier"
+        and (record.manual_loop and record.manual_loop_destinations
         or get_manual_destinations(record)
+        ) or {}
       for _, waypoint in ipairs(destinations) do
         local distance = distance_squared(click_position, waypoint)
         if distance <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS
@@ -506,8 +508,10 @@ function notalone.on_selected_area(event)
   end
   if nearest_waypoint then
     for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-      local destinations = record.manual_loop and record.manual_loop_destinations
+      local destinations = record.kind == "soldier"
+        and (record.manual_loop and record.manual_loop_destinations
         or get_manual_destinations(record)
+        ) or {}
       for _, waypoint in ipairs(destinations) do
         if distance_squared(nearest_waypoint, waypoint)
           <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS then

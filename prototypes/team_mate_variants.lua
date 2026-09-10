@@ -184,26 +184,19 @@ for _, kind in pairs({"miner", "builder", "carrier"}) do
 end
 data:extend(soldier_prototypes)
 
-local team_mate_filter_names = {
-	"not-alone-team-mate",
-	"not-alone-team-mate-hidden",
-	"not-alone-team-mate-fists",
-	"not-alone-team-mate-miner",
-	"not-alone-team-mate-builder",
-	"not-alone-team-mate-carrier"
-}
+local soldier_filter_names = {"not-alone-team-mate-fists"}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
-	table.insert(team_mate_filter_names, "not-alone-team-mate-" .. weapon.suffix)
+	table.insert(soldier_filter_names, "not-alone-team-mate-" .. weapon.suffix)
 end
 for _, suffix in pairs({"armor-heavy", "armor-power"}) do
 	for _, weapon in pairs(SOLDIER_WEAPONS) do
-		table.insert(team_mate_filter_names,
+		table.insert(soldier_filter_names,
 			"not-alone-team-mate-" .. weapon.suffix .. "-" .. suffix)
 	end
-	table.insert(team_mate_filter_names, "not-alone-team-mate-fists-" .. suffix)
+	table.insert(soldier_filter_names, "not-alone-team-mate-fists-" .. suffix)
 end
 for _, name in pairs(mech_unit_names) do
-	table.insert(team_mate_filter_names, name)
+	table.insert(soldier_filter_names, name)
 end
 
 local command_tool = {
@@ -230,13 +223,13 @@ local command_tool = {
 	select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = team_mate_filter_names,
+		entity_filters = soldier_filter_names,
 		cursor_box_type = "entity"
 	},
 	alt_select = {
 		border_color = {0.2, 1, 0.2},
 		mode = {"any-entity"},
-		entity_filters = team_mate_filter_names,
+		entity_filters = soldier_filter_names,
 		cursor_box_type = "entity"
 	},
 	reverse_select = {
