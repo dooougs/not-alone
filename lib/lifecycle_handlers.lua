@@ -41,14 +41,22 @@ function notalone.on_script_path_request_finished(event)
     for _, record in pairs(team_mates) do
       if record.vehicle_path_request_id == event.id then
         record.vehicle_path_request_id = nil
-        if record.vehicle_state ~= "waiting-for-car-path"
-          or not event.path or #event.path == 0 then
+        if record.vehicle_state ~= "waiting-for-car-path" then
           abandon_vehicle_travel(record)
+        elseif not event.path or #event.path == 0 then
+          record.vehicle_path_failures = (record.vehicle_path_failures or 0) + 1
+          if record.vehicle_path_failures < VEHICLE_PATH_MAX_RETRIES then
+            record.vehicle_state = "requesting-car-path"
+            request_vehicle_path(record)
+          else
+            abandon_vehicle_travel(record)
+          end
         else
           record.vehicle_path = event.path
           record.vehicle_path_index = nearest_vehicle_path_index(event.path, record.vehicle_entity)
           record.vehicle_stuck_ticks = 0
           record.vehicle_blocked_ticks = 0
+          record.vehicle_path_failures = nil
           record.vehicle_last_position = nil
           record.vehicle_patrol_rolling = nil
           record.vehicle_state = "driving-car"

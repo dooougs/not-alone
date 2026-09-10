@@ -273,8 +273,10 @@ function finish_vehicle_travel(record)
     and game.tick or nil
   record.vehicle_abandoned = nil
   record.vehicle_destination = nil
+  record.vehicle_path_goal = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
+  record.vehicle_path_failures = nil
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
@@ -298,8 +300,10 @@ function abandon_vehicle_travel(record)
   restore_vehicle_team_mate(record)
   record.vehicle_state = nil
   record.vehicle_destination = nil
+  record.vehicle_path_goal = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
+  record.vehicle_path_failures = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
   record.vehicle_failed_destination = failed_destination
@@ -313,6 +317,16 @@ function request_vehicle_path(record)
   if not vehicle or not vehicle.valid or not destination then
     return abandon_vehicle_travel(record)
   end
+  local goal = position_table(destination)
+  local delta_x = destination.x - vehicle.position.x
+  local delta_y = destination.y - vehicle.position.y
+  local distance = math.sqrt(delta_x * delta_x + delta_y * delta_y)
+  if distance > VEHICLE_PATH_SEGMENT_DISTANCE then
+    local scale = VEHICLE_PATH_SEGMENT_DISTANCE / distance
+    goal.x = vehicle.position.x + delta_x * scale
+    goal.y = vehicle.position.y + delta_y * scale
+  end
+  record.vehicle_path_goal = goal
   local ok, request_id = pcall(function()
     local box = vehicle.prototype.collision_box
     local profile = vehicle_profile_for_entity(vehicle.name)
@@ -327,7 +341,7 @@ function request_vehicle_path(record)
       },
       collision_mask = vehicle.prototype.collision_mask,
       start = position_table(vehicle.position),
-      goal = destination,
+      goal = goal,
       force = vehicle.force,
       radius = vehicle_arrival_radius(record),
       can_open_gates = false,
@@ -577,6 +591,14 @@ function steer_vehicle(record)
     return abandon_vehicle_travel(record)
   end
   sync_team_mate_with_vehicle(record)
+  local path_goal = record.vehicle_path_goal or record.vehicle_destination
+  if path_goal ~= record.vehicle_destination
+    and distance_squared(vehicle.position, path_goal)
+      <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
+    record.vehicle_path = nil
+    record.vehicle_path_index = nil
+    return request_vehicle_path(record)
+  end
   if distance_squared(vehicle.position, record.vehicle_destination)
     <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
     if continue_patrol_vehicle_travel(record) then
