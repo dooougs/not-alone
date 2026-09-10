@@ -47,6 +47,57 @@ function migrate_car_minimum_distance()
   storage.not_alone_car_minimum_distance_migration = 2
 end
 
+-- Loops ordered before the full-route fix flagged only some squad members:
+-- detection compared the live queue, so anyone past waypoint one missed out.
+-- Soldiers whose remaining waypoints all lie on a squad-mate's loop adopt it.
+function repair_manual_loops()
+  if storage.not_alone_manual_loop_repair == 1 then
+    return
+  end
+  storage.not_alone_manual_loop_repair = 1
+  local radius = WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS
+  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
+    local loop_routes = {}
+    for _, record in pairs(team_mates) do
+      if record.kind == "soldier" and record.manual_loop then
+        local route = get_manual_route(record)
+        if #route > 0 then
+          loop_routes[#loop_routes + 1] = route
+        end
+      end
+    end
+    for _, record in pairs(team_mates) do
+      local queue = record.manual_destinations or {}
+      if record.kind == "soldier" and not record.manual_loop and #queue > 0 then
+        for _, route in ipairs(loop_routes) do
+          local all_on_route = true
+          for _, waypoint in ipairs(queue) do
+            local on_route = false
+            for _, stop in ipairs(route) do
+              if distance_squared(waypoint, stop) <= radius then
+                on_route = true
+                break
+              end
+            end
+            if not on_route then
+              all_on_route = false
+              break
+            end
+          end
+          if all_on_route then
+            record.manual_loop = true
+            record.manual_route = {}
+            for _, stop in ipairs(route) do
+              record.manual_route[#record.manual_route + 1] = {x = stop.x, y = stop.y}
+            end
+            break
+          end
+        end
+      end
+    end
+  end
+end
+
 function rescue_immobile_team_mate(record)
   local entity = record.entity
   if record.command_kind ~= "move" and record.command_kind ~= "attack" then
@@ -172,6 +223,8 @@ function update_team_mate(record, player)
             record.home_base = base
             record.home_base_type = get_base_type(base)
             record.pending_home_base = nil
+            record.manual_loop = nil
+            record.manual_route = nil
             manual_destinations = {}
             record.manual_destinations = manual_destinations
             joined_base = base
@@ -181,16 +234,13 @@ function update_team_mate(record, player)
 
       if #manual_destinations == 0
         and not joined_base
-        and record.manual_loop
-        and record.manual_loop_destinations then
-        manual_destinations = {}
-        for _, waypoint in ipairs(record.manual_loop_destinations) do
+        and record.manual_loop then
+        for _, waypoint in ipairs(get_manual_route(record)) do
           manual_destinations[#manual_destinations + 1] = {
             x = waypoint.x,
             y = waypoint.y
           }
         end
-        record.manual_destinations = manual_destinations
         record.manual_hold = nil
       end
 
@@ -229,7 +279,7 @@ function update_team_mate(record, player)
       record.manual_destinations = {}
       record.manual_surface_index = nil
       record.manual_loop = nil
-      record.manual_loop_destinations = nil
+      record.manual_route = nil
       stop_team_mate(record)
       destroy_route_renderings(record)
     end
@@ -313,6 +363,7 @@ function notalone.on_configuration_changed()
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
   reset_stale_vehicle_travel()
+  repair_manual_loops()
   for _, surface in pairs(game.surfaces) do
     spawn_initial_crash_ships(surface)
   end
@@ -466,18 +517,28 @@ function notalone.on_selected_area(event)
   end
 
   local owned_team_mates = {}
+  local owned_vehicles = {}
   for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
     if record.kind == "soldier" and record.entity.valid then
       owned_team_mates[record.entity.unit_number] = true
+      -- A Soldier travelling by vehicle is a hidden unit; the visible,
+      -- selectable entity is the vehicle itself.
+      if record.vehicle_entity and record.vehicle_entity.valid then
+        owned_vehicles[record.vehicle_entity.unit_number] = record.entity.unit_number
+      end
     end
   end
 
   local selected = {}
   local selected_count = 0
   for _, entity in pairs(event.entities) do
-    if entity.valid and owned_team_mates[entity.unit_number] then
-      selected[entity.unit_number] = true
-      selected_count = selected_count + 1
+    if entity.valid then
+      local team_mate_id = owned_team_mates[entity.unit_number] and entity.unit_number
+        or owned_vehicles[entity.unit_number]
+      if team_mate_id and not selected[team_mate_id] then
+        selected[team_mate_id] = true
+        selected_count = selected_count + 1
+      end
     end
   end
 
@@ -486,17 +547,22 @@ function notalone.on_selected_area(event)
     x = (area.left_top.x + area.right_bottom.x) / 2,
     y = (area.left_top.y + area.right_bottom.y) / 2
   }
+  -- The full route covers loops and part-travelled paths; the live queue is
+  -- the fallback for routes issued before routes were recorded.
+  local function soldier_waypoints(record)
+    if record.kind ~= "soldier" then
+      return {}
+    end
+    local route = get_manual_route(record)
+    return #route > 0 and route or get_manual_destinations(record)
+  end
   local nearest_waypoint
   local nearest_distance
   if selected_count == 0
     and area.right_bottom.x - area.left_top.x <= WAYPOINT_SELECTION_RADIUS * 2
     and area.right_bottom.y - area.left_top.y <= WAYPOINT_SELECTION_RADIUS * 2 then
     for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-      local destinations = record.kind == "soldier"
-        and (record.manual_loop and record.manual_loop_destinations
-        or get_manual_destinations(record)
-        ) or {}
-      for _, waypoint in ipairs(destinations) do
+      for _, waypoint in ipairs(soldier_waypoints(record)) do
         local distance = distance_squared(click_position, waypoint)
         if distance <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS
           and (not nearest_distance or distance < nearest_distance) then
@@ -508,11 +574,7 @@ function notalone.on_selected_area(event)
   end
   if nearest_waypoint then
     for _, record in pairs(storage.not_alone_team_mates[event.player_index] or {}) do
-      local destinations = record.kind == "soldier"
-        and (record.manual_loop and record.manual_loop_destinations
-        or get_manual_destinations(record)
-        ) or {}
-      for _, waypoint in ipairs(destinations) do
+      for _, waypoint in ipairs(soldier_waypoints(record)) do
         if distance_squared(nearest_waypoint, waypoint)
           <= WAYPOINT_SELECTION_RADIUS * WAYPOINT_SELECTION_RADIUS then
           selected[record.entity.unit_number] = true
@@ -650,34 +712,28 @@ function order_selected_team_mates(event, append)
       record.manual_hold = nil
       record.manual_wander = nil
       local manual_destinations = get_manual_destinations(record)
+      local route = get_manual_route(record)
       if not append then
         manual_destinations = {}
         record.manual_destinations = manual_destinations
+        route = {}
+        record.manual_route = route
       end
       manual_destinations[#manual_destinations + 1] = {
         x = destination.x,
         y = destination.y
       }
-      if #manual_destinations >= 2 then
-        local first = manual_destinations[1]
-        local last = manual_destinations[#manual_destinations]
-        record.manual_loop = distance_squared(first, last)
+      route[#route + 1] = {
+        x = destination.x,
+        y = destination.y
+      }
+      -- A waypoint placed back on the route's start closes it into a loop.
+      -- The full route is compared, not the live queue: the first waypoint
+      -- may already be consumed by the time the loop is closed.
+      record.manual_loop = #route >= 2
+        and distance_squared(route[1], route[#route])
           <= WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS
-        if record.manual_loop then
-          record.manual_loop_destinations = {}
-          for _, waypoint in ipairs(manual_destinations) do
-            record.manual_loop_destinations[#record.manual_loop_destinations + 1] = {
-              x = waypoint.x,
-              y = waypoint.y
-            }
-          end
-        else
-          record.manual_loop_destinations = nil
-        end
-      else
-        record.manual_loop = nil
-        record.manual_loop_destinations = nil
-      end
+        or nil
       record.manual_surface_index = event.surface.index
       if #manual_destinations == 1 then
         move_team_mate_toward_destination(record, destination)

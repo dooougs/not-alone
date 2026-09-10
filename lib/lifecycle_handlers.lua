@@ -131,6 +131,8 @@ function notalone.on_update(event)
     storage.not_alone_next_reconcile_tick = game.tick + ORPHAN_RECONCILE_INTERVAL
     reconcile_orphaned_team_mates()
   end
+  -- Config-change does not fire for code-only updates; repair lazily too.
+  repair_manual_loops()
 
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
@@ -171,7 +173,7 @@ function notalone.on_entity_damaged(event)
   -- repeated impacts get out and let default travel planning start over.
   -- Collisions accumulate per trip so path resets cannot mask a crash loop.
   local vehicle_profile = vehicle_profile_for_entity(entity.name)
-  if vehicle_profile and vehicle_profile.uses_ground_collision ~= false
+  if vehicle_profile and get_vehicle_behavior(entity.name).ground_collision
     and event.damage_type.name == "impact" then
     local record = find_vehicle_record(entity.unit_number)
     if record and record.vehicle_entity_unit_number == entity.unit_number

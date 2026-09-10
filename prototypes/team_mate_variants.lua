@@ -198,6 +198,14 @@ end
 for _, name in pairs(mech_unit_names) do
 	table.insert(soldier_filter_names, name)
 end
+-- Soldiers travelling by vehicle are hidden units riding these; selecting
+-- the vehicle must select the Soldier inside it.
+for _, vehicle_name in pairs({"car", "tank", "spidertron"}) do
+	if data.raw["car"] and data.raw["car"][vehicle_name]
+		or data.raw["spider-vehicle"] and data.raw["spider-vehicle"][vehicle_name] then
+		table.insert(soldier_filter_names, vehicle_name)
+	end
+end
 
 local command_tool = {
 	type = "selection-tool",

@@ -5,6 +5,14 @@ function get_manual_destinations(record)
   return record.manual_destinations
 end
 
+-- Full ordered route as commanded; manual_destinations is the remaining queue.
+function get_manual_route(record)
+  -- Older saves stored the full route only for loops.
+  record.manual_route = record.manual_route or record.manual_loop_destinations or {}
+  record.manual_loop_destinations = nil
+  return record.manual_route
+end
+
 function get_vehicle_inventory(record)
   if not record.vehicle_inventory or not record.vehicle_inventory.valid then
     record.vehicle_inventory = game.create_inventory(1)
@@ -36,6 +44,68 @@ function vehicle_profile_for_entity(entity_name)
     end
   end
   return nil
+end
+
+-- Generic vehicle behaviour with per-type specialisations. Ground vehicles
+-- (cars, tanks) steer via riding_state, need clear boarding space, and treat
+-- collisions as routing failures. Spider vehicles walk over obstacles with
+-- native autopilot and ignore ground collision entirely.
+local GROUND_VEHICLE_BEHAVIOR = {
+  ground_collision = true,
+  needs_deployment_clearance = true,
+  needs_path = true,
+  stop = function(record, vehicle)
+    vehicle.riding_state = {
+      acceleration = defines.riding.acceleration.braking,
+      direction = defines.riding.direction.straight
+    }
+  end,
+  coast = function(record, vehicle)
+    vehicle.riding_state = {
+      acceleration = math.abs(vehicle.speed or 0) > PATROL_TRANSIT_MAX_SPEED
+        and defines.riding.acceleration.braking
+        or defines.riding.acceleration.nothing,
+      direction = defines.riding.direction.straight
+    }
+  end,
+  drive = function(record, vehicle, path)
+    return steer_ground_vehicle(record, vehicle, path)
+  end
+}
+
+local SPIDER_VEHICLE_BEHAVIOR = {
+  ground_collision = false,
+  needs_deployment_clearance = false,
+  -- The engine pathfinder mostly returns useless one-node paths for the
+  -- near-empty spider collision mask; native autopilot needs no path anyway.
+  needs_path = false,
+  stop = function(record, vehicle)
+    vehicle.autopilot_destination = nil
+  end,
+  coast = function(record, vehicle)
+    -- Spider legs stop instantly; nothing to damp while a path is pending.
+  end,
+  drive = function(record, vehicle, path)
+    vehicle.autopilot_destination = record.vehicle_destination
+    return true
+  end
+}
+
+function get_vehicle_behavior(entity_name)
+  local profile = vehicle_profile_for_entity(entity_name)
+  if profile and profile.uses_ground_collision == false then
+    return SPIDER_VEHICLE_BEHAVIOR
+  end
+  return GROUND_VEHICLE_BEHAVIOR
+end
+
+function get_vehicle_behavior_for_item(record)
+  local item_name = record.vehicle_item_name or find_carried_vehicle_item(record)
+  local profile = vehicle_profile_for_item(record, item_name)
+  if profile and profile.uses_ground_collision == false then
+    return SPIDER_VEHICLE_BEHAVIOR
+  end
+  return GROUND_VEHICLE_BEHAVIOR
 end
 
 function find_carried_vehicle_item(record)
@@ -113,15 +183,22 @@ function vehicle_requires_fuel(record, item_name)
   return prototype and prototype.burner_prototype ~= nil
 end
 
+-- A multi-waypoint route drives waypoint to waypoint: corners need the tight
+-- patrol radius and short-leg minimum, not the long-haul defaults.
+function vehicle_on_route(record)
+  return record ~= nil and record.kind == "soldier"
+    and (record.manual_loop or #(record.manual_destinations or {}) > 1)
+end
+
 function vehicle_arrival_radius(record)
-  if record and record.kind == "soldier" and record.manual_loop then
+  if vehicle_on_route(record) then
     return PATROL_VEHICLE_ARRIVAL_RADIUS
   end
   return CAR_ARRIVAL_RADIUS
 end
 
 function vehicle_minimum_distance(record)
-  if record and record.kind == "soldier" and record.manual_loop then
+  if vehicle_on_route(record) then
     return PATROL_VEHICLE_MINIMUM_DISTANCE
   end
   local setting = settings.global["not-alone-car-minimum-distance"]
@@ -151,6 +228,9 @@ end
 -- The car footprint alone is not enough clearance: boarding beside other
 -- cars or team mates causes instant collisions on departure.
 function deployment_position_is_clear(record, surface, position)
+  if not get_vehicle_behavior_for_item(record).needs_deployment_clearance then
+    return true
+  end
   for _, nearby in pairs(surface.find_entities_filtered({
     position = position,
     radius = CAR_DEPLOYMENT_CLEARANCE,
@@ -278,6 +358,7 @@ function finish_vehicle_travel(record)
   record.vehicle_abandoned = nil
   record.vehicle_destination = nil
   record.vehicle_path_goal = nil
+  record.vehicle_path_goal_is_segment = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
   record.vehicle_deployment_position = nil
@@ -304,6 +385,7 @@ function abandon_vehicle_travel(record)
   record.vehicle_state = nil
   record.vehicle_destination = nil
   record.vehicle_path_goal = nil
+  record.vehicle_path_goal_is_segment = nil
   record.vehicle_path = nil
   record.vehicle_path_request_id = nil
   record.vehicle_collision_count = nil
@@ -319,11 +401,21 @@ function request_vehicle_path(record)
   if not vehicle or not vehicle.valid or not destination then
     return abandon_vehicle_travel(record)
   end
+  if not get_vehicle_behavior(vehicle.name).needs_path then
+    record.vehicle_path = {position_table(destination)}
+    record.vehicle_path_index = 1
+    record.vehicle_path_goal = nil
+    record.vehicle_path_goal_is_segment = nil
+    record.vehicle_patrol_rolling = nil
+    record.vehicle_state = "driving-car"
+    return true
+  end
   local goal = position_table(destination)
   local delta_x = destination.x - vehicle.position.x
   local delta_y = destination.y - vehicle.position.y
   local distance = math.sqrt(delta_x * delta_x + delta_y * delta_y)
-  if distance > VEHICLE_PATH_SEGMENT_DISTANCE then
+  record.vehicle_path_goal_is_segment = distance > VEHICLE_PATH_SEGMENT_DISTANCE
+  if record.vehicle_path_goal_is_segment then
     local scale = VEHICLE_PATH_SEGMENT_DISTANCE / distance
     goal.x = vehicle.position.x + delta_x * scale
     goal.y = vehicle.position.y + delta_y * scale
@@ -331,9 +423,8 @@ function request_vehicle_path(record)
   record.vehicle_path_goal = goal
   local ok, request_id = pcall(function()
     local box = vehicle.prototype.collision_box
-    local profile = vehicle_profile_for_entity(vehicle.name)
-    local clearance = profile and profile.uses_ground_collision == false
-      and 0 or CAR_PATH_CLEARANCE
+    local clearance = get_vehicle_behavior(vehicle.name).ground_collision
+      and CAR_PATH_CLEARANCE or 0
     return vehicle.surface.request_path({
       -- Grown box keeps planned routes clear of buildings the car would
       -- clip while turning.
@@ -519,7 +610,7 @@ function begin_vehicle_travel(record, destination)
 end
 
 function continue_patrol_vehicle_travel(record)
-  if not record.manual_loop or not record.vehicle_destination then
+  if not record.vehicle_destination then
     return false
   end
   local destinations = get_manual_destinations(record)
@@ -527,12 +618,17 @@ function continue_patrol_vehicle_travel(record)
     return false
   end
   if distance_squared(record.vehicle_destination, destinations[1])
-    > WAYPOINT_ARRIVAL_RADIUS * WAYPOINT_ARRIVAL_RADIUS then
+    > vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
+    return false
+  end
+  -- The final waypoint of a one-way route is handled on foot so base joining
+  -- and end-of-route behaviour stay in one place.
+  if #destinations == 1 and not record.manual_loop then
     return false
   end
   table.remove(destinations, 1)
   if #destinations == 0 then
-    for _, waypoint in ipairs(record.manual_loop_destinations or {}) do
+    for _, waypoint in ipairs(get_manual_route(record)) do
       destinations[#destinations + 1] = position_table(waypoint)
     end
   end
@@ -595,9 +691,11 @@ function steer_vehicle(record)
     return abandon_vehicle_travel(record)
   end
   sync_team_mate_with_vehicle(record)
-  local path_goal = record.vehicle_path_goal or record.vehicle_destination
-  if path_goal ~= record.vehicle_destination
-    and distance_squared(vehicle.position, path_goal)
+  local behavior = get_vehicle_behavior(vehicle.name)
+  -- A segmented long route finished its current leg: plan the next one.
+  if record.vehicle_path_goal_is_segment
+    and record.vehicle_path_goal
+    and distance_squared(vehicle.position, record.vehicle_path_goal)
       <= vehicle_arrival_radius(record) * vehicle_arrival_radius(record) then
     record.vehicle_path = nil
     record.vehicle_path_index = nil
@@ -609,13 +707,13 @@ function steer_vehicle(record)
       return true
     end
     record.vehicle_state = "stopping-car"
-    vehicle.riding_state = {
-      acceleration = defines.riding.acceleration.braking,
-      direction = defines.riding.direction.straight
-    }
+    behavior.stop(record, vehicle)
     return true
   end
+  return behavior.drive(record, vehicle, path)
+end
 
+function steer_ground_vehicle(record, vehicle, path)
   record.vehicle_path_index = record.vehicle_path_index or 1
   -- Consume reached nodes, and also nearby nodes already behind the car in
   -- route progress: an overshoot during path computation otherwise leaves
@@ -659,13 +757,12 @@ function steer_vehicle(record)
     direction = defines.riding.direction.left
   end
   local acceleration = defines.riding.acceleration.accelerating
-  local profile = vehicle_profile_for_entity(vehicle.name)
 
   -- Orbit detection: accumulate rotation while the heading error stays
   -- sharp. A full turn without converging means the steering target sits
   -- inside this vehicle's turning circle; stop once and restart the arc
   -- from standstill, which has the minimum radius.
-  if not (profile and profile.uses_ground_collision == false) then
+  do
     local last_orientation = record.vehicle_last_orientation
     local orientation = vehicle.orientation or 0
     if last_orientation and math.abs(difference) > 0.5 then
@@ -705,17 +802,15 @@ function steer_vehicle(record)
       acceleration = defines.riding.acceleration.braking
     end
   end
-  -- Slow into patrol corners so the arrival overshoot stays inside the
+  -- Slow into route corners so the arrival overshoot stays inside the
   -- car's turning circle instead of forcing a loop to recover.
-  if record.manual_loop
+  if vehicle_on_route(record)
     and distance_squared(vehicle.position, record.vehicle_destination)
       <= PATROL_CORNER_APPROACH_DISTANCE * PATROL_CORNER_APPROACH_DISTANCE
     and math.abs(vehicle.speed or 0) > PATROL_TRANSIT_MAX_SPEED then
     acceleration = defines.riding.acceleration.braking
   end
-  if profile and profile.uses_ground_collision == false then
-    record.vehicle_blocked_ticks = 0
-  elseif vehicle_probe_is_clear(record, vehicle, current, 0) then
+  if vehicle_probe_is_clear(record, vehicle, current, 0) then
     record.vehicle_blocked_ticks = 0
   else
     local left_clear = vehicle_probe_is_clear(record, vehicle, current, -CAR_AVOIDANCE_PROBE_ANGLE)
@@ -854,18 +949,11 @@ update_vehicle_travel = function(record)
     -- the waypoint at a capped speed for a smooth transition.
     local vehicle = record.vehicle_entity
     if vehicle and vehicle.valid then
+      local behavior = get_vehicle_behavior(vehicle.name)
       if record.vehicle_patrol_rolling then
-        vehicle.riding_state = {
-          acceleration = math.abs(vehicle.speed or 0) > PATROL_TRANSIT_MAX_SPEED
-            and defines.riding.acceleration.braking
-            or defines.riding.acceleration.nothing,
-          direction = defines.riding.direction.straight
-        }
+        behavior.coast(record, vehicle)
       else
-        vehicle.riding_state = {
-          acceleration = defines.riding.acceleration.braking,
-          direction = defines.riding.direction.straight
-        }
+        behavior.stop(record, vehicle)
       end
     end
     -- A reload discards pending pathfinder callbacks; re-request instead of
@@ -884,10 +972,7 @@ update_vehicle_travel = function(record)
     if not vehicle or not vehicle.valid then
       return abandon_vehicle_travel(record)
     end
-    vehicle.riding_state = {
-      acceleration = defines.riding.acceleration.braking,
-      direction = defines.riding.direction.straight
-    }
+    get_vehicle_behavior(vehicle.name).stop(record, vehicle)
     if math.abs(vehicle.speed or 0) < 0.05 then
       return finish_vehicle_travel(record)
     end

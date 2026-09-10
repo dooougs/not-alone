@@ -180,6 +180,7 @@ local function dispatch_record_to_base(record, base)
   record.home_base_type = nil
   record.pending_home_base = base
   record.manual_loop = nil
+  record.manual_route = nil
   record.manual_loop_destinations = nil
   record.manual_wander = nil
   record.route_rendering_suppressed = true

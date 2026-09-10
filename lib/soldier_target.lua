@@ -202,6 +202,7 @@ function replace_team_mate_entity(record, wanted)
   end
   local tag = old_entity.name_tag
   local health = old_entity.health
+  local old_unit_number = old_entity.unit_number
   destroy_color_marker(record)
   destroy_inventory_renderings(record)
   old_entity.destroy()
@@ -210,6 +211,13 @@ function replace_team_mate_entity(record, wanted)
   end
   replacement.health = math.min(health, replacement.max_health)
   record.entity = replacement
+  -- Keep the team mate selected across the swap: pruning goes by unit number.
+  for _, selected in pairs(storage.not_alone_selected_team_mates or {}) do
+    if selected[old_unit_number] then
+      selected[old_unit_number] = nil
+      selected[replacement.unit_number] = true
+    end
+  end
   record.command_kind = nil
   record.command_destination = nil
   record.command_target = nil
