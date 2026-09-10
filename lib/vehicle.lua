@@ -93,30 +93,24 @@ end
 function find_vehicle_fuel_item(record, item_name)
   local profile = vehicle_profile_for_item(record, item_name)
   local burner = profile and prototypes.entity[profile.entity_name].burner_prototype
-  if not burner then
+  if not burner or not burner.fuel_categories then
     return nil
   end
-  local network = record.entity.surface.find_closest_logistic_network_by_position(
-    position_table(record.entity.position),
-    record.entity.force
-  )
-  if not network then
-    return nil
-  end
-  local best_name
-  local best_priority
-  for _, item_name in ipairs(get_network_fuel_candidates(network, record.entity.force)) do
-    local prototype = prototypes.item[item_name]
+  for _, candidate in ipairs({"nuclear-fuel", "rocket-fuel", "solid-fuel", "coal", "wood"}) do
+    local prototype = prototypes.item[candidate]
     if prototype and prototype.fuel_category
-      and burner.fuel_categories[prototype.fuel_category] then
-      local priority = fuel_priority(item_name)
-      if not best_priority or priority > best_priority then
-        best_name = item_name
-        best_priority = priority
-      end
+      and burner.fuel_categories[prototype.fuel_category]
+      and find_logistics_item_source(record, candidate) then
+      return candidate
     end
   end
-  return best_name
+  return nil
+end
+
+function vehicle_requires_fuel(record, item_name)
+  local profile = vehicle_profile_for_item(record, item_name)
+  local prototype = profile and prototypes.entity[profile.entity_name]
+  return prototype and prototype.burner_prototype ~= nil
 end
 
 function vehicle_arrival_radius(record)
@@ -373,7 +367,8 @@ function deploy_vehicle(record)
   local item_name = record.vehicle_item_name or find_carried_vehicle_item(record)
   local profile = vehicle_profile_for_item(record, item_name)
   if not position or not profile or inventory.get_item_count(item_name) < 1
-    or get_vehicle_fuel_inventory(record).is_empty() then
+    or (vehicle_requires_fuel(record, item_name)
+      and get_vehicle_fuel_inventory(record).is_empty()) then
     return abandon_vehicle_travel(record)
   end
   -- Remove first and roll back if either entity creation or driver creation
@@ -480,7 +475,12 @@ function begin_vehicle_travel(record, destination)
     move_team_mate(record, source.position, 2)
     return true
   end
-  if get_vehicle_fuel_inventory(record).is_empty() then
+  local profile = vehicle_profile_for_item(record, item_name)
+  if not profile then
+    return false
+  end
+  if vehicle_requires_fuel(record, item_name)
+    and get_vehicle_fuel_inventory(record).is_empty() then
     record.vehicle_item_name = item_name
     local fuel_name = find_vehicle_fuel_item(record, item_name)
     local source = fuel_name and find_logistics_item_source(record, fuel_name)
@@ -495,10 +495,6 @@ function begin_vehicle_travel(record, destination)
     return true
   end
   record.vehicle_item_name = item_name
-  local profile = vehicle_profile_for_item(record, item_name)
-  if not profile then
-    return false
-  end
   local position = record.entity.surface.find_non_colliding_position(
     profile.entity_name,
     record.entity.position,
