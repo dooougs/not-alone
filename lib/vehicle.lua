@@ -524,6 +524,10 @@ function continue_patrol_vehicle_travel(record)
   record.vehicle_path_index = nil
   record.vehicle_stuck_ticks = 0
   record.vehicle_blocked_ticks = 0
+  record.vehicle_entity.riding_state = {
+    acceleration = defines.riding.acceleration.braking,
+    direction = defines.riding.direction.straight
+  }
   return request_vehicle_path(record)
 end
 
