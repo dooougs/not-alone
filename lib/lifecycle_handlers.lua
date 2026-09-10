@@ -101,23 +101,26 @@ function notalone.on_update(event)
     cleanup_marked_resources(surface.index)
   end
   for base in each_base() do
-    if get_base_type(base) == "habitat" then
-      flush_habitat_crew_records(base)
-      update_habitat_crew_display(base)
-      update_building_requesters_for_network(
-        base.surface, base.force, base.position, base.logistic_network
-      )
-    end
-    -- Deploy scans re-run every role's full job search; back off when a base
-    -- had nothing to deploy.
-    storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
-    local deploy_ticks = storage.not_alone_habitat_deploy_ticks
-    if base.unit_number and game.tick >= (deploy_ticks[base.unit_number] or 0) then
-      fulfill_base_requests(base)
-      if auto_deploy_from_base(base) then
-        deploy_ticks[base.unit_number] = nil
-      else
-        deploy_ticks[base.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
+    if base.valid then
+      if get_base_type(base) == "habitat" then
+        flush_habitat_crew_records(base)
+        update_habitat_crew_display(base)
+        update_building_requesters_for_network(
+          base.surface, base.force, base.position, base.logistic_network
+        )
+      end
+      -- Deploy scans re-run every role's full job search; back off when a base
+      -- had nothing to deploy.
+      storage.not_alone_habitat_deploy_ticks = storage.not_alone_habitat_deploy_ticks or {}
+      local deploy_ticks = storage.not_alone_habitat_deploy_ticks
+      if base.valid and base.unit_number
+        and game.tick >= (deploy_ticks[base.unit_number] or 0) then
+        fulfill_base_requests(base)
+        if base.valid and auto_deploy_from_base(base) then
+          deploy_ticks[base.unit_number] = nil
+        elseif base.valid then
+          deploy_ticks[base.unit_number] = game.tick + HABITAT_DEPLOY_RETRY_INTERVAL
+        end
       end
     end
   end
