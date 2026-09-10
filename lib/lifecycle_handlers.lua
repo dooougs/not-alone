@@ -193,11 +193,14 @@ function notalone.on_entity_damaged(event)
     end
     return
   end
+  local vehicle_record = entity.unit_number and find_vehicle_record(entity.unit_number)
+  if vehicle_record and vehicle_record.vehicle_entity_unit_number == entity.unit_number
+    and event.damage_type.name ~= "impact" then
+    vehicle_record.vehicle_combat_until = game.tick + VEHICLE_COMBAT_HOLD_TICKS
+  end
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       if record.entity == entity then
-        -- A hit means live combat: refresh the shared threat scan now
-        -- instead of waiting out its interval.
         invalidate_network_threats(entity.surface, entity.force)
         local armor = record.kind == "soldier" and record.soldier_armor
           and SOLDIER_ARMORS[record.soldier_armor]

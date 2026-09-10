@@ -75,6 +75,7 @@ constants.FUEL_REQUEST_COUNT = 5
 constants.AMMO_REQUEST_COUNT = 10
 -- One shared threat scan serves every soldier; damage events invalidate it.
 constants.THREAT_SCAN_INTERVAL = 120
+constants.VEHICLE_COMBAT_HOLD_TICKS = 180
 -- Idle gear scans re-search the whole network; remember misses briefly.
 constants.ITEM_SOURCE_MISS_TICKS = 300
 constants.VEHICLE_AMMO_PRIORITY = {

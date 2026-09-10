@@ -442,6 +442,8 @@ function finish_vehicle_travel(record)
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
+  record.vehicle_combat_target = nil
+  record.vehicle_combat_until = nil
   record.vehicle_item_name = nil
   return false
 end
@@ -468,6 +470,8 @@ function abandon_vehicle_travel(record)
   record.vehicle_path_request_id = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
+  record.vehicle_combat_target = nil
+  record.vehicle_combat_until = nil
   record.vehicle_failed_destination = failed_destination
   record.vehicle_failed_destination_tick = failed_destination and game.tick or nil
   return false
@@ -499,6 +503,8 @@ function cancel_vehicle_travel(record)
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
   record.vehicle_patrol_rolling = nil
+  record.vehicle_combat_target = nil
+  record.vehicle_combat_until = nil
   record.vehicle_failed_destination = nil
   record.vehicle_failed_destination_tick = nil
 end
@@ -837,6 +843,17 @@ function steer_vehicle(record)
   end
   sync_team_mate_with_vehicle(record)
   local behavior = get_vehicle_behavior(vehicle.name)
+  local combat_target = record.kind == "soldier"
+    and (find_soldier_target(record) or find_soldier_immediate_target(record))
+  if record.vehicle_combat_until and game.tick < record.vehicle_combat_until then
+    combat_target = combat_target or true
+  end
+  if combat_target then
+    record.vehicle_combat_target = combat_target
+    record.vehicle_state = "vehicle-combat"
+    behavior.stop(record, vehicle)
+    return true
+  end
   -- A segmented long route finished its current leg: plan the next one.
   if record.vehicle_path_goal_is_segment
     and record.vehicle_path_goal
@@ -1008,6 +1025,34 @@ function steer_ground_vehicle(record, vehicle, path)
   return true
 end
 
+function update_vehicle_combat(record)
+  local vehicle = record.vehicle_entity
+  if not vehicle or not vehicle.valid then
+    return abandon_vehicle_travel(record)
+  end
+  sync_team_mate_with_vehicle(record)
+  local target = record.vehicle_combat_target
+  if (target == true and record.vehicle_combat_until
+      and game.tick < record.vehicle_combat_until)
+    or (target ~= true and target and target.valid) then
+    get_vehicle_behavior(vehicle.name).stop(record, vehicle)
+    return true
+  end
+  record.vehicle_combat_target = nil
+  local arrival_radius = vehicle_arrival_radius(record)
+  if distance_squared(vehicle.position, record.vehicle_destination)
+    > arrival_radius * arrival_radius then
+    record.vehicle_state = "driving-car"
+    return steer_vehicle(record)
+  end
+  if continue_patrol_vehicle_travel(record) then
+    return true
+  end
+  record.vehicle_state = "stopping-car"
+  get_vehicle_behavior(vehicle.name).stop(record, vehicle)
+  return true
+end
+
 update_vehicle_travel = function(record)
   if record.vehicle_state == "pickup-car" then
     local source = record.vehicle_pickup_source
@@ -1150,6 +1195,8 @@ update_vehicle_travel = function(record)
     return true
   elseif record.vehicle_state == "driving-car" then
     return steer_vehicle(record)
+  elseif record.vehicle_state == "vehicle-combat" then
+    return update_vehicle_combat(record)
   elseif record.vehicle_state == "stopping-car" then
     local vehicle = record.vehicle_entity
     if not vehicle or not vehicle.valid then
