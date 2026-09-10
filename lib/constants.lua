@@ -28,6 +28,11 @@ constants.CAR_STUCK_TICKS = 120
 constants.CAR_PATH_LOOKAHEAD = 2
 constants.CAR_ITEM_NAME = "car"
 constants.CAR_ENTITY_NAME = "car"
+constants.VEHICLE_PROFILES = {
+  {item_name = "spidertron", entity_name = "spidertron", soldier_only = true},
+  {item_name = "tank", entity_name = "tank", soldier_only = true},
+  {item_name = "car", entity_name = "car"}
+}
 constants.CAR_DRIVER_NAME = "not-alone-vehicle-driver"
 constants.MINER_CAPACITY = 50
 constants.MINER_ORE_STOPPING_DISTANCE = 0.2

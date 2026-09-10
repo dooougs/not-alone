@@ -169,7 +169,9 @@ function update_soldier(record)
     return true
   end
 
-  if record.manual_wander then
+  if record.manual_wander
+    and not (record.command_kind == "attack"
+      and record.command_target and record.command_target.valid) then
     wander_team_mate(record)
     return true
   end

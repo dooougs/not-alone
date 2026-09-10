@@ -54,13 +54,7 @@ function auto_deploy_from_base(base)
         end
         record.home_base = base
         record.home_base_type = get_base_type(base)
-        if inventory.get_item_count(CAR_ITEM_NAME) > 0 then
-          local vehicle_inventory = get_vehicle_inventory(record)
-          if inventory.remove({name = CAR_ITEM_NAME, count = 1}) == 1
-            and vehicle_inventory.insert({name = CAR_ITEM_NAME, count = 1}) ~= 1 then
-            inventory.insert({name = CAR_ITEM_NAME, count = 1})
-          end
-        end
+        transfer_base_vehicle_to_record(record, inventory)
         -- Restore a docked Soldier's stashed weapons and ammo.
         if kind == "soldier" then
           local lockers = storage.not_alone_soldier_lockers

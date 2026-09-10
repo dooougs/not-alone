@@ -19,9 +19,70 @@ function get_vehicle_fuel_inventory(record)
   return record.vehicle_fuel_inventory
 end
 
--- Best network fuel the car's burner accepts, judged by fuel value.
-function find_car_fuel_item(record)
-  local burner = prototypes.entity[CAR_ENTITY_NAME].burner_prototype
+function vehicle_profile_for_item(record, item_name)
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    if profile.item_name == item_name
+      and (not profile.soldier_only or record.kind == "soldier") then
+      return profile
+    end
+  end
+  return nil
+end
+
+function vehicle_profile_for_entity(entity_name)
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    if profile.entity_name == entity_name then
+      return profile
+    end
+  end
+  return nil
+end
+
+function find_carried_vehicle_item(record)
+  local inventory = get_vehicle_inventory(record)
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    if (not profile.soldier_only or record.kind == "soldier")
+      and inventory.get_item_count(profile.item_name) > 0 then
+      return profile.item_name
+    end
+  end
+  return nil
+end
+
+function find_vehicle_pickup(record)
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    if not profile.soldier_only or record.kind == "soldier" then
+      local source = find_logistics_item_source(record, profile.item_name)
+      if source and reserve_vehicle_pickup(record, source, profile.item_name) then
+        return profile.item_name, source
+      end
+    end
+  end
+  return nil, nil
+end
+
+function transfer_base_vehicle_to_record(record, inventory)
+  if not inventory then
+    return false
+  end
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    if (not profile.soldier_only or record.kind == "soldier")
+      and inventory.get_item_count(profile.item_name) > 0 then
+      local vehicle_inventory = get_vehicle_inventory(record)
+      if inventory.remove({name = profile.item_name, count = 1}) == 1
+        and vehicle_inventory.insert({name = profile.item_name, count = 1}) ~= 1 then
+        inventory.insert({name = profile.item_name, count = 1})
+      end
+      return true
+    end
+  end
+  return false
+end
+
+-- Best network fuel the selected vehicle's burner accepts, judged by fuel value.
+function find_vehicle_fuel_item(record, item_name)
+  local profile = vehicle_profile_for_item(record, item_name)
+  local burner = profile and prototypes.entity[profile.entity_name].burner_prototype
   if not burner then
     return nil
   end
@@ -79,7 +140,7 @@ function deployment_position_is_clear(record, surface, position)
   for _, nearby in pairs(surface.find_entities_filtered({
     position = position,
     radius = CAR_DEPLOYMENT_CLEARANCE,
-    type = "car"
+    type = {"car", "spider-vehicle"}
   })) do
     if nearby ~= record.vehicle_entity then
       return false
@@ -155,7 +216,8 @@ function recover_vehicle(record)
     return false
   end
   local inventory = get_vehicle_inventory(record)
-  if inventory.insert({name = CAR_ITEM_NAME, count = 1}) ~= 1 then
+  local item_name = record.vehicle_item_name or vehicle.name
+  if inventory.insert({name = item_name, count = 1}) ~= 1 then
     return false
   end
   -- Reclaim unburned fuel (including player-added fuel) before the car is
@@ -205,6 +267,7 @@ function finish_vehicle_travel(record)
   record.vehicle_path_request_id = nil
   record.vehicle_deployment_position = nil
   record.vehicle_collision_count = nil
+  record.vehicle_item_name = nil
   return false
 end
 
@@ -270,38 +333,40 @@ function deploy_vehicle(record)
   local position = record.vehicle_deployment_position
   local surface = record.entity.surface
   local inventory = get_vehicle_inventory(record)
-  if not position or inventory.get_item_count(CAR_ITEM_NAME) < 1
+  local item_name = record.vehicle_item_name or find_carried_vehicle_item(record)
+  local profile = vehicle_profile_for_item(record, item_name)
+  if not position or not profile or inventory.get_item_count(item_name) < 1
     or get_vehicle_fuel_inventory(record).is_empty() then
     return abandon_vehicle_travel(record)
   end
   -- Remove first and roll back if either entity creation or driver creation
   -- fails, so a deployed car and an inventory car cannot coexist.
-  if inventory.remove({name = CAR_ITEM_NAME, count = 1}) ~= 1 then
+  if inventory.remove({name = item_name, count = 1}) ~= 1 then
     return abandon_vehicle_travel(record)
   end
   record.vehicle_visible_name = record.entity.name
   if not replace_team_mate_entity(record, HIDDEN_TEAM_MATE_NAME) then
-    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    inventory.insert({name = item_name, count = 1})
     record.vehicle_visible_name = nil
     return abandon_vehicle_travel(record)
   end
   if not surface.can_place_entity({
-    name = CAR_ENTITY_NAME,
+    name = profile.entity_name,
     position = position,
     force = record.entity.force
   }) or not deployment_position_is_clear(record, surface, position) then
-    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    inventory.insert({name = item_name, count = 1})
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
   local vehicle = surface.create_entity({
-    name = CAR_ENTITY_NAME,
+    name = profile.entity_name,
     position = position,
     force = record.entity.force,
     create_build_effect_smoke = false
   })
   if not vehicle then
-    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    inventory.insert({name = item_name, count = 1})
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
@@ -313,7 +378,7 @@ function deploy_vehicle(record)
   })
   if not driver then
     vehicle.destroy()
-    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    inventory.insert({name = item_name, count = 1})
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
@@ -322,7 +387,7 @@ function deploy_vehicle(record)
   if vehicle.get_driver() ~= driver then
     driver.destroy()
     vehicle.destroy()
-    inventory.insert({name = CAR_ITEM_NAME, count = 1})
+    inventory.insert({name = item_name, count = 1})
     restore_vehicle_team_mate(record)
     return abandon_vehicle_travel(record)
   end
@@ -364,11 +429,14 @@ function begin_vehicle_travel(record, destination)
       < vehicle_minimum_distance() * vehicle_minimum_distance() then
     return false
   end
-  if inventory.get_item_count(CAR_ITEM_NAME) < 1 then
-    local source = find_logistics_item_source(record, CAR_ITEM_NAME)
-    if not source or not reserve_vehicle_pickup(record, source, CAR_ITEM_NAME) then
+  local item_name = find_carried_vehicle_item(record)
+  if not item_name then
+    local source
+    item_name, source = find_vehicle_pickup(record)
+    if not item_name then
       return false
     end
+    record.vehicle_item_name = item_name
     record.vehicle_pending_destination = position_table(destination)
     record.vehicle_pickup_source = source
     record.vehicle_state = "pickup-car"
@@ -376,7 +444,8 @@ function begin_vehicle_travel(record, destination)
     return true
   end
   if get_vehicle_fuel_inventory(record).is_empty() then
-    local fuel_name = find_car_fuel_item(record)
+    record.vehicle_item_name = item_name
+    local fuel_name = find_vehicle_fuel_item(record, item_name)
     local source = fuel_name and find_logistics_item_source(record, fuel_name)
     if not source or not reserve_vehicle_pickup(record, source, fuel_name) then
       return false
@@ -388,8 +457,13 @@ function begin_vehicle_travel(record, destination)
     move_team_mate(record, source.position, 2)
     return true
   end
+  record.vehicle_item_name = item_name
+  local profile = vehicle_profile_for_item(record, item_name)
+  if not profile then
+    return false
+  end
   local position = record.entity.surface.find_non_colliding_position(
-    CAR_ENTITY_NAME,
+    profile.entity_name,
     record.entity.position,
     CAR_DEPLOYMENT_SEARCH_RADIUS,
     1
@@ -422,7 +496,7 @@ function vehicle_probe_is_clear(record, vehicle, heading, angle_offset)
   for _, obstacle in pairs(vehicle.surface.find_entities_filtered({
     position = probe,
     radius = CAR_AVOIDANCE_DISTANCE * 0.35,
-    type = {"car", "unit"}
+    type = {"car", "spider-vehicle", "unit"}
   })) do
     if obstacle ~= vehicle and obstacle ~= record.entity then
       return false
@@ -535,23 +609,24 @@ end
 update_vehicle_travel = function(record)
   if record.vehicle_state == "pickup-car" then
     local source = record.vehicle_pickup_source
+    local item_name = record.vehicle_item_name
     local source_inventory = get_logistics_source_inventory(source)
-    if not source or not source.valid or not source_inventory
-      or source_inventory.get_item_count(CAR_ITEM_NAME) < 1 then
+    if not source or not source.valid or not item_name or not source_inventory
+      or source_inventory.get_item_count(item_name) < 1 then
       clear_vehicle_pickup(record)
       record.vehicle_pickup_source = nil
       record.vehicle_pending_destination = nil
       record.vehicle_state = nil
       return true
     elseif distance_squared(record.entity.position, source.position) <= 4 then
-      local removed = source_inventory.remove({name = CAR_ITEM_NAME, count = 1})
+      local removed = source_inventory.remove({name = item_name, count = 1})
       if removed == 1 then
         local inserted = get_vehicle_inventory(record).insert({
-          name = CAR_ITEM_NAME,
+          name = item_name,
           count = 1
         })
         if inserted ~= 1 then
-          source_inventory.insert({name = CAR_ITEM_NAME, count = 1})
+          source_inventory.insert({name = item_name, count = 1})
         end
       end
       local destination = record.vehicle_pending_destination
@@ -559,7 +634,7 @@ update_vehicle_travel = function(record)
       record.vehicle_pickup_source = nil
       record.vehicle_pending_destination = nil
       record.vehicle_state = nil
-      if removed == 1 and get_vehicle_inventory(record).get_item_count(CAR_ITEM_NAME) > 0 then
+      if removed == 1 and get_vehicle_inventory(record).get_item_count(item_name) > 0 then
         begin_vehicle_travel(record, destination)
       end
       return true

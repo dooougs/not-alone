@@ -163,7 +163,8 @@ function notalone.on_entity_damaged(event)
   -- A collision means the current plan is wrong: reroute the car, and after
   -- repeated impacts get out and let default travel planning start over.
   -- Collisions accumulate per trip so path resets cannot mask a crash loop.
-  if entity.name == CAR_ENTITY_NAME and event.damage_type.name == "impact" then
+  if vehicle_profile_for_entity(entity.name)
+    and event.damage_type.name == "impact" then
     local record = find_vehicle_record(entity.unit_number)
     if record and record.vehicle_entity_unit_number == entity.unit_number
       and record.vehicle_state == "driving-car" then
@@ -450,7 +451,9 @@ function notalone.register()
   for _, name in pairs(TEAM_MATE_NAMES) do
     damage_filters[#damage_filters + 1] = {filter = "name", name = name}
   end
-  damage_filters[#damage_filters + 1] = {filter = "name", name = CAR_ENTITY_NAME}
+  for _, profile in ipairs(VEHICLE_PROFILES) do
+    damage_filters[#damage_filters + 1] = {filter = "name", name = profile.entity_name}
+  end
   script.on_event(defines.events.on_entity_damaged, notalone.on_entity_damaged, damage_filters)
   script.on_event(defines.events.on_script_path_request_finished, notalone.on_script_path_request_finished)
   script.on_nth_tick(UPDATE_INTERVAL, notalone.on_update)

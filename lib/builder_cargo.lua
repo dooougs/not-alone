@@ -247,18 +247,30 @@ dock_at_habitat = function(record)
     record.builder_cargo.destroy()
   end
   if record.vehicle_inventory and record.vehicle_inventory.valid then
-    local car_count = record.vehicle_inventory.get_item_count(CAR_ITEM_NAME)
-    if car_count > 0 then
-      local inserted = inventory.insert({name = CAR_ITEM_NAME, count = car_count})
-      if inserted < car_count then
+    for item_name, count in pairs(record.vehicle_inventory.get_contents()) do
+      local inserted = inventory.insert({name = item_name, count = count})
+      if inserted < count then
           record.entity.surface.spill_item_stack({
             position = position_table(base.position),
-          stack = {name = CAR_ITEM_NAME, count = car_count - inserted}
-        })
+            stack = {name = item_name, count = count - inserted}
+          })
       end
     end
     record.vehicle_inventory.destroy()
     record.vehicle_inventory = nil
+  end
+  if record.vehicle_fuel_inventory and record.vehicle_fuel_inventory.valid then
+    for item_name, count in pairs(record.vehicle_fuel_inventory.get_contents()) do
+      local inserted = inventory.insert({name = item_name, count = count})
+      if inserted < count then
+        record.entity.surface.spill_item_stack({
+          position = position_table(base.position),
+          stack = {name = item_name, count = count - inserted}
+        })
+      end
+    end
+    record.vehicle_fuel_inventory.destroy()
+    record.vehicle_fuel_inventory = nil
   end
   record.entity.destroy()
   return false
