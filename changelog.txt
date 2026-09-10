@@ -1,4 +1,15 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.24
+Date: 2026-09-10
+  Features:
+    - Added a Cloner with role-specific recipes for producing new team mates from a Miner and raw ores.
+  Changes:
+    - Expanded Soldier waypoint control with looping patrols, shared-waypoint selection, persistent markers, and reliable Outpost arrival.
+    - Soldiers can use Cars, Tanks, and Spidertrons for long travel, including continuous vehicle patrols and segmented pathfinding for distant destinations.
+  Bugfixes:
+    - Improved vehicle recovery after collisions and temporary pathfinding failures so Soldiers remain in their vehicles when routes become available again.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.23
 Date: 2026-09-09
   Features:
