@@ -1,0 +1,20 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "factorio",
+      "request": "launch",
+      "name": "Debug Not Alone"
+    },
+    {
+      "type": "factorio",
+      "request": "launch",
+      "name": "Debug testing3 save",
+      "factorioArgs": [
+        "--load-game",
+        "${env:APPDATA}/Factorio/saves/testing3.zip",
+        "--disable-audio"
+      ]
+    }
+  ]
+}
