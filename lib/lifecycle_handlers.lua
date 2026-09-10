@@ -427,6 +427,37 @@ function notalone.on_base_removed(event)
     storage.not_alone_soldier_lockers[entity.unit_number] = nil
   end
 
+  local docked = storage.not_alone_docked_team_mates
+    and storage.not_alone_docked_team_mates[entity.unit_number]
+  if docked then
+    local function spill_inventory(script_inventory)
+      if script_inventory and script_inventory.valid then
+        for _, item in pairs(script_inventory.get_contents()) do
+          spill(item.name, item.count, item.quality)
+        end
+        script_inventory.destroy()
+      end
+    end
+    for _, stored in pairs(docked) do
+      spill_inventory(stored.builder_cargo)
+      spill_inventory(stored.vehicle_inventory)
+      spill_inventory(stored.vehicle_fuel_inventory)
+      for weapon_kind in pairs(stored.soldier_weapons or {}) do
+        local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
+        if weapon then
+          spill(weapon.gun, 1)
+        end
+      end
+      for ammo_name, count in pairs(stored.soldier_ammo or {}) do
+        spill(ammo_name, count)
+      end
+      if stored.soldier_armor and SOLDIER_ARMORS[stored.soldier_armor] then
+        spill(SOLDIER_ARMORS[stored.soldier_armor].item, 1)
+      end
+    end
+    storage.not_alone_docked_team_mates[entity.unit_number] = nil
+  end
+
   local renders = storage.not_alone_habitat_crew_renders
   if renders then
     renders[entity.unit_number] = nil

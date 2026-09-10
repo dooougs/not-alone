@@ -54,18 +54,7 @@ function auto_deploy_from_base(base)
         end
         record.home_base = base
         record.home_base_type = get_base_type(base)
-        transfer_base_vehicle_to_record(record, inventory)
-        -- Restore a docked Soldier's stashed weapons and ammo.
-        if kind == "soldier" then
-          local lockers = storage.not_alone_soldier_lockers
-            and storage.not_alone_soldier_lockers[base.unit_number]
-          if lockers and #lockers > 0 then
-            local locker = table.remove(lockers)
-            record.soldier_weapons = locker.weapons
-            record.soldier_ammo = locker.ammo
-            record.soldier_armor = locker.armor
-          end
-        end
+        restore_docked_team_mate(base, record)
         team_mates[#team_mates + 1] = record
         storage.not_alone_team_mates[player.index] = team_mates
         deployed = true

@@ -1,5 +1,62 @@
 ﻿-- Functional area extracted from not-alone.lua.
 
+function store_docked_team_mate(base, record)
+  if not base or not base.valid or not base.unit_number then
+    return false
+  end
+  storage.not_alone_docked_team_mates = storage.not_alone_docked_team_mates or {}
+  local docked = storage.not_alone_docked_team_mates[base.unit_number] or {}
+  docked[#docked + 1] = {
+    kind = record.kind,
+    builder_cargo = record.builder_cargo,
+    vehicle_inventory = record.vehicle_inventory,
+    vehicle_fuel_inventory = record.vehicle_fuel_inventory,
+    soldier_weapons = record.soldier_weapons,
+    soldier_ammo = record.soldier_ammo,
+    soldier_armor = record.soldier_armor,
+    carried_count = record.carried_count,
+    mining_resource_info = record.mining_resource_info
+  }
+  storage.not_alone_docked_team_mates[base.unit_number] = docked
+  return true
+end
+
+function restore_docked_team_mate(base, record)
+  local docked = base and base.unit_number
+    and storage.not_alone_docked_team_mates
+    and storage.not_alone_docked_team_mates[base.unit_number]
+  if docked then
+    for index, stored in ipairs(docked) do
+      if stored.kind == record.kind then
+        record.builder_cargo = stored.builder_cargo
+        record.vehicle_inventory = stored.vehicle_inventory
+        record.vehicle_fuel_inventory = stored.vehicle_fuel_inventory
+        record.soldier_weapons = stored.soldier_weapons
+        record.soldier_ammo = stored.soldier_ammo
+        record.soldier_armor = stored.soldier_armor
+        record.carried_count = stored.carried_count
+        record.mining_resource_info = stored.mining_resource_info
+        table.remove(docked, index)
+        if #docked == 0 then
+          storage.not_alone_docked_team_mates[base.unit_number] = nil
+        end
+        return true
+      end
+    end
+  end
+  -- Compatibility with Soldiers docked before per-team-mate records.
+  local lockers = base and base.unit_number and storage.not_alone_soldier_lockers
+    and storage.not_alone_soldier_lockers[base.unit_number]
+  if record.kind == "soldier" and lockers and #lockers > 0 then
+    local locker = table.remove(lockers)
+    record.soldier_weapons = locker.weapons
+    record.soldier_ammo = locker.ammo
+    record.soldier_armor = locker.armor
+    return true
+  end
+  return false
+end
+
 function create_team_mate(player, kind, index, spawn_center)
   -- Units do not collide with each other, so find_non_colliding_position
   -- returns the same spot for every spawn; ring offsets keep them apart

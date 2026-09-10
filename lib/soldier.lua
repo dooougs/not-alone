@@ -75,6 +75,9 @@ function assign_soldier_job(record, surface, force, position)
       end
     end
   end
+  if soldier_vehicle_available(record) then
+    return true
+  end
   return false
 end
 
@@ -166,25 +169,6 @@ end
 function update_soldier(record)
   if record.manual_hold then
     stop_team_mate(record)
-    return true
-  end
-
-  if record.manual_wander
-    and not (record.command_kind == "attack"
-      and record.command_target and record.command_target.valid) then
-    wander_team_mate(record)
-    return true
-  end
-
-  if record.home_base_type == "outpost" then
-    local target = find_soldier_target(record)
-    if target then
-      local weapon = select_soldier_weapon(record)
-      ensure_soldier_entity(record, weapon)
-      attack_with_team_mate(record, target)
-    else
-      wander_team_mate(record)
-    end
     return true
   end
 
@@ -304,6 +288,11 @@ function update_soldier(record)
         record.idle_search_failures = nil
         return true
       end
+      if try_soldier_vehicle_pickup(record) then
+        record.next_job_search_tick = nil
+        record.idle_search_failures = nil
+        return true
+      end
       target = find_soldier_target(record)
       if not target then
         record.next_job_search_tick = game.tick + IDLE_JOB_SEARCH_INTERVAL
@@ -364,7 +353,7 @@ function update_soldier(record)
     and start_soldier_restock(record) then
     return true
   end
-  if record.home_base_type == "outpost" then
+  if record.manual_wander or record.home_base_type == "outpost" then
     wander_team_mate(record)
     return true
   end

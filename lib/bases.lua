@@ -210,14 +210,7 @@ local function deploy_soldier_toward_base(habitat, base)
     record.entity.destroy()
     return false
   end
-  local lockers = storage.not_alone_soldier_lockers
-    and storage.not_alone_soldier_lockers[habitat.unit_number]
-  if lockers and #lockers > 0 then
-    local locker = table.remove(lockers)
-    record.soldier_weapons = locker.weapons
-    record.soldier_ammo = locker.ammo
-    record.soldier_armor = locker.armor
-  end
+  restore_docked_team_mate(habitat, record)
   team_mates[#team_mates + 1] = record
   storage.not_alone_team_mates[player.index] = team_mates
   dispatch_record_to_base(record, base)

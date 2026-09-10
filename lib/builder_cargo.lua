@@ -217,61 +217,10 @@ dock_at_habitat = function(record)
     -- No room: stay deployed and wait by the habitat.
     return true
   end
-  -- Docked Soldiers keep their weapons and ammo; the arsenal waits in the
-  -- Habitat's locker and is restored to the next Soldier deployed from it.
-  if record.kind == "soldier"
-    and ((record.soldier_weapons and next(record.soldier_weapons))
-      or (record.soldier_ammo and next(record.soldier_ammo))
-      or record.soldier_armor) then
-    storage.not_alone_soldier_lockers = storage.not_alone_soldier_lockers or {}
-    local lockers = storage.not_alone_soldier_lockers[base.unit_number] or {}
-    lockers[#lockers + 1] = {
-      weapons = record.soldier_weapons,
-      ammo = record.soldier_ammo,
-      armor = record.soldier_armor
-    }
-    storage.not_alone_soldier_lockers[base.unit_number] = lockers
-  end
   destroy_route_renderings(record)
   destroy_inventory_renderings(record)
   destroy_color_marker(record)
-  if record.builder_cargo and record.builder_cargo.valid then
-    -- Should be empty already (see update_builder's cargo-priority guard);
-    -- spill anything left at the habitat rather than deleting it.
-    if not record.builder_cargo.is_empty() then
-      record.entity.surface.spill_inventory({
-        position = position_table(base.position),
-        inventory = record.builder_cargo
-      })
-    end
-    record.builder_cargo.destroy()
-  end
-  if record.vehicle_inventory and record.vehicle_inventory.valid then
-    for item_name, count in pairs(record.vehicle_inventory.get_contents()) do
-      local inserted = inventory.insert({name = item_name, count = count})
-      if inserted < count then
-          record.entity.surface.spill_item_stack({
-            position = position_table(base.position),
-            stack = {name = item_name, count = count - inserted}
-          })
-      end
-    end
-    record.vehicle_inventory.destroy()
-    record.vehicle_inventory = nil
-  end
-  if record.vehicle_fuel_inventory and record.vehicle_fuel_inventory.valid then
-    for item_name, count in pairs(record.vehicle_fuel_inventory.get_contents()) do
-      local inserted = inventory.insert({name = item_name, count = count})
-      if inserted < count then
-        record.entity.surface.spill_item_stack({
-          position = position_table(base.position),
-          stack = {name = item_name, count = count - inserted}
-        })
-      end
-    end
-    record.vehicle_fuel_inventory.destroy()
-    record.vehicle_fuel_inventory = nil
-  end
+  store_docked_team_mate(base, record)
   record.entity.destroy()
   return false
 end

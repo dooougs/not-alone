@@ -61,22 +61,32 @@ function find_vehicle_pickup(record)
   return nil, nil
 end
 
-function transfer_base_vehicle_to_record(record, inventory)
-  if not inventory then
+function soldier_vehicle_available(record)
+  if record.kind ~= "soldier" or find_carried_vehicle_item(record) then
     return false
   end
   for _, profile in ipairs(VEHICLE_PROFILES) do
-    if (not profile.soldier_only or record.kind == "soldier")
-      and inventory.get_item_count(profile.item_name) > 0 then
-      local vehicle_inventory = get_vehicle_inventory(record)
-      if inventory.remove({name = profile.item_name, count = 1}) == 1
-        and vehicle_inventory.insert({name = profile.item_name, count = 1}) ~= 1 then
-        inventory.insert({name = profile.item_name, count = 1})
-      end
+    if profile.soldier_only
+      and find_logistics_item_source(record, profile.item_name) then
       return true
     end
   end
   return false
+end
+
+function try_soldier_vehicle_pickup(record)
+  if record.kind ~= "soldier" or find_carried_vehicle_item(record) then
+    return false
+  end
+  local item_name, source = find_vehicle_pickup(record)
+  if not item_name then
+    return false
+  end
+  record.vehicle_item_name = item_name
+  record.vehicle_pickup_source = source
+  record.vehicle_state = "pickup-car"
+  move_team_mate(record, source.position, 2)
+  return true
 end
 
 -- Best network fuel the selected vehicle's burner accepts, judged by fuel value.
@@ -790,7 +800,8 @@ update_vehicle_travel = function(record)
       record.vehicle_pickup_source = nil
       record.vehicle_pending_destination = nil
       record.vehicle_state = nil
-      if removed == 1 and get_vehicle_inventory(record).get_item_count(item_name) > 0 then
+      if removed == 1 and destination
+        and get_vehicle_inventory(record).get_item_count(item_name) > 0 then
         begin_vehicle_travel(record, destination)
       end
       return true
