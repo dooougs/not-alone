@@ -535,6 +535,10 @@ take_outpost_soldier = function(player, outpost)
           surface.spill_inventory({position = position, inventory = record.vehicle_fuel_inventory})
           record.vehicle_fuel_inventory.destroy()
         end
+        if record.vehicle_ammo_inventory and record.vehicle_ammo_inventory.valid then
+          surface.spill_inventory({position = position, inventory = record.vehicle_ammo_inventory})
+          record.vehicle_ammo_inventory.destroy()
+        end
         record.entity.destroy()
         table.remove(team_mates, index)
         fulfill_base_requests(outpost)
@@ -761,6 +765,11 @@ function get_carried_items(record)
   end
   if record.vehicle_fuel_inventory and record.vehicle_fuel_inventory.valid then
     for _, item in pairs(record.vehicle_fuel_inventory.get_contents()) do
+      counts[item.name] = (counts[item.name] or 0) + item.count
+    end
+  end
+  if record.vehicle_ammo_inventory and record.vehicle_ammo_inventory.valid then
+    for _, item in pairs(record.vehicle_ammo_inventory.get_contents()) do
       counts[item.name] = (counts[item.name] or 0) + item.count
     end
   end

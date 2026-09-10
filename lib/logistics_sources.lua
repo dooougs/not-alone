@@ -28,6 +28,25 @@ function find_logistics_return_source(record, item_name)
 end
 
 function find_logistics_item_source(record, item_name)
+  -- Idle team mates rescan the whole network for the same missing items
+  -- every cooldown; remembering misses briefly bounds that cost.
+  storage.not_alone_item_misses = storage.not_alone_item_misses or {}
+  local miss_key = record.entity.surface_index .. ":"
+    .. record.entity.force.name .. ":" .. item_name
+  local miss_until = storage.not_alone_item_misses[miss_key]
+  if miss_until and game.tick < miss_until then
+    return nil
+  end
+  local source = find_logistics_item_source_uncached(record, item_name)
+  if source then
+    storage.not_alone_item_misses[miss_key] = nil
+  else
+    storage.not_alone_item_misses[miss_key] = game.tick + ITEM_SOURCE_MISS_TICKS
+  end
+  return source
+end
+
+function find_logistics_item_source_uncached(record, item_name)
   local network = record.entity.surface.find_closest_logistic_network_by_position(
     position_table(record.entity.position),
     record.entity.force

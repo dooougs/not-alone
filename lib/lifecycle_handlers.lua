@@ -196,6 +196,9 @@ function notalone.on_entity_damaged(event)
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       if record.entity == entity then
+        -- A hit means live combat: refresh the shared threat scan now
+        -- instead of waiting out its interval.
+        invalidate_network_threats(entity.surface, entity.force)
         local armor = record.kind == "soldier" and record.soldier_armor
           and SOLDIER_ARMORS[record.soldier_armor]
         if armor then
@@ -444,6 +447,7 @@ function notalone.on_base_removed(event)
       spill_inventory(stored.builder_cargo)
       spill_inventory(stored.vehicle_inventory)
       spill_inventory(stored.vehicle_fuel_inventory)
+      spill_inventory(stored.vehicle_ammo_inventory)
       for weapon_kind in pairs(stored.soldier_weapons or {}) do
         local weapon = SOLDIER_WEAPON_BY_KIND[weapon_kind]
         if weapon then

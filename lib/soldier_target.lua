@@ -1,18 +1,99 @@
 ﻿-- Functional area extracted from not-alone.lua.
 
+-- Every soldier polling the whole network multiplied identical spatial
+-- queries by the soldier count; one cached scan per surface+force serves all.
+-- Damage events invalidate the cache so combat response stays immediate.
+function get_network_threats(surface, force)
+  storage.not_alone_threat_scans = storage.not_alone_threat_scans or {}
+  local key = surface.index .. ":" .. force.name
+  local entry = storage.not_alone_threat_scans[key]
+  if entry and game.tick < entry.expires then
+    return entry
+  end
+  entry = {
+    units = {},
+    bases = {},
+    expires = game.tick + THREAT_SCAN_INTERVAL
+  }
+  storage.not_alone_threat_scans[key] = entry
+
+  local hostile_forces = {}
+  for _, other_force in pairs(game.forces) do
+    if other_force ~= force
+      and other_force.name ~= "enemy"
+      and other_force.name ~= "neutral"
+      and not force.get_friend(other_force)
+      and not force.get_cease_fire(other_force)
+      and not other_force.get_cease_fire(force) then
+      hostile_forces[#hostile_forces + 1] = other_force
+    end
+  end
+
+  local seen = {}
+  local function consider(list, target)
+    if target.valid then
+      local id = target.unit_number or target
+      if not seen[id] then
+        seen[id] = true
+        list[#list + 1] = target
+      end
+    end
+  end
+
+  for _, network in pairs(force.logistic_networks[surface.name] or {}) do
+    for _, cell in pairs(network.cells) do
+      if cell.valid and cell.owner.valid then
+        -- Pad past the network edge: worms out-range the boundary and would
+        -- otherwise shell the base from just outside the scan.
+        local radius = math.max(cell.logistic_radius, cell.construction_radius)
+        if radius > 0 then
+          radius = radius + ENGAGEMENT_RADIUS
+          for _, enemy in pairs(surface.find_enemy_units(cell.owner.position, radius, force)) do
+            consider(entry.units, enemy)
+          end
+          -- find_enemy_units excludes player characters. Scan only hostile
+          -- player forces so PvP combat stays a bounded search.
+          for _, other_force in ipairs(hostile_forces) do
+            for _, target in pairs(surface.find_entities_filtered({
+              position = cell.owner.position,
+              radius = radius,
+              force = other_force,
+              type = {"character", "unit"}
+            })) do
+              consider(entry.units, target)
+            end
+          end
+          for _, base in pairs(surface.find_entities_filtered({
+            position = cell.owner.position,
+            radius = radius,
+            force = "enemy",
+            type = {"unit-spawner", "turret"}
+          })) do
+            consider(entry.bases, base)
+          end
+        end
+      end
+    end
+  end
+  return entry
+end
+
+function invalidate_network_threats(surface, force)
+  local scans = storage.not_alone_threat_scans
+  if scans then
+    scans[surface.index .. ":" .. force.name] = nil
+  end
+end
+
 function find_soldier_target(record, surface, force, position)
   local team_mate = record.entity
   surface = surface or team_mate.surface
   force = force or team_mate.force
   position = position or position_table(team_mate.position)
-  local network = surface.find_closest_logistic_network_by_position(position, force)
-  if not network then
-    return nil
-  end
+  local threats = get_network_threats(surface, force)
 
   local nearest_enemy
   local nearest_distance
-
   local function consider(target)
     if target.valid then
       local current_distance = distance_squared(position, target.position)
@@ -23,66 +104,14 @@ function find_soldier_target(record, surface, force, position)
     end
   end
 
-  for _, cell in pairs(network.cells) do
-    if cell.valid and cell.owner.valid then
-      -- Pad past the network edge: worms out-range the boundary and would
-      -- otherwise shell the base from just outside the scan.
-      local radius = math.max(cell.logistic_radius, cell.construction_radius)
-      if radius > 0 then
-        radius = radius + ENGAGEMENT_RADIUS
-        for _, enemy in pairs(surface.find_enemy_units(cell.owner.position, radius, force)) do
-          consider(enemy)
-        end
-      end
-    end
+  for _, target in ipairs(threats.units) do
+    consider(target)
   end
-
-  -- find_enemy_units excludes player characters. Scan only hostile player
-  -- forces so PvP combat does not turn into a whole-surface entity search.
-  for _, other_force in pairs(game.forces) do
-    if other_force ~= force
-      and other_force.name ~= "enemy"
-      and other_force.name ~= "neutral"
-      and not force.get_friend(other_force)
-      and not force.get_cease_fire(other_force)
-      and not other_force.get_cease_fire(force) then
-      for _, cell in pairs(network.cells) do
-        if cell.valid and cell.owner.valid then
-          local radius = math.max(cell.logistic_radius, cell.construction_radius)
-          if radius > 0 then
-            radius = radius + ENGAGEMENT_RADIUS
-            for _, target in pairs(surface.find_entities_filtered({
-              position = cell.owner.position,
-              radius = radius,
-              force = other_force,
-              type = {"character", "unit"}
-            })) do
-              consider(target)
-            end
-          end
-        end
-      end
-    end
-  end
-
   -- Clear the covered enemy units first; then target spawners, turrets, and
   -- worms (worms are turret-type entities) as enemy bases.
   if not nearest_enemy then
-    for _, cell in pairs(network.cells) do
-      if cell.valid and cell.owner.valid then
-        local radius = math.max(cell.logistic_radius, cell.construction_radius)
-        if radius > 0 then
-          radius = radius + ENGAGEMENT_RADIUS
-          for _, base in pairs(surface.find_entities_filtered({
-            position = cell.owner.position,
-            radius = radius,
-            force = "enemy",
-            type = {"unit-spawner", "turret"}
-          })) do
-            consider(base)
-          end
-        end
-      end
+    for _, target in ipairs(threats.bases) do
+      consider(target)
     end
   end
   return nearest_enemy

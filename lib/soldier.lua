@@ -167,6 +167,9 @@ function soldier_needs_ammo(record)
 end
 
 function update_soldier(record)
+  if record.vehicle_state then
+    return true
+  end
   if record.manual_hold then
     stop_team_mate(record)
     return true
@@ -289,6 +292,11 @@ function update_soldier(record)
         return true
       end
       if try_soldier_vehicle_pickup(record) then
+        record.next_job_search_tick = nil
+        record.idle_search_failures = nil
+        return true
+      end
+      if try_soldier_vehicle_ammo_pickup(record) then
         record.next_job_search_tick = nil
         record.idle_search_failures = nil
         return true

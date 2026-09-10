@@ -11,6 +11,7 @@ function store_docked_team_mate(base, record)
     builder_cargo = record.builder_cargo,
     vehicle_inventory = record.vehicle_inventory,
     vehicle_fuel_inventory = record.vehicle_fuel_inventory,
+    vehicle_ammo_inventory = record.vehicle_ammo_inventory,
     soldier_weapons = record.soldier_weapons,
     soldier_ammo = record.soldier_ammo,
     soldier_armor = record.soldier_armor,
@@ -31,6 +32,7 @@ function restore_docked_team_mate(base, record)
         record.builder_cargo = stored.builder_cargo
         record.vehicle_inventory = stored.vehicle_inventory
         record.vehicle_fuel_inventory = stored.vehicle_fuel_inventory
+        record.vehicle_ammo_inventory = stored.vehicle_ammo_inventory
         record.soldier_weapons = stored.soldier_weapons
         record.soldier_ammo = stored.soldier_ammo
         record.soldier_armor = stored.soldier_armor

@@ -72,6 +72,16 @@ constants.LOGISTICS_SEARCH_RADIUS = 128
 constants.BUILDER_CARGO_SLOTS = 1
 constants.MAX_BUILDER_CARGO_SLOTS = 65535
 constants.FUEL_REQUEST_COUNT = 5
+constants.AMMO_REQUEST_COUNT = 10
+-- One shared threat scan serves every soldier; damage events invalidate it.
+constants.THREAT_SCAN_INTERVAL = 120
+-- Idle gear scans re-search the whole network; remember misses briefly.
+constants.ITEM_SOURCE_MISS_TICKS = 300
+constants.VEHICLE_AMMO_PRIORITY = {
+  "uranium-cannon-shell", "explosive-cannon-shell", "cannon-shell",
+  "explosive-rocket", "rocket",
+  "uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"
+}
 constants.INGREDIENT_REQUEST_COUNT = 10
 constants.BUILDING_REQUEST_SLOT_COUNT = 20
 constants.BUILDER_ITEM_PICKUP_DISTANCE = 0.5

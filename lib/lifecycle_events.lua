@@ -166,6 +166,11 @@ function update_team_mate(record, player)
   update_inventory_renderings(record)
   update_builder_target_renderings(record)
 
+  if record.vehicle_state then
+    update_vehicle_travel(record)
+    return true
+  end
+
   -- Soldiers interrupt wandering and manual travel to engage any hostile
   -- unit, including characters and team mates from non-friendly forces.
   if record.kind == "soldier" then
@@ -182,11 +187,6 @@ function update_team_mate(record, player)
   if not record.route_rendering_suppressed
     and record.route_render_ids == nil and #manual_destinations > 0 then
     refresh_route_renderings(record, player.index)
-  end
-
-  if record.vehicle_state then
-    update_vehicle_travel(record)
-    return true
   end
 
   if #manual_destinations > 0
@@ -444,7 +444,7 @@ local function collect_team_mate(player, team_mates, record)
       give_or_spill({name = armor.item, count = 1})
     end
   end
-  for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory"}) do
+  for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory", "vehicle_ammo_inventory"}) do
     local inventory = record[inventory_name]
     if inventory and inventory.valid then
       for item, count in pairs(inventory.get_contents()) do
@@ -707,6 +707,9 @@ function order_selected_team_mates(event, append)
         record.home_base = nil
         record.home_base_type = nil
         record.pending_home_base = nil
+      end
+      if not append then
+        cancel_vehicle_travel(record)
       end
       record.route_rendering_suppressed = nil
       record.manual_hold = nil

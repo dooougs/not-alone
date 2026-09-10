@@ -27,6 +27,20 @@ function get_vehicle_fuel_inventory(record)
   return record.vehicle_fuel_inventory
 end
 
+function get_vehicle_ammo_inventory(record)
+  if not record.vehicle_ammo_inventory or not record.vehicle_ammo_inventory.valid then
+    record.vehicle_ammo_inventory = game.create_inventory(1)
+  end
+  return record.vehicle_ammo_inventory
+end
+
+function get_vehicle_entity_ammo_inventory(vehicle)
+  return vehicle.get_inventory(
+    vehicle.type == "spider-vehicle" and defines.inventory.spider_ammo
+      or defines.inventory.car_ammo
+  )
+end
+
 function vehicle_profile_for_item(record, item_name)
   for _, profile in ipairs(VEHICLE_PROFILES) do
     if profile.item_name == item_name
@@ -159,6 +173,28 @@ function try_soldier_vehicle_pickup(record)
   return true
 end
 
+-- Idle restock: stock ammo for a carried vehicle before it ever deploys.
+function try_soldier_vehicle_ammo_pickup(record)
+  if record.kind ~= "soldier" or record.vehicle_state then
+    return false
+  end
+  local item_name = find_carried_vehicle_item(record)
+  if not item_name or not get_vehicle_ammo_inventory(record).is_empty() then
+    return false
+  end
+  local ammo_name = find_vehicle_ammo_item(record, item_name)
+  local source = ammo_name and find_logistics_item_source(record, ammo_name)
+  if not source or not reserve_vehicle_pickup(record, source, ammo_name) then
+    return false
+  end
+  record.vehicle_item_name = item_name
+  record.vehicle_pickup_source = source
+  record.vehicle_ammo_item = ammo_name
+  record.vehicle_state = "pickup-car-ammo"
+  move_team_mate(record, source.position, 2)
+  return true
+end
+
 -- Best network fuel the selected vehicle's burner accepts, judged by fuel value.
 function find_vehicle_fuel_item(record, item_name)
   local profile = vehicle_profile_for_item(record, item_name)
@@ -181,6 +217,36 @@ function vehicle_requires_fuel(record, item_name)
   local profile = vehicle_profile_for_item(record, item_name)
   local prototype = profile and prototypes.entity[profile.entity_name]
   return prototype and prototype.burner_prototype ~= nil
+end
+
+-- Best network ammo accepted by any of the vehicle's guns.
+function find_vehicle_ammo_item(record, item_name)
+  local profile = vehicle_profile_for_item(record, item_name)
+  local prototype = profile and prototypes.entity[profile.entity_name]
+  if not prototype then
+    return nil
+  end
+  local accepted_categories = {}
+  local has_gun = false
+  for _, gun in pairs(prototype.guns or {}) do
+    local parameters = gun.attack_parameters
+    for _, category in pairs(parameters and parameters.ammo_categories or {}) do
+      accepted_categories[category] = true
+      has_gun = true
+    end
+  end
+  if not has_gun then
+    return nil
+  end
+  for _, candidate in ipairs(VEHICLE_AMMO_PRIORITY) do
+    local item = prototypes.item[candidate]
+    local category = item and item.ammo_category
+    if category and accepted_categories[category.name]
+      and find_logistics_item_source(record, candidate) then
+      return candidate
+    end
+  end
+  return nil
 end
 
 -- A multi-waypoint route drives waypoint to waypoint: corners need the tight
@@ -327,6 +393,18 @@ function recover_vehicle(record)
       end
     end
   end
+  -- Unspent ammo survives recovery the same way unburned fuel does.
+  local vehicle_ammo = get_vehicle_entity_ammo_inventory(vehicle)
+  if vehicle_ammo then
+    local ammo_store = get_vehicle_ammo_inventory(record)
+    for slot = 1, #vehicle_ammo do
+      local stack = vehicle_ammo[slot]
+      if stack.valid_for_read then
+        local moved = ammo_store.insert({name = stack.name, count = stack.count})
+        stack.count = stack.count - moved
+      end
+    end
+  end
   vehicle.destroy()
   record.vehicle_entity = nil
   record.vehicle_entity_unit_number = nil
@@ -393,6 +471,36 @@ function abandon_vehicle_travel(record)
   record.vehicle_failed_destination = failed_destination
   record.vehicle_failed_destination_tick = failed_destination and game.tick or nil
   return false
+end
+
+function cancel_vehicle_travel(record)
+  if not record.vehicle_state then
+    return
+  end
+  clear_vehicle_pickup(record)
+  record.vehicle_pickup_source = nil
+  record.vehicle_pending_destination = nil
+  record.vehicle_fuel_item = nil
+  record.vehicle_ammo_item = nil
+  local vehicle = record.vehicle_entity
+  if vehicle and vehicle.valid then
+    if vehicle.get_driver() then
+      vehicle.set_driver(nil)
+    end
+    recover_vehicle(record)
+  end
+  restore_vehicle_team_mate(record)
+  record.vehicle_state = nil
+  record.vehicle_destination = nil
+  record.vehicle_path_goal = nil
+  record.vehicle_path_goal_is_segment = nil
+  record.vehicle_path = nil
+  record.vehicle_path_request_id = nil
+  record.vehicle_deployment_position = nil
+  record.vehicle_collision_count = nil
+  record.vehicle_patrol_rolling = nil
+  record.vehicle_failed_destination = nil
+  record.vehicle_failed_destination_tick = nil
 end
 
 function request_vehicle_path(record)
@@ -525,6 +633,17 @@ function deploy_vehicle(record)
       end
     end
   end
+  local vehicle_ammo = get_vehicle_entity_ammo_inventory(vehicle)
+  if vehicle_ammo then
+    local ammo_store = get_vehicle_ammo_inventory(record)
+    for slot = 1, #ammo_store do
+      local stack = ammo_store[slot]
+      if stack.valid_for_read then
+        local moved = vehicle_ammo.insert({name = stack.name, count = stack.count})
+        stack.count = stack.count - moved
+      end
+    end
+  end
   record.vehicle_entity = vehicle
   record.vehicle_entity_unit_number = vehicle.unit_number
   record.vehicle_driver = driver
@@ -585,6 +704,20 @@ function begin_vehicle_travel(record, destination)
     move_team_mate(record, source.position, 2)
     return true
   end
+  -- Ammo is optional equipment: an unarmed drive beats no drive at all.
+  if get_vehicle_ammo_inventory(record).is_empty() then
+    local ammo_name = find_vehicle_ammo_item(record, item_name)
+    local source = ammo_name and find_logistics_item_source(record, ammo_name)
+    if source and reserve_vehicle_pickup(record, source, ammo_name) then
+      record.vehicle_item_name = item_name
+      record.vehicle_pending_destination = position_table(destination)
+      record.vehicle_pickup_source = source
+      record.vehicle_ammo_item = ammo_name
+      record.vehicle_state = "pickup-car-ammo"
+      move_team_mate(record, source.position, 2)
+      return true
+    end
+  end
   record.vehicle_item_name = item_name
   local position = record.entity.surface.find_non_colliding_position(
     profile.entity_name,
@@ -625,6 +758,18 @@ function continue_patrol_vehicle_travel(record)
   -- and end-of-route behaviour stay in one place.
   if #destinations == 1 and not record.manual_loop then
     return false
+  end
+  -- Restock at waypoints: a deployed vehicle never revisits begin_vehicle_travel,
+  -- so empty guns would stay empty forever on an endless loop. Declining the
+  -- continuation stops and recovers the vehicle; the next trip fetches ammo.
+  local vehicle = record.vehicle_entity
+  if vehicle and vehicle.valid then
+    local vehicle_ammo = get_vehicle_entity_ammo_inventory(vehicle)
+    if vehicle_ammo and vehicle_ammo.is_empty()
+      and get_vehicle_ammo_inventory(record).is_empty()
+      and find_vehicle_ammo_item(record, record.vehicle_item_name or vehicle.name) then
+      return false
+    end
   end
   table.remove(destinations, 1)
   if #destinations == 0 then
@@ -929,6 +1074,44 @@ update_vehicle_travel = function(record)
       record.vehicle_fuel_item = nil
       record.vehicle_state = nil
       if removed > 0 and destination then
+        begin_vehicle_travel(record, destination)
+      end
+      return true
+    end
+    move_team_mate(record, source.position, 2)
+    return true
+  elseif record.vehicle_state == "pickup-car-ammo" then
+    local source = record.vehicle_pickup_source
+    local ammo_name = record.vehicle_ammo_item
+    local source_inventory = get_logistics_source_inventory(source)
+    if not source or not source.valid or not ammo_name or not source_inventory
+      or source_inventory.get_item_count(ammo_name) < 1 then
+      -- The trip restarts on the next update and deploys unarmed if the
+      -- ammo is gone for good.
+      clear_vehicle_pickup(record)
+      record.vehicle_pickup_source = nil
+      record.vehicle_pending_destination = nil
+      record.vehicle_ammo_item = nil
+      record.vehicle_state = nil
+      return true
+    elseif distance_squared(record.entity.position, source.position) <= 4 then
+      local removed = source_inventory.remove({name = ammo_name, count = AMMO_REQUEST_COUNT})
+      if removed > 0 then
+        local inserted = get_vehicle_ammo_inventory(record).insert({
+          name = ammo_name,
+          count = removed
+        })
+        if inserted < removed then
+          source_inventory.insert({name = ammo_name, count = removed - inserted})
+        end
+      end
+      local destination = record.vehicle_pending_destination
+      clear_vehicle_pickup(record)
+      record.vehicle_pickup_source = nil
+      record.vehicle_pending_destination = nil
+      record.vehicle_ammo_item = nil
+      record.vehicle_state = nil
+      if destination then
         begin_vehicle_travel(record, destination)
       end
       return true
