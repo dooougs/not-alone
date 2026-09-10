@@ -163,7 +163,8 @@ function notalone.on_entity_damaged(event)
   -- A collision means the current plan is wrong: reroute the car, and after
   -- repeated impacts get out and let default travel planning start over.
   -- Collisions accumulate per trip so path resets cannot mask a crash loop.
-  if vehicle_profile_for_entity(entity.name)
+  local vehicle_profile = vehicle_profile_for_entity(entity.name)
+  if vehicle_profile and vehicle_profile.uses_ground_collision ~= false
     and event.damage_type.name == "impact" then
     local record = find_vehicle_record(entity.unit_number)
     if record and record.vehicle_entity_unit_number == entity.unit_number

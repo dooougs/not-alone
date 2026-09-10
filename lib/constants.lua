@@ -29,7 +29,12 @@ constants.CAR_PATH_LOOKAHEAD = 2
 constants.CAR_ITEM_NAME = "car"
 constants.CAR_ENTITY_NAME = "car"
 constants.VEHICLE_PROFILES = {
-  {item_name = "spidertron", entity_name = "spidertron", soldier_only = true},
+  {
+    item_name = "spidertron",
+    entity_name = "spidertron",
+    soldier_only = true,
+    uses_ground_collision = false
+  },
   {item_name = "tank", entity_name = "tank", soldier_only = true},
   {item_name = "car", entity_name = "car"}
 }

@@ -303,12 +303,15 @@ function request_vehicle_path(record)
   end
   local ok, request_id = pcall(function()
     local box = vehicle.prototype.collision_box
+    local profile = vehicle_profile_for_entity(vehicle.name)
+    local clearance = profile and profile.uses_ground_collision == false
+      and 0 or CAR_PATH_CLEARANCE
     return vehicle.surface.request_path({
       -- Grown box keeps planned routes clear of buildings the car would
       -- clip while turning.
       bounding_box = {
-        {box.left_top.x - CAR_PATH_CLEARANCE, box.left_top.y - CAR_PATH_CLEARANCE},
-        {box.right_bottom.x + CAR_PATH_CLEARANCE, box.right_bottom.y + CAR_PATH_CLEARANCE}
+        {box.left_top.x - clearance, box.left_top.y - clearance},
+        {box.right_bottom.x + clearance, box.right_bottom.y + clearance}
       },
       collision_mask = vehicle.prototype.collision_mask,
       start = position_table(vehicle.position),
@@ -548,12 +551,15 @@ function steer_vehicle(record)
     direction = defines.riding.direction.left
   end
   local acceleration = defines.riding.acceleration.accelerating
+  local profile = vehicle_profile_for_entity(vehicle.name)
   -- Cars cannot rotate while stationary: braking on a sharp heading error at
   -- standstill deadlocks the trip before it starts. Brake only when moving.
   if math.abs(difference) > 0.8 and math.abs(vehicle.speed or 0) > 0.05 then
     acceleration = defines.riding.acceleration.braking
   end
-  if vehicle_probe_is_clear(record, vehicle, current, 0) then
+  if profile and profile.uses_ground_collision == false then
+    record.vehicle_blocked_ticks = 0
+  elseif vehicle_probe_is_clear(record, vehicle, current, 0) then
     record.vehicle_blocked_ticks = 0
   else
     local left_clear = vehicle_probe_is_clear(record, vehicle, current, -CAR_AVOIDANCE_PROBE_ANGLE)
