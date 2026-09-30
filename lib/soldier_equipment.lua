@@ -680,7 +680,7 @@ end
 
 -- Fetches the next missing piece of the planned loadout, then bots for the
 -- installed roboports, then repair packs for those bots.
-function try_soldier_kit_pickup(record)
+local function try_suit_kit_pickup(record)
   local plan = get_soldier_loadout_plan(record)
   if not plan then
     return false
@@ -720,6 +720,71 @@ function try_soldier_kit_pickup(record)
   return false
 end
 
+-- Combat robot capsules (defender, distractor, destroyer, and any modded
+-- capsule that deploys a combat robot), best first.
+local capsule_cache
+
+function get_soldier_capsules()
+  if capsule_cache then
+    return capsule_cache
+  end
+  local capsules = {}
+  for name, item in pairs(prototypes.get_item_filtered({{filter = "type", type = "capsule"}})) do
+    local action = safe(function() return item.capsule_action end)
+    local attack = action and action.type == "throw" and action.attack_parameters
+    local projectile
+    for _, trigger in pairs(attack and attack.ammo_type and attack.ammo_type.action or {}) do
+      local deliveries = trigger.action_delivery or {}
+      if deliveries.type then
+        deliveries = {deliveries}
+      end
+      for _, delivery in pairs(deliveries) do
+        if delivery.type == "projectile" and delivery.projectile then
+          projectile = delivery.projectile
+        end
+      end
+    end
+    -- Capsules are named after the robot they release.
+    local robot = prototypes.entity[(name:gsub("%-capsule$", ""))]
+    if projectile and prototypes.entity[projectile]
+      and robot and robot.type == "combat-robot" then
+      capsules[#capsules + 1] = {
+        item = name,
+        projectile = projectile,
+        range = attack.range or 20,
+        rank = SOLDIER_CAPSULE_RANK[robot.name] or 1
+      }
+    end
+  end
+  table.sort(capsules, function(a, b)
+    if a.rank ~= b.rank then
+      return a.rank > b.rank
+    end
+    return a.item < b.item
+  end)
+  capsule_cache = capsules
+  return capsules
+end
+
+local function try_capsule_pickup(record)
+  local held = sum_counts(record.soldier_capsules)
+  if held >= SOLDIER_CAPSULE_RESTOCK_THRESHOLD then
+    return false
+  end
+  for _, capsule in ipairs(get_soldier_capsules()) do
+    if start_kit_pickup(record, "capsule", capsule.item, SOLDIER_CAPSULE_TARGET - held) then
+      return true
+    end
+  end
+  return false
+end
+
+-- Fills the armor first, then tops up combat robot capsules, which any
+-- Soldier can throw whatever it wears.
+function try_soldier_kit_pickup(record)
+  return try_suit_kit_pickup(record) or try_capsule_pickup(record)
+end
+
 local function clear_kit_pickup(record)
   record.soldier_state = nil
   record.soldier_pickup_source = nil
@@ -755,6 +820,9 @@ function update_soldier_kit_pickup(record)
       elseif kind == "repair" then
         record.soldier_repair = record.soldier_repair or {}
         record.soldier_repair[item_name] = (record.soldier_repair[item_name] or 0) + removed
+      elseif kind == "capsule" then
+        record.soldier_capsules = record.soldier_capsules or {}
+        record.soldier_capsules[item_name] = (record.soldier_capsules[item_name] or 0) + removed
       end
     end
     clear_kit_pickup(record)
@@ -769,7 +837,8 @@ end
 
 SOLDIER_KIT_FIELDS = {
   "soldier_equipment", "soldier_bots", "soldier_repair",
-  "soldier_repair_durability", "soldier_energy", "soldier_shield"
+  "soldier_repair_durability", "soldier_energy", "soldier_shield",
+  "soldier_capsules"
 }
 
 function copy_soldier_kit(from, to)
@@ -791,7 +860,7 @@ function soldier_kit_item_stacks(holder)
       stacks[#stacks + 1] = {name = item_name, count = 1}
     end
   end
-  for _, field in ipairs({"soldier_bots", "soldier_repair"}) do
+  for _, field in ipairs({"soldier_bots", "soldier_repair", "soldier_capsules"}) do
     for item_name, count in pairs(holder[field] or {}) do
       if count > 0 and prototypes.item[item_name] then
         stacks[#stacks + 1] = {name = item_name, count = count}
@@ -996,6 +1065,63 @@ local function run_repair_bots(record, stats)
   end
 end
 
+-- Like a player, a Soldier throws its best combat robots when a pack of
+-- enemies or an enemy base is within throwing range.
+local function throw_soldier_capsule(record, now)
+  if not record.soldier_capsules or not next(record.soldier_capsules)
+    or now < (record.soldier_capsule_ready or 0) then
+    return
+  end
+  local capsule
+  for _, candidate in ipairs(get_soldier_capsules()) do
+    if (record.soldier_capsules[candidate.item] or 0) > 0 then
+      capsule = candidate
+      break
+    end
+  end
+  if not capsule then
+    return
+  end
+  local entity = record.entity
+  local target = entity.surface.find_nearest_enemy({
+    position = entity.position,
+    max_distance = capsule.range,
+    force = entity.force
+  })
+  if not target or not target.valid then
+    return
+  end
+  local worth_it = target.type == "unit-spawner" or target.type == "turret"
+  if not worth_it then
+    local pack = 0
+    for _, other in pairs(entity.surface.find_entities_filtered({
+      position = target.position,
+      radius = SOLDIER_CAPSULE_PACK_RADIUS,
+      type = {"unit", "character"}
+    })) do
+      if other.force.is_enemy(entity.force) then
+        pack = pack + 1
+      end
+    end
+    worth_it = pack >= SOLDIER_CAPSULE_MIN_ENEMIES
+  end
+  if not worth_it then
+    return
+  end
+  entity.surface.create_entity({
+    name = capsule.projectile,
+    position = entity.position,
+    force = entity.force,
+    source = entity,
+    target = target.position,
+    speed = 0.3,
+    max_range = capsule.range
+  })
+  local count = record.soldier_capsules[capsule.item]
+  record.soldier_capsules[capsule.item] = count > 1 and count - 1 or nil
+  record.soldier_capsule_ready = now + SOLDIER_CAPSULE_COOLDOWN
+end
+
 -- Runs every update for deployed Soldiers: charges the suit, spends power on
 -- legs and shields, and lets lasers, discharge, and bots act on their own.
 function update_soldier_equipment(record)
@@ -1006,6 +1132,7 @@ function update_soldier_equipment(record)
   local now = game.tick
   local dt = clamp(now - (record.soldier_equipment_tick or now), 0, 600)
   record.soldier_equipment_tick = now
+  throw_soldier_capsule(record, now)
   local stats = get_soldier_equipment_stats(record)
   if not stats then
     set_soldier_speed(entity, 0)

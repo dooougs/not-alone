@@ -235,6 +235,13 @@ constants.SOLDIER_REPAIR_HEALTH_PER_SPEED = 30
 constants.SOLDIER_REPAIR_ENERGY_PER_BOT = 50000
 constants.SOLDIER_REPAIR_RESTOCK_THRESHOLD = 10
 constants.SOLDIER_REPAIR_PACK_TARGET = 50
+-- Combat robot capsules: carried stock, when to restock, and when to throw.
+constants.SOLDIER_CAPSULE_RANK = {destroyer = 3, distractor = 2, defender = 1}
+constants.SOLDIER_CAPSULE_TARGET = 10
+constants.SOLDIER_CAPSULE_RESTOCK_THRESHOLD = 3
+constants.SOLDIER_CAPSULE_COOLDOWN = 180
+constants.SOLDIER_CAPSULE_MIN_ENEMIES = 3
+constants.SOLDIER_CAPSULE_PACK_RADIUS = 12
 -- Active defenses.
 constants.SOLDIER_LASER_FALLBACK_DAMAGE = 20
 constants.SOLDIER_DISCHARGE_BASE_DAMAGE = 10
