@@ -108,6 +108,10 @@ local armor_visuals = {
 	{suffix = "armor-heavy", set = armor_animation_sets.heavy},
 	{suffix = "armor-power", set = armor_animation_sets.power}
 }
+-- Armored twins only exist when the character prototype still exposes the
+-- matching armor animations (other mods can replace them); record the names
+-- actually created so the command tool never filters on a missing entity.
+local armored_unit_names = {}
 for _, base_unit in pairs(soldier_units) do
 	for _, visual in pairs(armor_visuals) do
 		if visual.set then
@@ -127,6 +131,7 @@ for _, base_unit in pairs(soldier_units) do
 				}
 				context.tint_unit_masks(armored_unit, context.KIND_TINT.soldier)
 			soldier_prototypes[#soldier_prototypes + 1] = armored_unit
+			armored_unit_names[#armored_unit_names + 1] = armored_unit.name
 		end
 	end
 end
@@ -188,12 +193,8 @@ local soldier_filter_names = {"not-alone-team-mate-fists"}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
 	table.insert(soldier_filter_names, "not-alone-team-mate-" .. weapon.suffix)
 end
-for _, suffix in pairs({"armor-heavy", "armor-power"}) do
-	for _, weapon in pairs(SOLDIER_WEAPONS) do
-		table.insert(soldier_filter_names,
-			"not-alone-team-mate-" .. weapon.suffix .. "-" .. suffix)
-	end
-	table.insert(soldier_filter_names, "not-alone-team-mate-fists-" .. suffix)
+for _, name in pairs(armored_unit_names) do
+	table.insert(soldier_filter_names, name)
 end
 for _, name in pairs(mech_unit_names) do
 	table.insert(soldier_filter_names, name)
