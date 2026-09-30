@@ -195,6 +195,51 @@ constants.SOLDIER_ARMOR_ENTITY_SUFFIX = {
   [4] = "-armor-power",
   [5] = "-armor-power"
 }
+-- Armor equipment: how much a Soldier values each role when filling its
+-- grid. Each extra piece in a role is worth `decay` times the previous one,
+-- so suits come out balanced the way a player would build them.
+constants.SOLDIER_EQUIPMENT_ROLES = {
+  shield = {weight = 10, decay = 0.75},
+  laser = {weight = 9, decay = 0.8},
+  legs = {weight = 16, decay = 0.6},
+  roboport = {weight = 5, decay = 0.25},
+  battery = {weight = 3, decay = 0.5, sqrt = true},
+  discharge = {weight = 3, decay = 0.2},
+  generation = {weight = 2, decay = 0.5},
+  misc = {weight = 0.4, decay = 0.3}
+}
+-- Vanilla reference strengths per role (a piece this strong scores 1).
+constants.SOLDIER_BATTERY_REFERENCE = 20000000
+constants.SOLDIER_SHIELD_REFERENCE = 50
+constants.SOLDIER_LEGS_REFERENCE = 0.3
+constants.SOLDIER_ROBOPORT_REFERENCE = 10
+-- Planned average draw as a share of each consumer's peak, and solar's
+-- average output across a day.
+constants.SOLDIER_SOLAR_AVERAGE = 0.5
+constants.SOLDIER_SHIELD_DEMAND_FACTOR = 0.3
+constants.SOLDIER_LASER_DEMAND_FACTOR = 0.5
+constants.SOLDIER_DISCHARGE_DEMAND_FACTOR = 0.1
+constants.SOLDIER_ROBOPORT_DEMAND_FACTOR = 0.05
+-- Batteries may cover a deficit for this long (ticks) when planning.
+constants.SOLDIER_POWER_BUFFER_TICKS = 10800
+-- Spare generation is only worth slotting until output beats draw by this.
+constants.SOLDIER_GENERATION_HEADROOM = 1.25
+constants.SOLDIER_LOADOUT_MAX_ITEMS = 60
+-- Reactor counts tried as a starting point when planning a loadout.
+constants.SOLDIER_LOADOUT_MAX_REACTORS = 3
+constants.SOLDIER_LOADOUT_MIN_SCORE = 0.05
+constants.SOLDIER_MAX_MOVEMENT_BONUS = 1.5
+-- Personal roboport repair bots.
+constants.SOLDIER_REPAIR_INTERVAL = 60
+constants.SOLDIER_REPAIR_HEALTH_PER_SPEED = 30
+constants.SOLDIER_REPAIR_ENERGY_PER_BOT = 50000
+constants.SOLDIER_REPAIR_RESTOCK_THRESHOLD = 10
+constants.SOLDIER_REPAIR_PACK_TARGET = 50
+-- Active defenses.
+constants.SOLDIER_LASER_FALLBACK_DAMAGE = 20
+constants.SOLDIER_DISCHARGE_BASE_DAMAGE = 10
+constants.SOLDIER_DISCHARGE_MIN_ENEMIES = 3
+constants.SOLDIER_DISCHARGE_HEALTH_RATIO = 0.5
 constants.CRASH_SHIP_NAME = "crash-site-spaceship"
 constants.CRASH_SHIP_MAX_CREW = 10
 constants.CRASH_SHIP_VISIBLE_RADIUS_MULTIPLIER = 5

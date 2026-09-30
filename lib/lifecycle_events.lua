@@ -169,6 +169,7 @@ function update_team_mate(record, player)
     record.soldier_weapons = nil
     record.soldier_ammo = nil
     record.soldier_armor = nil
+    clear_soldier_kit(record)
     destroy_route_renderings(record)
     destroy_inventory_renderings(record)
     destroy_color_marker(record)
@@ -194,6 +195,12 @@ function update_team_mate(record, player)
   if record.vehicle_state then
     update_vehicle_travel(record)
     return true
+  end
+
+  -- Suit power, shields, legs, lasers, and repair bots run whatever the
+  -- Soldier is doing.
+  if record.kind == "soldier" then
+    update_soldier_equipment(record)
   end
 
   -- Soldiers interrupt wandering and manual travel to engage any hostile
@@ -470,6 +477,10 @@ local function collect_team_mate(player, team_mates, record)
     if armor then
       give_or_spill({name = armor.item, count = 1})
     end
+    for _, stack in ipairs(soldier_kit_item_stacks(record)) do
+      give_or_spill(stack)
+    end
+    clear_soldier_kit(record)
   end
   for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory", "vehicle_ammo_inventory"}) do
     local inventory = record[inventory_name]

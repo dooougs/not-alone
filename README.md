@@ -58,7 +58,24 @@ a miner to another role drops its carried resource at its current position; rese
 mining role preserves its cargo and current work.
 
 Security team mates defend a 48-tile radius around their assigned Habitat and return to it when no
-enemy is present. Builders find entity ghosts inside their current logistic network, collect the
+enemy is present.
+
+Soldiers wearing modular, power, Power armor MK2, or mech armor fill its equipment grid the way a
+player would. They read every equipment prototype at runtime, so vanilla, Space Age, and modded
+equipment of a supported type all work: generators and solar panels, batteries, energy shields,
+exoskeletons, personal laser defense, discharge defense, personal roboports, night vision, belt
+immunity, and toolbelts. From what they carry plus what their logistic network stocks, they plan a
+balanced suit that fits the armor's real grid shape: each piece is scored by its role (shields,
+lasers, legs, bots, batteries, extras) with diminishing returns for repeats, every power consumer is
+paired with enough generation to run it, and reactor-first builds are compared against
+solar-only ones. They then collect the missing pieces from logistic storage one at a time,
+handing back anything the new plan drops. Installed equipment works on its own: generation
+charges the suit, shields absorb damage before armor mitigation, exoskeletons raise walking speed,
+personal lasers fire at the nearest enemy in range, and discharge defense goes off when a Soldier
+is swarmed or badly hurt. A Soldier with personal roboports fills them with construction robots and
+carries repair packs, and its bots repair the Soldier, its squad, and nearby buildings inside the
+roboport's construction radius. Equipment, bots, and repair packs stay with a docked Soldier and
+spill where it falls. Builders find entity ghosts inside their current logistic network, collect the
 required building item and quality from network storage, walk to the construction site, and revive
 the ghost. They also follow normal force-specific deconstruction orders inside Habitat logistic
 coverage or normal roboport construction coverage, including neutral resources, trees, and rocks.

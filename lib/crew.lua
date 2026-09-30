@@ -18,6 +18,7 @@ function store_docked_team_mate(base, record)
     carried_count = record.carried_count,
     mining_resource_info = record.mining_resource_info
   }
+  copy_soldier_kit(record, docked[#docked])
   storage.not_alone_docked_team_mates[base.unit_number] = docked
   return true
 end
@@ -38,6 +39,7 @@ function restore_docked_team_mate(base, record)
         record.soldier_armor = stored.soldier_armor
         record.carried_count = stored.carried_count
         record.mining_resource_info = stored.mining_resource_info
+        copy_soldier_kit(stored, record)
         table.remove(docked, index)
         if #docked == 0 then
           storage.not_alone_docked_team_mates[base.unit_number] = nil
@@ -149,9 +151,13 @@ function spill_team_mate_loot(record, surface, position)
   if record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor] then
     spill(SOLDIER_ARMORS[record.soldier_armor].item, 1)
   end
+  for _, stack in ipairs(soldier_kit_item_stacks(record)) do
+    spill(stack.name, stack.count)
+  end
   record.soldier_weapons = nil
   record.soldier_ammo = nil
   record.soldier_armor = nil
+  clear_soldier_kit(record)
   local vehicle = record.vehicle_entity
   if vehicle and vehicle.valid then
     spill(record.vehicle_item_name or vehicle.name, 1)
