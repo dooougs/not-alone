@@ -763,7 +763,7 @@ function get_carried_items(record)
     end
   end
   if record.kind == "soldier" then
-    for _, field in ipairs({"soldier_bots", "soldier_repair"}) do
+    for _, field in ipairs({"soldier_bots", "soldier_repair", "soldier_capsules"}) do
       for item_name, count in pairs(record[field] or {}) do
         if count > 0 then
           counts[item_name] = (counts[item_name] or 0) + count

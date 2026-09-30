@@ -74,8 +74,10 @@ charges the suit, shields absorb damage before armor mitigation, exoskeletons ra
 personal lasers fire at the nearest enemy in range, and discharge defense goes off when a Soldier
 is swarmed or badly hurt. A Soldier with personal roboports fills them with construction robots and
 carries repair packs, and its bots repair the Soldier, its squad, and nearby buildings inside the
-roboport's construction radius. Equipment, bots, and repair packs stay with a docked Soldier and
-spill where it falls. Builders find entity ghosts inside their current logistic network, collect the
+roboport's construction radius. Every Soldier, whatever its armor, also keeps a stock of combat
+robot capsules (destroyers first, then distractors, then defenders, plus any modded capsule that
+releases a combat robot) and throws one when a pack of enemies or an enemy base is in range.
+Equipment, bots, repair packs, and capsules stay with a docked Soldier and spill where it falls. Builders find entity ghosts inside their current logistic network, collect the
 required building item and quality from network storage, walk to the construction site, and revive
 the ghost. They also follow normal force-specific deconstruction orders inside Habitat logistic
 coverage or normal roboport construction coverage, including neutral resources, trees, and rocks.
