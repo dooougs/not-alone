@@ -212,10 +212,11 @@ function notalone.on_entity_damaged(event)
     for _, record in pairs(team_mates) do
       if record.entity == entity then
         invalidate_network_threats(entity.surface, entity.force)
-        local armor = record.kind == "soldier" and record.soldier_armor
-          and SOLDIER_ARMORS[record.soldier_armor]
-        if armor then
-          entity.health = entity.health + event.final_damage_amount * armor.mitigation
+        if record.kind == "soldier" then
+          local restored = absorb_soldier_damage(record, event.final_damage_amount)
+          if restored > 0 then
+            entity.health = entity.health + restored
+          end
         end
         return
       end
@@ -472,6 +473,9 @@ function notalone.on_base_removed(event)
       end
       if stored.soldier_armor and SOLDIER_ARMORS[stored.soldier_armor] then
         spill(SOLDIER_ARMORS[stored.soldier_armor].item, 1)
+      end
+      for _, stack in ipairs(soldier_kit_item_stacks(stored)) do
+        spill(stack.name, stack.count)
       end
     end
     storage.not_alone_docked_team_mates[entity.unit_number] = nil

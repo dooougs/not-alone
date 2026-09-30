@@ -524,6 +524,10 @@ take_outpost_soldier = function(player, outpost)
         if record.soldier_armor and SOLDIER_ARMORS[record.soldier_armor] then
           spill(SOLDIER_ARMORS[record.soldier_armor].item, 1)
         end
+        for _, stack in ipairs(soldier_kit_item_stacks(record)) do
+          spill(stack.name, stack.count)
+        end
+        clear_soldier_kit(record)
         destroy_route_renderings(record)
         destroy_inventory_renderings(record)
         destroy_color_marker(record)
@@ -755,6 +759,15 @@ function get_carried_items(record)
     for ammo_name, count in pairs(record.soldier_ammo) do
       if count > 0 then
         counts[ammo_name] = (counts[ammo_name] or 0) + count
+      end
+    end
+  end
+  if record.kind == "soldier" then
+    for _, field in ipairs({"soldier_bots", "soldier_repair"}) do
+      for item_name, count in pairs(record[field] or {}) do
+        if count > 0 then
+          counts[item_name] = (counts[item_name] or 0) + count
+        end
       end
     end
   end

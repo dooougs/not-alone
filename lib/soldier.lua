@@ -290,6 +290,10 @@ function update_soldier(record)
     return update_soldier_ground_pickup(record)
   end
 
+  if record.soldier_state == "pickup-kit" then
+    return update_soldier_kit_pickup(record)
+  end
+
   if record.soldier_state == "restock" then
     local source = record.soldier_ammo_source
     local inventory = get_logistics_source_inventory(source)
@@ -406,6 +410,12 @@ function update_soldier(record)
         return true
       end
       if try_soldier_armor_pickup(record) then
+        record.next_job_search_tick = nil
+        record.idle_search_failures = nil
+        return true
+      end
+      -- Fill the armor's equipment grid, then its roboports' bots.
+      if try_soldier_kit_pickup(record) then
         record.next_job_search_tick = nil
         record.idle_search_failures = nil
         return true
