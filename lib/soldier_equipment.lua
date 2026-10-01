@@ -202,8 +202,16 @@ function get_soldier_equipment_catalog()
     end
   end
   table.sort(catalog.robot_items)
+  -- Team mate items are built on the repair pack prototype; a Soldier must
+  -- never spend a stored Miner or Builder as repair durability.
+  local team_mate_items = {}
+  for _, item_name in pairs(ITEM_NAME_BY_KIND) do
+    team_mate_items[item_name] = true
+  end
   for name in pairs(prototypes.get_item_filtered({{filter = "type", type = "repair-tool"}})) do
-    catalog.repair_items[#catalog.repair_items + 1] = name
+    if not team_mate_items[name] then
+      catalog.repair_items[#catalog.repair_items + 1] = name
+    end
   end
   table.sort(catalog.repair_items)
   catalog_cache = catalog
