@@ -1,4 +1,17 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.26
+Date: 2026-10-02
+  Features:
+    - Soldiers in modular, power, MK2, or mech armor fill their equipment grid like a player, fetching generators, batteries, shields, exoskeletons, personal lasers, discharge defense, and personal roboports from their logistic network.
+    - Soldiers carry defender, distractor, and destroyer capsules and throw them at packs of enemies and enemy bases.
+  Changes:
+    - Personal roboports on Soldiers send construction robots to repair the Soldier, its squad, and nearby buildings.
+    - Armor equipment is read from runtime prototypes, so Space Age and modded equipment of supported types also work.
+  Bugfixes:
+    - Fixed a load error when the command tool filter listed armored Soldier variants that the character prototype did not create.
+    - Fixed Soldiers fetching stored team mates from the logistic network and spending them as repair packs.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.25
 Date: 2026-09-10
   Bugfixes:
