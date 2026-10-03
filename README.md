@@ -48,9 +48,9 @@ from the shore. A Builder that can't reach a target releases it for others and r
 ## Soldiers
 
 **Weapons and armor.** Soldiers collect guns, ammo and armor from network storage. Every gun and ammo
-type is read from the game's prototypes, so vanilla, Space Age and modded weapons all work. A Soldier
-fights with the best gun it has ammo for, falls back gun by gun as ammo runs out, and punches only as a
-last resort.
+type is read from the game's prototypes, so vanilla, Space Age (tesla gun, railgun) and modded weapons
+all work. A Soldier fights with the best gun it has ammo for, falls back gun by gun as ammo runs out,
+and punches only as a last resort. Soldiers never fire atomic bombs or capture rockets.
 
 **Armor equipment.** In modular, power, MK2 or mech armor, a Soldier fills the equipment grid the way
 a player would. It plans a power-balanced loadout from what it carries and what the network stocks
@@ -63,11 +63,13 @@ nearby buildings.
 **Capsules.** Soldiers keep a stock of combat robot capsules (destroyer, distractor, defender and
 modded equivalents) and throw them at packs of enemies and at nests.
 
-**Retreat.** A badly hurt Soldier, or one that has run out of ammo for every gun, pulls back to the
-nearest Habitat or Outpost to heal and rearm, then returns to its route or post.
+**Retreat.** A Soldier below 30% health, or one whose guns are all empty while the network still has
+ammo, pulls back to the nearest Habitat or Outpost. It heals faster there and restocks, then returns to
+its route or post once it is back above 90%. It still fights anything that attacks the base.
 
-**Outpost defenses.** Soldiers stationed at an Outpost build turret ghosts placed near it, using items
-from network storage, and keep the Outpost's turrets topped up with ammo.
+**Outpost defenses.** Idle Soldiers stationed at an Outpost build turret, wall, gate and land mine
+ghosts within 32 tiles of it, using items from network storage, and refill any ammo turret there that
+drops below 10 rounds.
 
 **Orders.** With the Soldier command tool:
 

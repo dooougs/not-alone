@@ -201,6 +201,10 @@ function update_team_mate(record, player)
   -- Soldier is doing.
   if record.kind == "soldier" then
     update_soldier_equipment(record)
+    -- Badly hurt or out of ammo: fall back to a base before anything else.
+    if update_soldier_retreat(record) then
+      return true
+    end
   end
 
   -- Soldiers interrupt wandering and manual travel to engage any hostile
@@ -481,6 +485,10 @@ local function collect_team_mate(player, team_mates, record)
       give_or_spill(stack)
     end
     clear_soldier_kit(record)
+    for _, stack in ipairs(soldier_outpost_cargo_stacks(record)) do
+      give_or_spill(stack)
+    end
+    clear_soldier_outpost_duty(record)
   end
   for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory", "vehicle_ammo_inventory"}) do
     local inventory = record[inventory_name]

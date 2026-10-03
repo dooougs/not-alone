@@ -1,4 +1,16 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.27
+Date: 2026-10-03
+  Features:
+    - Soldiers can use every gun in the game, including Space Age and modded guns. Guns and their ammo are read from prototypes and ranked automatically.
+    - Badly hurt Soldiers, and Soldiers whose guns are all empty, retreat to the nearest Habitat or Outpost to heal and restock, then resume their route or post.
+    - Soldiers stationed at an Outpost build nearby turret, wall, gate and land mine ghosts and keep its ammo turrets topped up.
+  Changes:
+    - Rewrote the README to describe the current roles, bases and Soldier features.
+  Bugfixes:
+    - Fixed the 0.1.16 changelog entry being merged into 0.1.19.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.26
 Date: 2026-10-02
   Features:
