@@ -88,6 +88,106 @@ function find_builder_job(record, surface, force, position)
   return nil, nil, nil
 end
 
+-- Ghosts pasted with modules, fuel or ammo leave an item-request-proxy once
+-- revived; robots would normally deliver those, so builders fill them too.
+function get_item_request_quality(id)
+  local quality = id.quality
+  if type(quality) == "string" then
+    return quality
+  end
+  return quality and quality.name or "normal"
+end
+
+function get_item_request_entries(proxy)
+  local entries = {}
+  for _, plan in pairs(proxy.insert_plan or {}) do
+    local positions = plan.items and plan.items.in_inventory or {}
+    local count = plan.items and plan.items.grid_count or 0
+    for _, position in pairs(positions) do
+      count = count + (position.count or 1)
+    end
+    if count > 0 then
+      entries[#entries + 1] = {
+        item = {name = plan.id.name, quality = get_item_request_quality(plan.id)},
+        count = count
+      }
+    end
+  end
+  return entries
+end
+
+function find_builder_request_job(record, surface, force, position)
+  local team_mate = record.entity
+  surface = surface or team_mate.surface
+  force = force or team_mate.force
+  position = position or position_table(team_mate.position)
+  local network = surface.find_logistic_network_by_position(position, force)
+  if not network then
+    return nil, nil, nil, nil
+  end
+
+  local proxies = {}
+  local seen_proxies = {}
+  for _, cell in pairs(network.cells) do
+    if cell.valid and cell.owner.valid then
+      for _, proxy in pairs(surface.find_entities_filtered({
+        type = "item-request-proxy",
+        force = force,
+        position = cell.owner.position,
+        radius = math.max(cell.logistic_radius, cell.construction_radius) * 1.5
+      })) do
+        local target = proxy.proxy_target
+        if target and target.valid
+          and (cell.is_in_logistic_range(proxy.position)
+            or cell.is_in_construction_range(proxy.position))
+          and not seen_proxies[proxy.unit_number]
+          and not builder_target_is_unreachable(record, proxy)
+          and not builder_target_is_claimed(proxy, record) then
+          seen_proxies[proxy.unit_number] = true
+          proxies[#proxies + 1] = proxy
+        end
+      end
+    end
+  end
+  if not proxies[1] then
+    return nil, nil, nil, nil
+  end
+  table.sort(proxies, function(left, right)
+    return distance_squared(position, left.position)
+      < distance_squared(position, right.position)
+  end)
+
+  local contents = get_logistics_contents(network)
+  for _, proxy in ipairs(proxies) do
+    for _, entry in ipairs(get_item_request_entries(proxy)) do
+      local item = entry.item
+      local plan = find_builder_plan(
+        network, {name = item.name, quality = item.quality, count = entry.count}, force, contents
+      )
+      local count = entry.count
+      if not plan then
+        -- Deliver what stock holds now; the rest stays on the proxy.
+        local stocked = 0
+        for _, stack in pairs(contents) do
+          local stack_quality = type(stack.quality) == "string" and stack.quality
+            or stack.quality.name
+          if stack.name == item.name and stack_quality == item.quality then
+            stocked = stocked + stack.count
+          end
+        end
+        count = math.min(entry.count, stocked)
+        plan = count > 0 and find_builder_plan(
+          network, {name = item.name, quality = item.quality, count = count}, force, contents
+        )
+      end
+      if plan and builder_plan_has_valid_sources(network, plan) then
+        return proxy, plan, item, count
+      end
+    end
+  end
+  return nil, nil, nil, nil
+end
+
 -- A water target (fish, item spilled offshore) is workable only from land:
 -- some walkable tile center must sit within fishing reach of the target.
 function builder_fishing_spot_exists(surface, position)
@@ -262,6 +362,18 @@ function assign_builder_job(record, surface, force, position)
   end
 
   local target, plan, item = find_builder_job(record, surface, force, position)
+  if target then
+    record.builder_target = target
+    record.builder_plan = plan
+    record.builder_plan_index = 1
+    record.builder_item = item
+    record.builder_carried_count = 0
+    record.builder_source = nil
+    record.builder_state = "execute-plan"
+    return true
+  end
+
+  target, plan, item = find_builder_request_job(record, surface, force, position)
   if target then
     record.builder_target = target
     record.builder_plan = plan
