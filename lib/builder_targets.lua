@@ -98,22 +98,49 @@ function get_item_request_quality(id)
   return quality and quality.name or "normal"
 end
 
+-- Equipment requests can only be met while the grid still holds a
+-- matching equipment ghost; anything else would be fetched for nothing.
+function count_requested_equipment_ghosts(grid, item)
+  local item_prototype = prototypes.item[item.name]
+  local placed = item_prototype and item_prototype.place_as_equipment_result
+  local count = 0
+  for _, equipment in pairs(placed and grid and grid.equipment or {}) do
+    if equipment.type == "equipment-ghost"
+      and equipment.ghost_name == placed.name
+      and equipment.quality.name == item.quality then
+      count = count + 1
+    end
+  end
+  return count
+end
+
 function get_item_request_entries(proxy)
   local entries = {}
+  local target = proxy.proxy_target
   for _, plan in pairs(proxy.insert_plan or {}) do
-    local positions = plan.items and plan.items.in_inventory or {}
-    local count = plan.items and plan.items.grid_count or 0
-    for _, position in pairs(positions) do
+    local item = {name = plan.id.name, quality = get_item_request_quality(plan.id)}
+    local count = 0
+    for _, position in pairs(plan.items and plan.items.in_inventory or {}) do
       count = count + (position.count or 1)
     end
+    local grid_count = plan.items and plan.items.grid_count
+    if grid_count then
+      count = count + math.min(grid_count, count_requested_equipment_ghosts(target.grid, item))
+    end
     if count > 0 then
-      entries[#entries + 1] = {
-        item = {name = plan.id.name, quality = get_item_request_quality(plan.id)},
-        count = count
-      }
+      entries[#entries + 1] = {item = item, count = count}
     end
   end
   return entries
+end
+
+-- Removal plans (a blueprint swapping modules, say) name slots to empty.
+function count_item_request_removals(proxy)
+  local count = 0
+  for _, plan in pairs(proxy.removal_plan or {}) do
+    count = count + #(plan.items and plan.items.in_inventory or {})
+  end
+  return count
 end
 
 function find_builder_request_job(record, surface, force, position)
@@ -159,6 +186,10 @@ function find_builder_request_job(record, surface, force, position)
 
   local contents = get_logistics_contents(network)
   for _, proxy in ipairs(proxies) do
+    if count_item_request_removals(proxy) > 0 then
+      -- Empty the slots first; nothing needs fetching for that.
+      return proxy, nil, nil
+    end
     for _, entry in ipairs(get_item_request_entries(proxy)) do
       local item = entry.item
       local plan = find_builder_plan(
@@ -377,11 +408,11 @@ function assign_builder_job(record, surface, force, position)
   if target then
     record.builder_target = target
     record.builder_plan = plan
-    record.builder_plan_index = 1
+    record.builder_plan_index = plan and 1 or nil
     record.builder_item = item
     record.builder_carried_count = 0
     record.builder_source = nil
-    record.builder_state = "execute-plan"
+    record.builder_state = plan and "execute-plan" or "move-to-request"
     return true
   end
 

@@ -72,8 +72,8 @@ function builder_ghost_standing_position(record, target)
   return best
 end
 
--- Any requested items left in cargo afterwards (proxy gone, slot taken)
--- are returned by the cargo check at the top of update_builder.
+-- Any items left in cargo afterwards (removed modules, a slot already
+-- taken) are returned by the cargo check at the top of update_builder.
 function finish_builder_request(record)
   record.builder_item = nil
   record.builder_carried_count = 0
@@ -105,7 +105,8 @@ end
 
 -- Blueprinted equipment arrives as equipment ghosts in the target's grid.
 function revive_requested_equipment(grid, item, count, cargo)
-  local placed = prototypes.item[item.name].place_as_equipment_result
+  local item_prototype = prototypes.item[item.name]
+  local placed = item_prototype and item_prototype.place_as_equipment_result
   local revived = 0
   for _, equipment in pairs(placed and grid.equipment or {}) do
     if revived >= count or cargo.get_item_count(item) == 0 then
@@ -166,12 +167,69 @@ function fulfil_builder_item_request(record, proxy)
       remaining_plan[#remaining_plan + 1] = plan
     end
   end
-  if not remaining_plan[1] and not (proxy.removal_plan or {})[1] then
-    proxy.destroy()
-  else
-    proxy.insert_plan = remaining_plan
-  end
+  proxy.insert_plan = remaining_plan
   return carried - cargo.get_item_count(item)
+end
+
+function remove_builder_requested_items(record, proxy)
+  local target = proxy.proxy_target
+  local slots = count_item_request_removals(proxy)
+  local cargo = get_builder_cargo(record)
+  if cargo.is_empty() and #cargo < slots then
+    cargo.destroy()
+    record.builder_cargo = game.create_inventory(math.min(slots, MAX_BUILDER_CARGO_SLOTS))
+    cargo = record.builder_cargo
+  end
+  local removed_total = 0
+  local remaining_plan = {}
+  for _, plan in pairs(proxy.removal_plan or {}) do
+    local item = {name = plan.id.name, quality = get_item_request_quality(plan.id)}
+    local kept = {}
+    for _, position in pairs(plan.items and plan.items.in_inventory or {}) do
+      local wanted = position.count or 1
+      local inventory = target.get_inventory(position.inventory)
+      local stack = inventory and position.stack + 1 <= #inventory
+        and inventory[position.stack + 1]
+      -- A slot no longer holding the item has nothing left to remove.
+      if stack and stack.valid_for_read and stack.name == item.name
+        and stack.quality.name == item.quality then
+        local count = math.min(wanted, stack.count, cargo.get_insertable_count(item))
+        local removed = count > 0
+          and cargo.insert({name = item.name, quality = item.quality, count = count}) or 0
+        if removed >= stack.count then
+          stack.clear()
+        elseif removed > 0 then
+          stack.count = stack.count - removed
+        end
+        removed_total = removed_total + removed
+        if removed < wanted and stack.valid_for_read then
+          kept[#kept + 1] = {
+            inventory = position.inventory,
+            stack = position.stack,
+            count = wanted - removed
+          }
+        end
+      end
+    end
+    if kept[1] then
+      remaining_plan[#remaining_plan + 1] = {id = plan.id, items = {in_inventory = kept}}
+    end
+  end
+  proxy.removal_plan = remaining_plan
+  return removed_total
+end
+
+-- Removals run first so planned slots (module swaps) are free to fill.
+-- Returns how many items moved in or out.
+function work_builder_item_request(record, proxy)
+  local moved = remove_builder_requested_items(record, proxy)
+  if record.builder_item then
+    moved = moved + fulfil_builder_item_request(record, proxy)
+  end
+  if not (proxy.insert_plan or {})[1] and not (proxy.removal_plan or {})[1] then
+    proxy.destroy()
+  end
+  return moved
 end
 
 function update_builder(record)
@@ -408,7 +466,7 @@ function update_builder(record)
     elseif builder_is_at_target(record, target) then
       record.builder_approach_progress = nil
       record.builder_approach_stalls = nil
-      if fulfil_builder_item_request(record, proxy) == 0 then
+      if work_builder_item_request(record, proxy) == 0 then
         -- Every requested slot is blocked; don't keep fetching for it.
         record.builder_unreachable = record.builder_unreachable or {}
         record.builder_unreachable[#record.builder_unreachable + 1] = {
