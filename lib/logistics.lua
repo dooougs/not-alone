@@ -260,10 +260,23 @@ function progress_trigger_research(force, trigger_type, name, count)
   end
 end
 
+-- Factorio 2.1 replaced LuaItemPrototype.fuel_category with a list,
+-- fuel_categories, which is nil for items that are not fuel.
+function item_is_fuel(item_prototype)
+  return item_prototype ~= nil and item_prototype.fuel_categories ~= nil
+end
+
+function item_prototype_is_fuel_for(item_prototype, burner)
+  for _, category in pairs(item_prototype and item_prototype.fuel_categories or {}) do
+    if burner.fuel_categories[category] then
+      return true
+    end
+  end
+  return false
+end
+
 function item_is_fuel_for(item_name, burner)
-  local item_prototype = prototypes.item[item_name]
-  return item_prototype and item_prototype.fuel_category
-    and burner.fuel_categories[item_prototype.fuel_category]
+  return item_prototype_is_fuel_for(prototypes.item[item_name], burner)
 end
 
 function fuel_priority(item_name)
@@ -289,7 +302,7 @@ function get_network_fuel_candidates(network, force)
     if inventory then
       for _, item in pairs(inventory.get_contents()) do
         local prototype = prototypes.item[item.name]
-        if prototype and prototype.fuel_category then
+        if item_is_fuel(prototype) then
           items[#items + 1] = item.name
         end
       end

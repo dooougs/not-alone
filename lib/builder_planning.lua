@@ -81,6 +81,20 @@ end
 -- product once instead of scanning every recipe per planner lookup.
 recipes_by_product = nil
 
+-- Only recipes a character could make by hand: smelting, chemistry and
+-- other machine-only categories would otherwise send the planner through
+-- the whole recipe graph looking for a way to hand-craft ore.
+local function is_hand_craftable(recipe)
+  local character = prototypes.entity["character"]
+  local hand_categories = character and character.crafting_categories or {crafting = true}
+  for _, category in pairs(recipe.categories or {}) do
+    if hand_categories[category] then
+      return true
+    end
+  end
+  return false
+end
+
 function get_recipes_by_product()
   if recipes_by_product then
     return recipes_by_product
@@ -88,7 +102,8 @@ function get_recipes_by_product()
   recipes_by_product = {}
   for _, recipe in pairs(prototypes.recipe) do
     if not recipe.hidden_from_player_crafting
-      and recipe.allow_as_intermediate ~= false then
+      and recipe.allow_as_intermediate ~= false
+      and is_hand_craftable(recipe) then
       for _, product in pairs(recipe.products or {}) do
         if not product.type or product.type == "item" then
           local list = recipes_by_product[product.name] or {}
@@ -117,7 +132,17 @@ function find_hand_crafting_recipe(item_name, force)
   return recipes
 end
 
+-- Upper bound on planner steps per find_builder_plan call; deep crafting
+-- trees branch per recipe, and a missing raw material must fail fast
+-- instead of exploring every alternative.
+BUILDER_PLAN_STEP_LIMIT = 500
+local builder_plan_steps = 0
+
 function plan_builder_item(network, item, force, available, visiting, actions)
+  builder_plan_steps = builder_plan_steps + 1
+  if builder_plan_steps > BUILDER_PLAN_STEP_LIMIT then
+    return false
+  end
   local item_name = item.name
   local needed = item.count or 1
   local in_network = available[item_name] or 0
@@ -192,6 +217,7 @@ function plan_builder_item(network, item, force, available, visiting, actions)
 end
 
 function find_builder_plan(network, item, force, contents)
+  builder_plan_steps = 0
   local available = {}
   for _, stack in pairs(contents or get_logistics_contents(network)) do
     local stack_quality = stack.quality

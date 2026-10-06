@@ -661,7 +661,8 @@ function update_builder_target_renderings(record)
       (record.builder_craft_ready_tick or game.tick) - game.tick
     )
     progress = progress + math.min(1, elapsed / action.craft_ticks) / plan_count
-  elseif record.builder_state == "move-to-ghost" then
+  elseif record.builder_state == "move-to-ghost"
+    or record.builder_state == "move-to-request" then
     progress = 1
   end
   progress = math.max(0, math.min(1, progress))

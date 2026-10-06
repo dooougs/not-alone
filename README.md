@@ -39,9 +39,10 @@ it. Alt-deconstruct unmarks resources.
 delivers to any requester in the network, including the hidden requesters described below.
 
 **Builder** (gold). Builds ghosts using items from network storage, hand-crafting simple items when
-needed, and handles deconstruction orders, including trees, rocks and marked ground items. Cargo goes
-to storage chests, so the network needs at least one. Builders also repair damaged buildings and fish
-from the shore. A Builder that can't reach a target releases it for others and retries later.
+needed, fills the ammo, fuel, modules and equipment those ghosts request, and handles deconstruction
+orders, including trees, rocks and marked ground items. Cargo goes to storage chests, so the network
+needs at least one. Builders also repair damaged buildings and fish from the shore. A Builder that
+can't reach a target releases it for others and retries later.
 
 **Soldier** (red). Defends its network and follows orders. See the next section.
 
