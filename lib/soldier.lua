@@ -294,6 +294,10 @@ function update_soldier(record)
     return update_soldier_kit_pickup(record)
   end
 
+  if update_soldier_outpost_duty(record) then
+    return true
+  end
+
   if record.soldier_state == "restock" then
     local source = record.soldier_ammo_source
     local inventory = get_logistics_source_inventory(source)
@@ -493,6 +497,10 @@ function update_soldier(record)
   if not select_soldier_weapon(record)
     and game.tick >= (record.next_job_search_tick or 0)
     and start_soldier_restock(record) then
+    return true
+  end
+  if record.home_base_type == "outpost" and not record.manual_wander
+    and try_soldier_outpost_duty(record) then
     return true
   end
   if record.manual_wander or record.home_base_type == "outpost" then

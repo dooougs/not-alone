@@ -64,40 +64,8 @@ TEAM_MATE_ENTITY_BY_KIND = {
 KIND_BY_ENTITY_NAME = {
   ["not-alone-team-mate-miner"] = "miner",
   ["not-alone-team-mate-builder"] = "builder",
-  ["not-alone-team-mate-carrier"] = "carrier",
-  ["not-alone-team-mate-fists"] = "soldier",
-  ["not-alone-team-mate-handgun"] = "soldier",
-  ["not-alone-team-mate-smg"] = "soldier",
-  ["not-alone-team-mate-shotgun"] = "soldier",
-  ["not-alone-team-mate-combat-shotgun"] = "soldier",
-  ["not-alone-team-mate-flamethrower"] = "soldier",
-  ["not-alone-team-mate-rocket"] = "soldier",
-  ["not-alone-team-mate-fists-mech"] = "soldier",
-  ["not-alone-team-mate-smg-mech"] = "soldier",
-  ["not-alone-team-mate-shotgun-mech"] = "soldier",
-  ["not-alone-team-mate-combat-shotgun-mech"] = "soldier",
-  ["not-alone-team-mate-flamethrower-mech"] = "soldier",
-  ["not-alone-team-mate-rocket-mech"] = "soldier"
+  ["not-alone-team-mate-carrier"] = "carrier"
 }
-for _, entity_name in pairs({
-  "not-alone-team-mate-fists",
-  "not-alone-team-mate-handgun",
-  "not-alone-team-mate-smg",
-  "not-alone-team-mate-shotgun",
-  "not-alone-team-mate-combat-shotgun",
-  "not-alone-team-mate-flamethrower",
-  "not-alone-team-mate-rocket"
-}) do
-  KIND_BY_ENTITY_NAME[entity_name .. "-armor-heavy"] = "soldier"
-  KIND_BY_ENTITY_NAME[entity_name .. "-armor-power"] = "soldier"
-end
-TEAM_MATE_NAMES = {TEAM_MATE_NAME}
-for entity_name in pairs(KIND_BY_ENTITY_NAME) do
-  -- Mech variants only exist when Space Age provides mech armor.
-  if prototypes.entity[entity_name] then
-    TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
-  end
-end
 COMMAND_TOOL_NAME = "not-alone-command-tool"
 LOGISTICS_HUB_NAME = "not-alone-logistics-hub"
 BUILDING_REQUESTER_NAME = "not-alone-building-logistics-requester"
@@ -122,52 +90,64 @@ KIND_COLOR = {
 }
 -- Soldier arsenal, ordered worst to best. Soldiers fight with the best owned
 -- weapon that still has ammo, and restock the best ammo tier listed first.
--- Soldiers collect the vanilla gun item directly from logistics storage.
-SOLDIER_WEAPONS = {
-  {
-    kind = "handgun",
-    gun = "pistol",
-    entity = "not-alone-team-mate-handgun",
-    ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
-  },
-
-  {
-    kind = "smg",
-    gun = "submachine-gun",
-    entity = "not-alone-team-mate-smg",
-    ammo = {"uranium-rounds-magazine", "piercing-rounds-magazine", "firearm-magazine"}
-  },
-  {
-    kind = "shotgun",
-    gun = "shotgun",
-    entity = "not-alone-team-mate-shotgun",
-    ammo = {"piercing-shotgun-shell", "shotgun-shell"}
-  },
-  {
-    kind = "combat-shotgun",
-    gun = "combat-shotgun",
-    entity = "not-alone-team-mate-combat-shotgun",
-    ammo = {"piercing-shotgun-shell", "shotgun-shell"}
-  },
-  {
-    kind = "flamethrower",
-    gun = "flamethrower",
-    entity = "not-alone-team-mate-flamethrower",
-    ammo = {"flamethrower-ammo"}
-  },
-  {
-    kind = "rocket",
-    gun = "rocket-launcher",
-    entity = "not-alone-team-mate-rocket",
-    ammo = {"explosive-rocket", "rocket"}
-  }
-}
+-- Soldiers collect the gun item directly from logistics storage. The list is
+-- built at data-final-fixes from every gun in the game, so Space Age and
+-- modded guns are included; see prototypes/soldier_weapons.lua.
+local weapon_data = prototypes.mod_data["not-alone-soldier-weapons"]
+SOLDIER_WEAPONS = {}
+for _, weapon in ipairs(weapon_data and weapon_data.data.weapons or {}) do
+  if prototypes.entity[weapon.entity] and prototypes.item[weapon.gun] then
+    SOLDIER_WEAPONS[#SOLDIER_WEAPONS + 1] = {
+      kind = weapon.kind,
+      gun = weapon.gun,
+      entity = weapon.entity,
+      ammo = weapon.ammo
+    }
+  end
+end
 SOLDIER_WEAPON_BY_KIND = {}
 for _, weapon in pairs(SOLDIER_WEAPONS) do
   SOLDIER_WEAPON_BY_KIND[weapon.kind] = weapon
 end
 SOLDIER_FISTS_ENTITY = "not-alone-team-mate-fists"
+-- Every Soldier body: fists or a gun, each with armored and mech twins.
+local soldier_bodies = {SOLDIER_FISTS_ENTITY}
+for _, weapon in pairs(SOLDIER_WEAPONS) do
+  soldier_bodies[#soldier_bodies + 1] = weapon.entity
+end
+for _, entity_name in pairs(soldier_bodies) do
+  KIND_BY_ENTITY_NAME[entity_name] = "soldier"
+  for _, suffix in pairs({"-armor-heavy", "-armor-power", "-mech"}) do
+    KIND_BY_ENTITY_NAME[entity_name .. suffix] = "soldier"
+  end
+end
+TEAM_MATE_NAMES = {TEAM_MATE_NAME}
+for entity_name in pairs(KIND_BY_ENTITY_NAME) do
+  -- Armored and mech twins only exist when the matching animations do.
+  if prototypes.entity[entity_name] then
+    TEAM_MATE_NAMES[#TEAM_MATE_NAMES + 1] = entity_name
+  end
+end
 SOLDIER_AMMO_TICKS_PER_ROUND = 30
+-- Retreat: below this health fraction a Soldier pulls back to the nearest
+-- Habitat or Outpost, heals faster there, and leaves once healed this far.
+SOLDIER_RETREAT_HEALTH = 0.3
+SOLDIER_RETREAT_RESUME_HEALTH = 0.9
+SOLDIER_RETREAT_HEAL_PER_TICK = 0.5
+SOLDIER_RETREAT_ARRIVAL_DISTANCE = 6
+SOLDIER_RETREAT_CHECK_INTERVAL = 30
+-- Outpost duty: Soldiers build these ghosts and feed ammo turrets within
+-- this radius of their Outpost.
+OUTPOST_DEFENSE_TYPES = {
+  "ammo-turret", "electric-turret", "fluid-turret", "artillery-turret",
+  "wall", "gate", "land-mine"
+}
+OUTPOST_DEFENSE_RADIUS = 32
+OUTPOST_TURRET_AMMO_LOW = 10
+OUTPOST_TURRET_AMMO_FILL = 20
+OUTPOST_DUTY_REACH = 3
+OUTPOST_BUILD_ATTEMPTS = 60
+OUTPOST_CLAIM_TICKS = 3600
 -- Armor tiers, worst to best; a Soldier wears the best suit it has found and
 -- shrugs off that fraction of every hit.
 SOLDIER_ARMORS = {
@@ -232,6 +212,8 @@ require("lib/movement")
 require("lib/soldier_target")
 require("lib/soldier_equipment")
 require("lib/soldier")
+require("lib/soldier_retreat")
+require("lib/soldier_outpost")
 require("lib/builder_planning")
 require("lib/builder_targets")
 require("lib/builder_cargo")

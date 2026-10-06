@@ -1,3 +1,5 @@
+require("prototypes/soldier_weapons")
+
 -- Assembler-style furnaces expose a chosen recipe, letting building requesters
 -- derive ingredient and fuel demand before any ore has ever been inserted.
 -- Runs at final fixes so every other mod still sees the original furnaces.

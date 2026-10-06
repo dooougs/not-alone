@@ -154,6 +154,10 @@ function spill_team_mate_loot(record, surface, position)
   for _, stack in ipairs(soldier_kit_item_stacks(record)) do
     spill(stack.name, stack.count)
   end
+  for _, stack in ipairs(soldier_outpost_cargo_stacks(record)) do
+    surface.spill_item_stack({position = position, stack = stack})
+  end
+  clear_soldier_outpost_duty(record)
   record.soldier_weapons = nil
   record.soldier_ammo = nil
   record.soldier_armor = nil

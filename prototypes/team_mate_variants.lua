@@ -2,49 +2,12 @@
 
 -- Teammate role, weapon, armor, and command prototypes.
 
--- Soldier weapon tiers: each variant borrows the vanilla gun's range and
--- cadence plus the ammo's effect, keeping the ammo_category aligned so the
--- force's weapon-damage and shooting-speed research applies automatically.
--- The armor sheet grows with the tier so loadouts are tellable at a glance.
-local SOLDIER_WEAPONS = {
-	{suffix = "handgun", kind = "soldier-handgun", gun = "pistol", ammo = "firearm-magazine", order = "d[soldier-handgun]", sheet = "level1"},
-	{suffix = "smg", kind = "soldier-smg", gun = "submachine-gun", ammo = "firearm-magazine", order = "e[soldier-smg]", sheet = "level1"},
-	{suffix = "shotgun", kind = "soldier-shotgun", gun = "shotgun", ammo = "shotgun-shell", order = "f[soldier-shotgun]", sheet = "level2armor1and2"},
-	{suffix = "combat-shotgun", kind = "soldier-combat-shotgun", gun = "combat-shotgun", ammo = "piercing-shotgun-shell", order = "g[soldier-combat-shotgun]", sheet = "level2armor1and2"},
-	{suffix = "flamethrower", kind = "soldier-flamethrower", gun = "flamethrower", ammo = "flamethrower-ammo", order = "h[soldier-flamethrower]", sheet = "level3armor3and4"},
-	{suffix = "rocket", kind = "soldier-rocket", gun = "rocket-launcher", ammo = "rocket", order = "i[soldier-rocket]", sheet = "level3armor3and4"}
-}
+-- Gun-armed Soldier variants and every armored or mech twin are built at
+-- data-final-fixes (prototypes/soldier_weapons.lua) so guns from other mods
+-- are included; they reuse this context.
+NOT_ALONE_TEAM_MATE_CONTEXT = context
 
 local soldier_prototypes = {}
-local soldier_units = {}
-for _, weapon in pairs(SOLDIER_WEAPONS) do
-	local unit = table.deepcopy(context.team_mate)
-	unit.name = "not-alone-team-mate-" .. weapon.suffix
-	unit.localised_name = {"entity-name.not-alone-team-mate-soldier"}
-	local sheet = character_animations[weapon.sheet] or character_animations.level1
-	context.set_team_mate_pedia_visuals(unit, context.KIND_TINT.soldier, sheet)
-	local gun = data.raw.gun[weapon.gun]
-	local ammo = data.raw.ammo[weapon.ammo]
-	if gun and ammo then
-		-- Adopt the gun's complete attack parameters so the attack type, cadence,
-		-- and audio all match the real weapon - the flamethrower's sound lives in
-		-- cyclic_sound and its delivery is a stream, which field-by-field copying
-		-- onto a projectile attack silently loses. Keep the character animation
-		-- and the ammo's effect.
-		local params = table.deepcopy(gun.attack_parameters)
-		params.animation = unit.attack_parameters.animation
-		params.ammo_category = ammo.ammo_category
-		local ammo_type = table.deepcopy(ammo.ammo_type)
-		if ammo_type and not ammo_type.action and ammo_type[1] then
-			ammo_type = ammo_type[1]
-		end
-		params.ammo_type = ammo_type
-		unit.attack_parameters = params
-	end
-	soldier_prototypes[#soldier_prototypes + 1] = unit
-	soldier_units[#soldier_units + 1] = unit
-end
-
 -- The base Soldier is unarmed and punches at melee range, like a recruit.
 local fists_unit = table.deepcopy(context.team_mate)
 fists_unit.name = "not-alone-team-mate-fists"
@@ -91,80 +54,6 @@ fist_params.ammo_type = {
 	}
 }
 soldier_prototypes[#soldier_prototypes + 1] = fists_unit
-soldier_units[#soldier_units + 1] = fists_unit
-
-local armor_animation_sets = {}
-for _, entry in pairs(data.raw.character.character.animations or {}) do
-	for _, armor_name in pairs(entry.armors or {}) do
-		if armor_name == "heavy-armor" or armor_name == "modular-armor" then
-			armor_animation_sets.heavy = entry
-		elseif armor_name == "power-armor" or armor_name == "power-armor-mk2" then
-			armor_animation_sets.power = entry
-		end
-	end
-end
-
-local armor_visuals = {
-	{suffix = "armor-heavy", set = armor_animation_sets.heavy},
-	{suffix = "armor-power", set = armor_animation_sets.power}
-}
--- Armored twins only exist when the character prototype still exposes the
--- matching armor animations (other mods can replace them); record the names
--- actually created so the command tool never filters on a missing entity.
-local armored_unit_names = {}
-for _, base_unit in pairs(soldier_units) do
-	for _, visual in pairs(armor_visuals) do
-		if visual.set then
-			local armored_unit = table.deepcopy(base_unit)
-			armored_unit.name = base_unit.name .. "-" .. visual.suffix
-			armored_unit.hidden_in_factoriopedia = true
-			armored_unit.factoriopedia_description = nil
-			armored_unit.run_animation = table.deepcopy(visual.set.running)
-			armored_unit.attack_parameters.animation = table.deepcopy(
-				visual.set.idle_with_gun
-			)
-				armored_unit.icon = context.TEAM_MATE_ICON
-				armored_unit.icon_size = context.TEAM_MATE_ICON_SIZE
-				armored_unit.icons = {
-					{icon = context.TEAM_MATE_ICON, icon_size = context.TEAM_MATE_ICON_SIZE,
-						tint = context.KIND_TINT.soldier}
-				}
-				context.tint_unit_masks(armored_unit, context.KIND_TINT.soldier)
-			soldier_prototypes[#soldier_prototypes + 1] = armored_unit
-			armored_unit_names[#armored_unit_names + 1] = armored_unit.name
-		end
-	end
-end
-
--- Space Age mech armor lets a Soldier hover: each combat variant gains a
--- "-mech" twin using the mech suit's flying animation that ignores ground
--- collision entirely.
-local mech_animations
-for _, entry in pairs(data.raw.character.character.animations or {}) do
-	for _, armor_name in pairs(entry.armors or {}) do
-		if armor_name == "mech-armor" then
-			mech_animations = entry
-		end
-	end
-end
-local mech_unit_names = {}
-if mech_animations and mech_animations.flying then
-	for _, unit in pairs(soldier_units) do
-		local mech = table.deepcopy(unit)
-		mech.name = unit.name .. "-mech"
-		mech.hidden_in_factoriopedia = true
-		mech.factoriopedia_description = nil
-		mech.run_animation = table.deepcopy(mech_animations.flying)
-		if mech_animations.idle_with_gun then
-			mech.attack_parameters.animation = table.deepcopy(mech_animations.idle_with_gun)
-		end
-		context.tint_unit_masks(mech, context.KIND_TINT.soldier)
-		mech.collision_mask = {layers = {}}
-		mech.movement_speed = mech.movement_speed * 1.3
-		soldier_prototypes[#soldier_prototypes + 1] = mech
-		mech_unit_names[#mech_unit_names + 1] = mech.name
-	end
-end
 
 soldier_prototypes[#soldier_prototypes + 1] = {
 	type = "recipe",
@@ -189,16 +78,8 @@ for _, kind in pairs({"miner", "builder", "carrier"}) do
 end
 data:extend(soldier_prototypes)
 
+-- Weapon, armored and mech variants are appended at data-final-fixes.
 local soldier_filter_names = {"not-alone-team-mate-fists"}
-for _, weapon in pairs(SOLDIER_WEAPONS) do
-	table.insert(soldier_filter_names, "not-alone-team-mate-" .. weapon.suffix)
-end
-for _, name in pairs(armored_unit_names) do
-	table.insert(soldier_filter_names, name)
-end
-for _, name in pairs(mech_unit_names) do
-	table.insert(soldier_filter_names, name)
-end
 -- Soldiers travelling by vehicle are hidden units riding these; selecting
 -- the vehicle must select the Soldier inside it.
 for _, vehicle_name in pairs({"car", "tank", "spidertron"}) do

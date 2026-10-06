@@ -1,4 +1,19 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.27
+Date: 2026-10-03
+  Features:
+    - Soldiers can use every gun in the game, including Space Age and modded guns. Guns and their ammo are read from prototypes and ranked automatically.
+    - Badly hurt Soldiers, and Soldiers whose guns are all empty, retreat to the nearest Habitat or Outpost to heal and restock, then resume their route or post.
+    - Soldiers stationed at an Outpost build nearby turret, wall, gate and land mine ghosts and keep its ammo turrets topped up.
+    - Builders fill the ammo, fuel, modules and equipment requested by revived ghosts, and empty slots a blueprint asks to clear.
+  Changes:
+    - Rewrote the README to describe the current roles, bases and Soldier features.
+  Bugfixes:
+    - Fixed the Builder crafting planner hanging the game.
+    - Fixed fuel categories not being read on Factorio 2.1.
+    - Fixed the 0.1.16 changelog entry being merged into 0.1.19.
+
+---------------------------------------------------------------------------------------------------
 Version: 0.1.26
 Date: 2026-10-02
   Features:
@@ -69,15 +84,6 @@ Date: 2026-09-07
   Changes:
     - Soldiers now target hostile players and hostile teams' deployed team mates within logistic-network coverage, while respecting force friendships and cease-fires.
 
-Version: 0.1.16
-Date: 2026-09-07
-  Bugfixes:
-    - Fixed internal team mate items failing to load in Factorio 2.1 and kept them hidden from player-facing item selections.
-    - Fixed Soldiers not deploying to attack worms positioned just outside a logistic network's boundary.
-    - Fixed the Habitat Factoriopedia page linking to a nonexistent Soldier entity.
-  Changes:
-    - Optimized marked-resource assignment for large Miner crews, removing a quadratic claim scan and reducing unnecessary game API calls.
-
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.18
 Date: 2026-09-07
@@ -89,6 +95,16 @@ Version: 0.1.17
 Date: 2026-09-07
   Bugfixes:
     - Fixed a crash while scanning deconstruction targets caused by probing removed LuaEntity inventory accessor methods.
+
+---------------------------------------------------------------------------------------------------
+Version: 0.1.16
+Date: 2026-09-07
+  Bugfixes:
+    - Fixed internal team mate items failing to load in Factorio 2.1 and kept them hidden from player-facing item selections.
+    - Fixed Soldiers not deploying to attack worms positioned just outside a logistic network's boundary.
+    - Fixed the Habitat Factoriopedia page linking to a nonexistent Soldier entity.
+  Changes:
+    - Optimized marked-resource assignment for large Miner crews, removing a quadratic claim scan and reducing unnecessary game API calls.
 
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.15
