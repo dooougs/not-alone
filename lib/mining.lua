@@ -11,7 +11,7 @@ function get_resource_info(resource_name)
   return {
     item_name = product.name,
     particle_name = resource_name .. "-particle",
-    inventory = item_prototype and item_prototype.fuel_category
+    inventory = item_is_fuel(item_prototype)
       and defines.inventory.fuel or defines.inventory.crafter_input
   }
 end

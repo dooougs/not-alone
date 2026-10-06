@@ -204,8 +204,7 @@ function find_vehicle_fuel_item(record, item_name)
   end
   for _, candidate in ipairs({"nuclear-fuel", "rocket-fuel", "solid-fuel", "coal", "wood"}) do
     local prototype = prototypes.item[candidate]
-    if prototype and prototype.fuel_category
-      and burner.fuel_categories[prototype.fuel_category]
+    if item_prototype_is_fuel_for(prototype, burner)
       and find_logistics_item_source(record, candidate) then
       return candidate
     end
