@@ -13,6 +13,10 @@ bar.
 Team mates are native Factorio units that use the engine's pathfinder. Each one has a small radar
 footprint that keeps the area around it charted, and a map marker.
 
+**Rail safety.** Team mates watch for moving trains. One standing on the track steps off sideways,
+one about to cross waits until the train has passed, and team mates driving cars or tanks brake short
+of the crossing.
+
 ## Bases
 
 **Habitat.** An unpowered roboport that projects logistic-network coverage, stores no robots and

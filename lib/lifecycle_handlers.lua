@@ -143,7 +143,7 @@ function notalone.on_update(event)
   end
   -- Config-change does not fire for code-only updates; repair lazily too.
   repair_manual_loops()
-
+  update_rail_dangers()
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)

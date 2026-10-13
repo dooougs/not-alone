@@ -277,4 +277,17 @@ constants.RECIPE_ENTITY_TYPES = {
   ["rocket-silo"] = true
 }
 
+-- Rail safety: team mates step off, or hold clear of, track a moving train
+-- will cover within the lookahead, plus the rails the train already spans.
+constants.RAIL_DANGER_LOOKAHEAD_TICKS = 150
+constants.RAIL_DANGER_MIN_DISTANCE = 20
+constants.RAIL_DANGER_MAX_DISTANCE = 250
+constants.RAIL_DANGER_MAX_RAILS = 300
+-- Beyond a rail's own footprint: on-track margin, and how close a walking or
+-- driving team mate may come before it holds.
+constants.RAIL_DANGER_TRACK_PADDING = 1.5
+constants.RAIL_DANGER_APPROACH_DISTANCE = 4
+constants.RAIL_DANGER_VEHICLE_APPROACH_DISTANCE = 8
+constants.RAIL_ESCAPE_CLEARANCE = 1.5
+
 return constants
