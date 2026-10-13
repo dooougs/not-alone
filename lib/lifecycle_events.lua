@@ -202,6 +202,12 @@ function update_team_mate(record, player)
     return true
   end
 
+  -- Train gang crew answer to their Crew wagon, not to network jobs.
+  local gang_result = update_train_gang_member(record)
+  if gang_result ~= nil then
+    return gang_result
+  end
+
   -- Suit power, shields, legs, lasers, and repair bots run whatever the
   -- Soldier is doing.
   if record.kind == "soldier" then

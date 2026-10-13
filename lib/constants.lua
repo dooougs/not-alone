@@ -302,4 +302,30 @@ constants.RAIL_DANGER_MAX_VEHICLE_STOPPING_DISTANCE = 64
 -- the rails at least this much (sine of the angle, 0.5 = 30 degrees).
 constants.RAIL_DANGER_VEHICLE_MIN_CROSSING = 0.5
 
+-- Train gangs: a Crew wagon carries a crew that builds the player's rail
+-- ghosts past the end of its own track, then rolls forward and repeats.
+constants.CREW_WAGON_NAME = "not-alone-crew-wagon"
+constants.GANG_KINDS = {"carrier", "builder", "soldier"}
+constants.GANG_DEFAULT_REQUESTS = {carrier = 1, builder = 2, soldier = 2}
+constants.GANG_RAIL_ITEM_NAME = "rail"
+constants.GANG_UPDATE_INTERVAL = 60
+-- Habitats this close to a stopped Crew wagon send requested crew over.
+constants.GANG_RECRUIT_RADIUS = 150
+-- How close to a wagon a team mate must be to board it or use its cargo.
+constants.GANG_BOARD_DISTANCE = 3
+-- The train parks this far short of the end of the track, and builds without
+-- moving when it is already within the slack of that spot.
+constants.GANG_STOP_SHORT_DISTANCE = 10
+constants.GANG_ARRIVE_SLACK = 8
+constants.GANG_MAX_TRACK_RAILS = 4000
+-- Ghosts this close to the end of the track are the gang's work.
+constants.GANG_BUILD_RADIUS = 40
+constants.GANG_BUILD_REACH = 3
+constants.GANG_BUILD_ATTEMPTS = 30
+constants.GANG_GUARD_RADIUS = 16
+constants.GANG_STOP_WAIT_TICKS = 60 * 60 * 10
+constants.GANG_ADVANCE_TIMEOUT_TICKS = 60 * 60 * 5
+constants.GANG_BUILD_TIMEOUT_TICKS = 60 * 60 * 10
+constants.GANG_RETRY_TICKS = 600
+
 return constants

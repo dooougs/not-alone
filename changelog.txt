@@ -3,6 +3,8 @@ Version: 0.1.28
 Date: 2026-10-13
   Features:
     - Team mates watch for moving trains. One standing on the track steps off sideways, one near the track waits until the train has passed, and team mates driving cars or tanks brake short of the crossing when their braking distance allows, or else carry on across.
+    - Crew wagon: a cargo wagon that carries team mates. Set how many Carriers, Builders and Soldiers it should hold, and nearby Habitats send them over while the train is stopped.
+    - Rail gangs: with Rail gang turned on in a Crew wagon, the Carrier drives the train to the end of its built track, Builders build the rail ghosts ahead from the train's cargo wagons while Soldiers guard them, and once everyone is back aboard the train moves up and repeats.
 
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.27
