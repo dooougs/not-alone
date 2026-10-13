@@ -457,7 +457,7 @@ local function train_has_fuel(train)
   return false
 end
 
-local function gang_readiness_problem(gang, train)
+local function train_readiness_problem(train)
   if not lead_locomotive(train) then
     return "Needs a locomotive"
   end
@@ -467,6 +467,10 @@ local function gang_readiness_problem(gang, train)
   if train_item_count(train, GANG_RAIL_ITEM_NAME) == 0 then
     return "Needs rails in a cargo wagon"
   end
+  return nil
+end
+
+local function crew_readiness_problem(gang)
   local inventory = crew_wagon_inventory(gang.wagon)
   if inventory.get_item_count(ITEM_NAME_BY_KIND.carrier) == 0 then
     return "Needs a Carrier aboard to drive"
@@ -679,6 +683,11 @@ local function update_idle(gang, train)
     return
   end
   recruit_gang_crew(gang)
+  local problem = train_readiness_problem(train)
+  if problem then
+    gang.status = problem
+    return
+  end
   -- Recruits still walking over would be left behind once the train moves;
   -- wait a while for them, but not for one that cannot get here.
   if #each_gang_record(gang.wagon, "gang_join") > 0 then
@@ -690,7 +699,7 @@ local function update_idle(gang, train)
   else
     gang.join_wait_tick = nil
   end
-  local problem = gang_readiness_problem(gang, train)
+  problem = crew_readiness_problem(gang)
   if problem then
     gang.status = problem
     return
