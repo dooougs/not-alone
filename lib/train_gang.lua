@@ -138,6 +138,31 @@ local function unload_builder_cargo(record, train)
   end
 end
 
+-- A member cut loose from its gang hands its cargo back to the train, or
+-- spills what does not fit: a Builder outside any network would otherwise
+-- stand holding it forever.
+local function release_gang_cargo(record, train)
+  if train and train.valid then
+    unload_builder_cargo(record, train)
+  end
+  local cargo = record.builder_cargo
+  if cargo and cargo.valid and not cargo.is_empty() and record.entity.valid then
+    for slot = 1, #cargo do
+      local stack = cargo[slot]
+      if stack.valid_for_read then
+        record.entity.surface.spill_item_stack({
+          position = record.entity.position,
+          stack = stack,
+          enable_looted = true,
+          force = record.entity.force
+        })
+      end
+    end
+    cargo.clear()
+  end
+  record.builder_state = nil
+end
+
 local function board_wagon(record, wagon)
   local inventory = crew_wagon_inventory(wagon)
   stop_team_mate(record)
@@ -158,6 +183,20 @@ local function board_wagon(record, wagon)
   return false
 end
 
+-- A free spot beside the wagon on the team mate's side of the track: the
+-- wagon's own position is under the train, where a unit can never stand.
+local function wagon_side_position(record, wagon)
+  local angle = wagon.orientation * 2 * math.pi
+  local side_x, side_y = math.cos(angle), math.sin(angle)
+  local position = record.entity.position
+  local sign = ((position.x - wagon.position.x) * side_x + (position.y - wagon.position.y) * side_y) < 0 and -1 or 1
+  local spot = {
+    x = wagon.position.x + side_x * sign * GANG_WAGON_SIDE_OFFSET,
+    y = wagon.position.y + side_y * sign * GANG_WAGON_SIDE_OFFSET
+  }
+  return wagon.surface.find_non_colliding_position(record.entity.name, spot, 4, 0.5) or spot
+end
+
 local function near_wagon(record, wagon)
   return distance_squared_to_box(record.entity.position, wagon.bounding_box)
     <= GANG_BOARD_DISTANCE * GANG_BOARD_DISTANCE
@@ -170,7 +209,7 @@ local function walk_back_and_board(record, wagon)
     return true
   end
   if not near_wagon(record, wagon) then
-    move_team_mate(record, position_table(wagon.position), 2)
+    move_team_mate(record, wagon_side_position(record, wagon), 0.5)
     return true
   end
   return board_wagon(record, wagon)
@@ -239,7 +278,7 @@ local function fetch_from_train(record, gang, train, item)
     return
   end
   if not near_wagon(record, source) then
-    move_team_mate(record, position_table(source.position), 2)
+    move_team_mate(record, wagon_side_position(record, source), 0.5)
     return
   end
   stop_team_mate(record)
@@ -339,7 +378,7 @@ function update_train_gang_member(record)
       return nil
     end
     if not near_wagon(record, joining) then
-      move_team_mate(record, position_table(joining.position), 2)
+      move_team_mate(record, wagon_side_position(record, joining), 0.5)
       return true
     end
     return board_wagon(record, joining)
@@ -352,6 +391,7 @@ function update_train_gang_member(record)
   local gang = wagon.valid and get_train_gang(wagon)
   local train = gang and wagon.train
   if not train then
+    release_gang_cargo(record, nil)
     record.gang_wagon = nil
     record.gang_target = nil
     return nil
@@ -477,9 +517,10 @@ local function refresh_gang_ghosts(gang, position)
 end
 
 -- Ghosts some Builder can still build: an item is in the train or in hand,
--- or a Builder has already claimed it.
+-- or a Builder has already claimed it. Also returns how many lack items.
 local function count_open_ghosts(gang, train)
   local open = 0
+  local missing = 0
   local carried = {}
   for _, record in pairs(each_gang_record(gang.wagon, "gang_wagon")) do
     local cargo = record.builder_cargo
@@ -496,10 +537,12 @@ local function count_open_ghosts(gang, train)
         or (item and ((carried[item.name] or 0) >= item.count
           or train_item_count(train, item.name) >= item.count)) then
         open = open + 1
+      else
+        missing = missing + 1
       end
     end
   end
-  return open
+  return open, missing
 end
 
 local function remove_temporary_records(train)
@@ -636,6 +679,17 @@ local function update_idle(gang, train)
     return
   end
   recruit_gang_crew(gang)
+  -- Recruits still walking over would be left behind once the train moves;
+  -- wait a while for them, but not for one that cannot get here.
+  if #each_gang_record(gang.wagon, "gang_join") > 0 then
+    gang.join_wait_tick = gang.join_wait_tick or game.tick
+    if game.tick - gang.join_wait_tick < GANG_JOIN_WAIT_TICKS then
+      gang.status = "Crew boarding"
+      return
+    end
+  else
+    gang.join_wait_tick = nil
+  end
   local problem = gang_readiness_problem(gang, train)
   if problem then
     gang.status = problem
@@ -667,7 +721,7 @@ end
 
 local function update_building(gang, train)
   refresh_gang_ghosts(gang, gang.work_position)
-  local open = count_open_ghosts(gang, train)
+  local open, missing = count_open_ghosts(gang, train)
   local members = each_gang_record(gang.wagon, "gang_wagon")
   if open == 0 or #members == 0
     or game.tick - (gang.build_tick or game.tick) > GANG_BUILD_TIMEOUT_TICKS then
@@ -675,6 +729,7 @@ local function update_building(gang, train)
     return
   end
   gang.status = "Building, " .. open .. " ghosts left"
+    .. (missing > 0 and (", no items in the train for " .. missing) or "")
 end
 
 local function update_train_gang(gang)
@@ -748,6 +803,7 @@ function on_crew_wagon_removed(wagon)
   end
   for _, field in pairs({"gang_wagon", "gang_join"}) do
     for _, record in pairs(each_gang_record(wagon, field)) do
+      release_gang_cargo(record, wagon.train)
       record[field] = nil
       record.gang_target = nil
       record.gang_state = nil

@@ -313,6 +313,8 @@ constants.GANG_UPDATE_INTERVAL = 60
 constants.GANG_RECRUIT_RADIUS = 150
 -- How close to a wagon a team mate must be to board it or use its cargo.
 constants.GANG_BOARD_DISTANCE = 3
+-- Team mates walk to this far beside a wagon's centre line to board or load.
+constants.GANG_WAGON_SIDE_OFFSET = 2
 -- The train parks this far short of the end of the track, and builds without
 -- moving when it is already within the slack of that spot.
 constants.GANG_STOP_SHORT_DISTANCE = 10
@@ -327,5 +329,7 @@ constants.GANG_STOP_WAIT_TICKS = 60 * 60 * 10
 constants.GANG_ADVANCE_TIMEOUT_TICKS = 60 * 60 * 5
 constants.GANG_BUILD_TIMEOUT_TICKS = 60 * 60 * 10
 constants.GANG_RETRY_TICKS = 600
+-- How long an idle gang waits for recruits still walking to the wagon.
+constants.GANG_JOIN_WAIT_TICKS = 60 * 60
 
 return constants
