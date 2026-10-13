@@ -2,7 +2,7 @@
 Version: 0.1.28
 Date: 2026-10-13
   Features:
-    - Team mates watch for moving trains. One standing on the track steps off sideways, one near the track waits until the train has passed, and team mates driving cars or tanks brake short of the crossing.
+    - Team mates watch for moving trains. One standing on the track steps off sideways, one near the track waits until the train has passed, and team mates driving cars or tanks brake short of the crossing when their braking distance allows, or else carry on across.
 
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.27

@@ -283,11 +283,23 @@ constants.RAIL_DANGER_LOOKAHEAD_TICKS = 150
 constants.RAIL_DANGER_MIN_DISTANCE = 20
 constants.RAIL_DANGER_MAX_DISTANCE = 250
 constants.RAIL_DANGER_MAX_RAILS = 300
--- Beyond a rail's own footprint: on-track margin, and how close a walking or
--- driving team mate may come before it holds.
+-- Beyond a rail's own footprint: on-track margin, and how close a walking
+-- team mate may come before it holds.
 constants.RAIL_DANGER_TRACK_PADDING = 1.5
 constants.RAIL_DANGER_APPROACH_DISTANCE = 4
-constants.RAIL_DANGER_VEHICLE_APPROACH_DISTANCE = 8
 constants.RAIL_ESCAPE_CLEARANCE = 1.5
+-- Farthest a walking team mate looks for dangers, escape spots included.
+constants.RAIL_DANGER_WALKER_REACH = 16
+-- A driven vehicle brakes while its stopping run plus this approach would
+-- bring its body (clearance) within the track padding. Stopping distance is
+-- factor * weight / braking_force * speed^3, fitted to 2.1 cars and tanks.
+constants.RAIL_DANGER_VEHICLE_APPROACH_DISTANCE = 8
+constants.RAIL_DANGER_VEHICLE_CLEARANCE = 2
+constants.RAIL_DANGER_VEHICLE_PROBE_STEP = 2
+constants.RAIL_DANGER_BRAKING_FACTOR = 1050
+constants.RAIL_DANGER_MAX_VEHICLE_STOPPING_DISTANCE = 64
+-- A vehicle on the track drives straight off only when its heading crosses
+-- the rails at least this much (sine of the angle, 0.5 = 30 degrees).
+constants.RAIL_DANGER_VEHICLE_MIN_CROSSING = 0.5
 
 return constants

@@ -5,9 +5,19 @@
 
 -- Rebuilt from live trains at the start of every update, so it is never saved.
 local rail_dangers = {}
+-- Rail geometry along each automatic train's path, reused until the train
+-- repaths instead of reading every rail's position and box each update. Pure
+-- memo of live data, so a client joining with it empty gets the same dangers.
+local path_cache = {}
+
+local floor = math.floor
 
 local function danger_chunk_key(chunk_x, chunk_y)
-  return chunk_x .. "," .. chunk_y
+  return (chunk_x + 65536) * 131072 + chunk_y + 65536
+end
+
+local function position_chunk_key(x, y)
+  return danger_chunk_key(floor(x / CHUNK_SIZE), floor(y / CHUNK_SIZE))
 end
 
 local function unit_vector(delta_x, delta_y)
@@ -18,26 +28,39 @@ local function unit_vector(delta_x, delta_y)
   return delta_x / length, delta_y / length, length
 end
 
--- Registered in every chunk the widest query could reach it from, so a query
--- only ever reads its own chunk.
-local function add_danger(surface_dangers, position, radius, direction_x, direction_y)
-  local danger = {
-    x = position.x,
-    y = position.y,
-    radius = radius,
-    direction_x = direction_x,
-    direction_y = direction_y
-  }
-  local reach = radius + RAIL_DANGER_TRACK_PADDING
-    + math.max(RAIL_DANGER_APPROACH_DISTANCE, RAIL_DANGER_VEHICLE_APPROACH_DISTANCE)
-  for chunk_x = math.floor((position.x - reach) / CHUNK_SIZE),
-    math.floor((position.x + reach) / CHUNK_SIZE) do
-    for chunk_y = math.floor((position.y - reach) / CHUNK_SIZE),
-      math.floor((position.y + reach) / CHUNK_SIZE) do
+-- Marks every chunk within reach of a position as one a query may read.
+local function mark_chunks(watched, x, y, reach)
+  for chunk_x = floor((x - reach) / CHUNK_SIZE), floor((x + reach) / CHUNK_SIZE) do
+    for chunk_y = floor((y - reach) / CHUNK_SIZE), floor((y + reach) / CHUNK_SIZE) do
+      watched[danger_chunk_key(chunk_x, chunk_y)] = true
+    end
+  end
+end
+
+-- Registered in every watched chunk the widest query could reach it from, so
+-- a query only ever reads the chunk it stands in.
+local function add_danger(surface_dangers, watched, x, y, radius, direction_x, direction_y, carriage)
+  local reach = radius + RAIL_DANGER_TRACK_PADDING + RAIL_DANGER_APPROACH_DISTANCE
+  local danger
+  for chunk_x = floor((x - reach) / CHUNK_SIZE), floor((x + reach) / CHUNK_SIZE) do
+    for chunk_y = floor((y - reach) / CHUNK_SIZE), floor((y + reach) / CHUNK_SIZE) do
       local key = danger_chunk_key(chunk_x, chunk_y)
-      local list = surface_dangers[key] or {}
-      list[#list + 1] = danger
-      surface_dangers[key] = list
+      if watched[key] then
+        danger = danger or {
+          x = x,
+          y = y,
+          radius = radius,
+          direction_x = direction_x,
+          direction_y = direction_y,
+          carriage = carriage
+        }
+        local list = surface_dangers[key]
+        if list then
+          list[#list + 1] = danger
+        else
+          surface_dangers[key] = {danger}
+        end
+      end
     end
   end
 end
@@ -48,18 +71,40 @@ local function box_radius(box)
   return math.sqrt(width * width + height * height) / 2
 end
 
--- Returns the distance from the previous rail so the caller can stop once the
--- lookahead is covered.
-local function add_rail_danger(surface_dangers, rail, previous)
-  local position = rail.position
-  local direction_x, direction_y, length = unit_vector(
-    position.x - previous.x, position.y - previous.y
+local function train_lookahead(train)
+  return math.min(
+    math.max(math.abs(train.speed) * RAIL_DANGER_LOOKAHEAD_TICKS, RAIL_DANGER_MIN_DISTANCE),
+    RAIL_DANGER_MAX_DISTANCE
   )
-  add_danger(surface_dangers, position, box_radius(rail.bounding_box), direction_x, direction_y)
-  return length
 end
 
-local function add_train_dangers(surface_dangers, train)
+local function cached_path(train, path, next_cache)
+  local key = path.size .. ":" .. path.total_distance
+  local cached = path_cache[train.id]
+  if not cached or cached.key ~= key or not cached.path.valid then
+    cached = {key = key, path = path, source = path.rails, rails = {}}
+  end
+  next_cache[train.id] = cached
+  return cached
+end
+
+-- Filled on first use: only the stretch just ahead of the train is ever read.
+local function cached_path_rail(cached, index)
+  local rail = cached.rails[index]
+  if rail == nil then
+    local entity = cached.source[index]
+    if entity and entity.valid then
+      local position = entity.position
+      rail = {x = position.x, y = position.y, radius = box_radius(entity.bounding_box)}
+    else
+      rail = false
+    end
+    cached.rails[index] = rail
+  end
+  return rail
+end
+
+local function add_train_dangers(surface_dangers, watched, train, next_cache)
   local forward = train.speed > 0
   local lead = forward and train.front_stock or train.back_stock
   if not lead or not lead.valid then
@@ -70,30 +115,33 @@ local function add_train_dangers(surface_dangers, train)
   -- not walk into the wagons behind it.
   for _, carriage in pairs(train.carriages) do
     local angle = carriage.orientation * 2 * math.pi
+    local position = carriage.position
     add_danger(
-      surface_dangers, carriage.position, box_radius(carriage.bounding_box),
-      math.sin(angle), -math.cos(angle)
+      surface_dangers, watched, position.x, position.y, box_radius(carriage.bounding_box),
+      math.sin(angle), -math.cos(angle), true
     )
   end
 
-  local lookahead = math.min(
-    math.max(math.abs(train.speed) * RAIL_DANGER_LOOKAHEAD_TICKS, RAIL_DANGER_MIN_DISTANCE),
-    RAIL_DANGER_MAX_DISTANCE
-  )
+  local lookahead = train_lookahead(train)
   local covered = 0
-  local previous = lead.position
+  local lead_position = lead.position
+  local previous_x, previous_y = lead_position.x, lead_position.y
 
   -- Automatic trains follow their path through switches; manual ones go the
   -- natural way from the leading rail end.
   local path = train.path
   if not train.manual_mode and path and path.valid and path.is_front == forward then
-    local rails = path.rails
+    local cached = cached_path(train, path, next_cache)
     local last = math.min(path.size, path.current + RAIL_DANGER_MAX_RAILS)
     for index = path.current, last do
-      local rail = rails[index]
-      if rail and rail.valid then
-        covered = covered + add_rail_danger(surface_dangers, rail, previous)
-        previous = rail.position
+      local rail = cached_path_rail(cached, index)
+      if rail then
+        local direction_x, direction_y, length = unit_vector(
+        rail.x - previous_x, rail.y - previous_y
+      )
+        add_danger(surface_dangers, watched, rail.x, rail.y, rail.radius, direction_x, direction_y)
+        covered = covered + length
+        previous_x, previous_y = rail.x, rail.y
         if covered >= lookahead then
           return
         end
@@ -112,8 +160,16 @@ local function add_train_dangers(surface_dangers, train)
     if not rail or not rail.valid then
       return
     end
-    covered = covered + add_rail_danger(surface_dangers, rail, previous)
-    previous = rail.position
+    local position = rail.position
+    local direction_x, direction_y, length = unit_vector(
+      position.x - previous_x, position.y - previous_y
+    )
+    add_danger(
+      surface_dangers, watched, position.x, position.y, box_radius(rail.bounding_box),
+      direction_x, direction_y
+    )
+    covered = covered + length
+    previous_x, previous_y = position.x, position.y
     if covered >= lookahead or not rail_end.move_natural() then
       return
     end
@@ -136,10 +192,41 @@ local function rail_safety_entity(record)
   return nil
 end
 
-local function any_position_within(positions, center, distance)
-  local limit = distance * distance
-  for _, position in pairs(positions) do
-    if distance_squared(position, center) <= limit then
+-- How far a ground vehicle travels before it can stop: one update of reaction
+-- plus braking, which grows with the cube of speed (measured in 2.1: a car
+-- needs 16 tiles from 0.45 tiles/tick, a tank 26 from 0.3).
+local function vehicle_stopping_distance(vehicle)
+  local speed = math.abs(vehicle.speed or 0)
+  local prototype = vehicle.prototype
+  local braking = prototype.braking_force
+  local weight = prototype.weight
+  local braking_distance = 0
+  if braking and braking > 0 and weight then
+    braking_distance = RAIL_DANGER_BRAKING_FACTOR * weight / braking * speed * speed * speed
+  end
+  return math.min(
+    speed * UPDATE_INTERVAL + braking_distance,
+    RAIL_DANGER_MAX_VEHICLE_STOPPING_DISTANCE
+  )
+end
+
+-- How far from a team mate a danger can matter: escape spots for walkers, the
+-- braking run ahead of a vehicle.
+local function rail_safety_reach(record, entity)
+  if entity == record.entity then
+    return RAIL_DANGER_WALKER_REACH
+  end
+  if not get_vehicle_behavior(entity.name).ground_collision then
+    return nil
+  end
+  return RAIL_DANGER_VEHICLE_APPROACH_DISTANCE + vehicle_stopping_distance(entity)
+    + RAIL_DANGER_VEHICLE_PROBE_STEP
+end
+
+local function any_watcher_within(watchers, center, distance)
+  for _, watcher in pairs(watchers) do
+    local limit = distance + watcher.reach
+    if distance_squared(watcher.position, center) <= limit * limit then
       return true
     end
   end
@@ -148,44 +235,49 @@ end
 
 function update_rail_dangers()
   rail_dangers = {}
+  local next_cache = {}
 
-  -- Only trains near team mates matter, so a big rail network costs little
-  -- while crew are away from it.
-  local positions_by_surface = {}
+  -- Only trains near team mates matter, and only chunks a team mate can query
+  -- get dangers, so a big rail network costs little while crew are away.
+  local watchers_by_surface = {}
   for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
     for _, record in pairs(team_mates) do
       local entity = rail_safety_entity(record)
-      if entity then
-        local positions = positions_by_surface[entity.surface_index] or {}
-        positions[#positions + 1] = entity.position
-        positions_by_surface[entity.surface_index] = positions
+      local reach = entity and rail_safety_reach(record, entity)
+      if reach then
+        local surface_index = entity.surface_index
+        local watchers = watchers_by_surface[surface_index]
+        if not watchers then
+          watchers = {chunks = {}, list = {}}
+          watchers_by_surface[surface_index] = watchers
+        end
+        local position = entity.position
+        watchers.list[#watchers.list + 1] = {position = position, reach = reach}
+        mark_chunks(watchers.chunks, position.x, position.y, reach)
       end
     end
   end
 
-  for surface_index, positions in pairs(positions_by_surface) do
+  for surface_index, watchers in pairs(watchers_by_surface) do
     local trains = game.train_manager.get_trains({surface = surface_index, is_moving = true})
     for _, train in pairs(trains) do
       local lead = train.speed > 0 and train.front_stock or train.back_stock
-      local reach = math.min(
-        math.max(math.abs(train.speed) * RAIL_DANGER_LOOKAHEAD_TICKS, RAIL_DANGER_MIN_DISTANCE),
-        RAIL_DANGER_MAX_DISTANCE
-      ) + #train.carriages * 8 + RAIL_DANGER_VEHICLE_APPROACH_DISTANCE + 8
-      if lead and lead.valid and any_position_within(positions, lead.position, reach) then
+      local reach = train_lookahead(train) + #train.carriages * 8
+        + RAIL_DANGER_TRACK_PADDING + RAIL_DANGER_APPROACH_DISTANCE + 8
+      if lead and lead.valid and any_watcher_within(watchers.list, lead.position, reach) then
         local surface_dangers = rail_dangers[surface_index] or {}
         rail_dangers[surface_index] = surface_dangers
-        add_train_dangers(surface_dangers, train)
+        add_train_dangers(surface_dangers, watchers.chunks, train, next_cache)
       end
     end
   end
+  path_cache = next_cache
 end
 
 -- Nearest danger within margin of its footprint, and the gap to that footprint.
 local function find_rail_danger(surface_index, position, margin)
   local surface_dangers = rail_dangers[surface_index]
-  local list = surface_dangers and surface_dangers[danger_chunk_key(
-    math.floor(position.x / CHUNK_SIZE), math.floor(position.y / CHUNK_SIZE)
-  )]
+  local list = surface_dangers and surface_dangers[position_chunk_key(position.x, position.y)]
   if not list then
     return nil
   end
@@ -198,6 +290,49 @@ local function find_rail_danger(surface_index, position, margin)
     end
   end
   return nearest, nearest_gap
+end
+
+local function vehicle_heading(vehicle)
+  local angle = vehicle.orientation * 2 * math.pi
+  local sign = (vehicle.speed or 0) < 0 and -1 or 1
+  return math.sin(angle) * sign, -math.cos(angle) * sign
+end
+
+-- First danger along the vehicle's heading within its braking run plus the
+-- approach margin, and the distance to it. Probes are closer together than a
+-- track strip is wide.
+local function vehicle_danger_distance(vehicle)
+  local position = vehicle.position
+  local heading_x, heading_y = vehicle_heading(vehicle)
+  local reach = RAIL_DANGER_VEHICLE_APPROACH_DISTANCE + vehicle_stopping_distance(vehicle)
+  local margin = RAIL_DANGER_TRACK_PADDING + RAIL_DANGER_VEHICLE_CLEARANCE
+  local step = RAIL_DANGER_VEHICLE_PROBE_STEP
+  for distance = step, reach + step, step do
+    local danger = find_rail_danger(vehicle.surface_index, {
+      x = position.x + heading_x * distance,
+      y = position.y + heading_y * distance
+    }, margin)
+    if danger then
+      return danger, distance
+    end
+  end
+  return nil
+end
+
+-- Drives straight on across the track it stands on. Running along the rails
+-- straight would stay on them, so the route steers there instead.
+local function drive_off_track(vehicle, danger)
+  local heading_x, heading_y = vehicle_heading(vehicle)
+  local across = math.abs(heading_x * danger.direction_y - heading_y * danger.direction_x)
+  if across < RAIL_DANGER_VEHICLE_MIN_CROSSING then
+    return false
+  end
+  vehicle.riding_state = {
+    acceleration = (vehicle.speed or 0) < 0 and defines.riding.acceleration.reversing
+      or defines.riding.acceleration.accelerating,
+    direction = defines.riding.direction.straight
+  }
+  return true
 end
 
 -- Step sideways off the track, to the side the team mate already stands on,
@@ -252,13 +387,26 @@ function update_rail_safety(record)
     if not behavior.ground_collision then
       return false
     end
-    local _, gap = find_rail_danger(
+    -- Braking on the track is what gets a car hit: clear it instead.
+    local on_track = find_rail_danger(
       entity.surface_index, entity.position,
-      RAIL_DANGER_TRACK_PADDING + RAIL_DANGER_VEHICLE_APPROACH_DISTANCE
+      RAIL_DANGER_TRACK_PADDING + RAIL_DANGER_VEHICLE_CLEARANCE
     )
-    -- A car already on the track keeps driving: braking there is what gets it hit.
-    if gap and gap > RAIL_DANGER_TRACK_PADDING then
+    if on_track then
+      record.rail_hold = drive_off_track(entity, on_track) or nil
+      if record.rail_hold then
+        sync_team_mate_with_vehicle(record)
+      end
+      return record.rail_hold == true
+    end
+    -- Brake while it can still stop short of the track. Once it cannot, carry
+    -- on across: rails are marked a whole lookahead before the train arrives.
+    -- A passing wagon is never driven at.
+    local danger, distance = vehicle_danger_distance(entity)
+    if danger and (danger.carriage or distance > vehicle_stopping_distance(entity)) then
       behavior.stop(record, entity)
+      -- Travel is skipped while held; keep the hidden rider with the car.
+      sync_team_mate_with_vehicle(record)
       record.rail_hold = true
       return true
     end

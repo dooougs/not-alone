@@ -15,7 +15,7 @@ footprint that keeps the area around it charted, and a map marker.
 
 **Rail safety.** Team mates watch for moving trains. One standing on the track steps off sideways,
 one about to cross waits until the train has passed, and team mates driving cars or tanks brake short
-of the crossing.
+of the crossing when they still can, or else carry on across.
 
 ## Bases
 
