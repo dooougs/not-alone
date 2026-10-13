@@ -13,6 +13,10 @@ bar.
 Team mates are native Factorio units that use the engine's pathfinder. Each one has a small radar
 footprint that keeps the area around it charted, and a map marker.
 
+**Rail safety.** Team mates watch for moving trains. One standing on the track steps off sideways,
+one about to cross waits until the train has passed, and team mates driving cars or tanks brake short
+of the crossing when they still can, or else carry on across.
+
 ## Bases
 
 **Habitat.** An unpowered roboport that projects logistic-network coverage, stores no robots and
@@ -28,6 +32,18 @@ mates from other bases, and your inventory so you can move team mate items in an
 
 **Cloner.** Crafts new team mates. Each recipe takes a Miner plus iron ore, copper ore, coal and
 uranium ore and returns the Miner along with a new Miner, Builder, Carrier or Soldier.
+
+**Crew wagon** (cargo wagon and 10 steel plate, unlocked with Railway). A cargo wagon that carries
+team mates. Its panel, next to the train window, sets how many Carriers, Builders and Soldiers it
+should hold, and Habitats within 150 tiles send them over while the train is stopped.
+
+**Rail gangs.** Tick **Rail gang** on a Crew wagon to turn its train into a track-laying gang. You
+place the rail ghosts; the gang does the rest. The train needs a fuelled locomotive, rails in a cargo
+wagon, and a Carrier and at least one Builder aboard. The Carrier drives to about 10 tiles short of
+the end of the built track. Builders take rails and any other items from the train's cargo wagons
+and build the ghosts within 40 tiles of the end, while Soldiers guard them. Once everyone is back
+aboard, the train moves up to the new end and repeats. The panel shows what the gang is doing or
+what it is waiting for. Untick it to hand the train back, stopped.
 
 ## Roles
 

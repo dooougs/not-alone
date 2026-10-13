@@ -1,4 +1,4 @@
--- Functional area extracted from not-alone.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function notalone.on_reverse_selected_area(event)
   if collect_reverse_clicked_team_mate(event) then
@@ -17,6 +17,10 @@ end
 function notalone.on_roboport_built(event)
   local entity = event.entity
   if not entity or not entity.valid then
+    return
+  end
+  if entity.name == CREW_WAGON_NAME then
+    register_crew_wagon(entity)
     return
   end
   if entity.type ~= "roboport" then
@@ -96,7 +100,7 @@ function notalone.on_entity_died(event)
     -- recovery state reclaim it into the team mate's inventory instead.
     record.vehicle_state = "recovering-car"
   end
-  if is_base(entity) then
+  if is_base(entity) or entity.name == CREW_WAGON_NAME then
     notalone.on_base_removed(event)
   end
 end
@@ -105,6 +109,7 @@ function notalone.on_update(event)
   for _, player in pairs(game.connected_players) do
     update_team_mate_panel(player)
     update_team_mate_request_gui(player)
+    update_crew_wagon_gui(player)
   end
 
   for _, surface in pairs(game.surfaces) do
@@ -143,7 +148,8 @@ function notalone.on_update(event)
   end
   -- Config-change does not fire for code-only updates; repair lazily too.
   repair_manual_loops()
-
+  update_rail_dangers()
+  update_train_gangs()
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
@@ -386,6 +392,10 @@ end
 -- nothing is silently lost with the building.
 function notalone.on_base_removed(event)
   local entity = event.entity
+  if entity and entity.valid and entity.name == CREW_WAGON_NAME then
+    on_crew_wagon_removed(entity)
+    return
+  end
   if not entity or not entity.valid or not is_base(entity)
     or not entity.unit_number then
     return
@@ -504,6 +514,7 @@ function notalone.register()
   script.on_event(defines.events.on_gui_closed, notalone.on_gui_closed)
   script.on_event(defines.events.on_gui_click, notalone.on_gui_click)
   script.on_event(defines.events.on_gui_text_changed, notalone.on_gui_text_changed)
+  script.on_event(defines.events.on_gui_checked_state_changed, notalone.on_gui_checked_state_changed)
   script.on_event(defines.events.on_built_entity, notalone.on_roboport_built)
   script.on_event(defines.events.on_robot_built_entity, notalone.on_roboport_built)
   script.on_event(defines.events.script_raised_built, notalone.on_roboport_built)
@@ -512,7 +523,8 @@ function notalone.register()
   script.on_event(defines.events.on_entity_died, notalone.on_entity_died)
   local base_filters = {
     {filter = "name", name = LOGISTICS_HUB_NAME},
-    {filter = "name", name = OUTPOST_NAME}
+    {filter = "name", name = OUTPOST_NAME},
+    {filter = "name", name = CREW_WAGON_NAME}
   }
   script.on_event(defines.events.on_player_mined_entity, notalone.on_base_removed, base_filters)
   script.on_event(defines.events.on_robot_mined_entity, notalone.on_base_removed, base_filters)

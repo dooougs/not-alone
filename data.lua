@@ -306,6 +306,52 @@ for _, cloning_recipe in pairs(cloning_recipes) do
 	cloning_recipe.uranium = nil
 end
 
+-- Crew wagon: a cargo wagon whose inventory holds a train gang's crew as
+-- team mate items, the way a Habitat's material slots do.
+local crew_wagon = table.deepcopy(data.raw["cargo-wagon"]["cargo-wagon"])
+crew_wagon.name = "not-alone-crew-wagon"
+crew_wagon.localised_name = {"entity-name.not-alone-crew-wagon"}
+crew_wagon.factoriopedia_description = {"factoriopedia-description.not-alone-crew-wagon"}
+crew_wagon.minable = {mining_time = 0.5, result = "not-alone-crew-wagon"}
+crew_wagon.inventory_size = 10
+crew_wagon.color = {r = 0.2, g = 0.55, b = 0.85, a = 0.5}
+
+local base_wagon_item = data.raw["item-with-entity-data"]["cargo-wagon"]
+	or data.raw.item["cargo-wagon"]
+local crew_wagon_item = table.deepcopy(base_wagon_item)
+crew_wagon_item.name = "not-alone-crew-wagon"
+crew_wagon_item.localised_name = {"item-name.not-alone-crew-wagon"}
+crew_wagon_item.icons = {
+	{
+		icon = base_wagon_item.icon,
+		icon_size = base_wagon_item.icon_size or 64,
+		tint = {r = 0.55, g = 0.75, b = 1, a = 1}
+	}
+}
+crew_wagon_item.icon = nil
+crew_wagon_item.place_result = "not-alone-crew-wagon"
+crew_wagon_item.order = (base_wagon_item.order or "a") .. "-a[not-alone-crew-wagon]"
+crew_wagon.icons = crew_wagon_item.icons
+crew_wagon.icon = nil
+
+local railway = data.raw.technology.railway
+local crew_wagon_recipe = {
+	type = "recipe",
+	name = "not-alone-crew-wagon",
+	enabled = railway == nil,
+	ingredients = {
+		{type = "item", name = "cargo-wagon", amount = 1},
+		{type = "item", name = "steel-plate", amount = 10}
+	},
+	results = {
+		{type = "item", name = "not-alone-crew-wagon", amount = 1}
+	}
+}
+if railway then
+	railway.effects = railway.effects or {}
+	table.insert(railway.effects, {type = "unlock-recipe", recipe = "not-alone-crew-wagon"})
+end
+
 data:extend({
   logistics_hub,
   logistics_hub_item,
@@ -318,6 +364,9 @@ data:extend({
   cloner,
   cloner_item,
   cloner_recipe,
+  crew_wagon,
+  crew_wagon_item,
+  crew_wagon_recipe,
 	cloning_recipe_category,
 	table.unpack(cloning_recipes),
 })

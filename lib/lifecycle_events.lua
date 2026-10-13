@@ -192,9 +192,20 @@ function update_team_mate(record, player)
   update_inventory_renderings(record)
   update_builder_target_renderings(record)
 
+  -- A train outranks every job: clear the track, or hold until it has passed.
+  if update_rail_safety(record) then
+    return true
+  end
+
   if record.vehicle_state then
     update_vehicle_travel(record)
     return true
+  end
+
+  -- Train gang crew answer to their Crew wagon, not to network jobs.
+  local gang_result = update_train_gang_member(record)
+  if gang_result ~= nil then
+    return gang_result
   end
 
   -- Suit power, shields, legs, lasers, and repair bots run whatever the
