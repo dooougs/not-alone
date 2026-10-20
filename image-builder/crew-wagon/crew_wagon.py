@@ -467,7 +467,7 @@ def render_frames(args):
 				node.inputs[7].default_value = (0.08, 0.24, 0.45, 1)
 		scene.render.resolution_x = 256
 		scene.render.resolution_y = 256
-		turn.rotation_euler = (0, 0, -math.radians(52))
+		turn.rotation_euler = (0, 0, -math.radians(24))
 		scene.render.filepath = f"{args.out}/icon.png"
 		bpy.ops.render.render(write_still=True)
 		return

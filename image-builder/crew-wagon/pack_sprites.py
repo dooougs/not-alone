@@ -40,8 +40,10 @@ def prepare(layer, im):
 		im.putalpha(alpha)
 	elif layer == "mask":
 		# a soft, desaturated overlay like the vanilla masks
-		alpha = im.getchannel("A").point(lambda a: a * 0.8)
-		gray = im.convert("L")
+		alpha = im.getchannel("A").point(lambda a: a * 0.9)
+		# Factorio overlays the tint onto the mask itself, so mid grey gives
+		# the train colour at full strength; lighter would wash it out
+		gray = im.convert("L").point(lambda v: int(v * 0.54))
 		im = Image.merge("RGBA", (gray, gray, gray, alpha))
 	return im
 
