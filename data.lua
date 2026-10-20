@@ -316,17 +316,56 @@ crew_wagon.minable = {mining_time = 0.5, result = "not-alone-crew-wagon"}
 crew_wagon.inventory_size = 10
 crew_wagon.color = {r = 0.2, g = 0.55, b = 0.85, a = 0.5}
 
+-- Rendered in Blender by image-builder/crew-wagon; same sheet layout as the
+-- vanilla wagons: 128 directions over half a turn, 4 files of 4x8 frames.
+local function crew_wagon_layer(name, size, extra)
+	local path = "__not-alone__/graphics/entity/crew-wagon/" .. name
+	local layer = {
+		filenames = {path .. "-1.png", path .. "-2.png", path .. "-3.png", path .. "-4.png"},
+		width = size.width,
+		height = size.height,
+		shift = size.shift,
+		line_length = 4,
+		lines_per_file = 8,
+		direction_count = 128,
+		back_equals_front = true,
+		allow_low_quality_rotation = true,
+		priority = "very-low",
+		scale = 0.5,
+		usage = "train"
+	}
+	for k, v in pairs(extra or {}) do
+		layer[k] = v
+	end
+	return layer
+end
+
+crew_wagon.pictures = {
+	rotated = {
+		layers = {
+			crew_wagon_layer("crew-wagon", {width = 460, height = 404, shift = {0, -0.578125}}),
+			crew_wagon_layer("crew-wagon-mask", {width = 368, height = 332, shift = {0, -0.984375}}, {
+				flags = {"mask"},
+				apply_runtime_tint = true,
+				tint_as_overlay = true
+			}),
+			crew_wagon_layer("crew-wagon-shadow", {width = 468, height = 367, shift = {0.34375, -0.1171875}},
+				{draw_as_shadow = true})
+		}
+	}
+}
+-- the crew boards by docking, so the cargo wagon's doors would only show
+-- vanilla panels on the new body
+crew_wagon.horizontal_doors = nil
+crew_wagon.vertical_doors = nil
+
 local base_wagon_item = data.raw["item-with-entity-data"]["cargo-wagon"]
 	or data.raw.item["cargo-wagon"]
 local crew_wagon_item = table.deepcopy(base_wagon_item)
 crew_wagon_item.name = "not-alone-crew-wagon"
 crew_wagon_item.localised_name = {"item-name.not-alone-crew-wagon"}
 crew_wagon_item.icons = {
-	{
-		icon = base_wagon_item.icon,
-		icon_size = base_wagon_item.icon_size or 64,
-		tint = {r = 0.55, g = 0.75, b = 1, a = 1}
-	}
+	{icon = "__not-alone__/graphics/icons/crew-wagon.png", icon_size = 64}
 }
 crew_wagon_item.icon = nil
 crew_wagon_item.place_result = "not-alone-crew-wagon"
