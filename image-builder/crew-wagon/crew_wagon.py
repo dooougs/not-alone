@@ -158,7 +158,7 @@ def make_materials():
 	m["rib"] = node_material("rib", (0.36, 0.35, 0.32), metallic=0.85, rough=0.32, grime=0.45)
 	m["chassis"] = node_material("chassis", (0.15, 0.085, 0.045), metallic=0.5, rough=0.65, grime=0.55)
 	m["dark"] = node_material("dark", (0.05, 0.048, 0.045), metallic=0.5, rough=0.55, grime=0.2, bump=0.1)
-	m["stripe"] = node_material("stripe", (0.24, 0.24, 0.23), metallic=0.15, rough=0.7, grime=0.25)
+	m["stripe"] = node_material("stripe", (0.15, 0.15, 0.145), metallic=0.15, rough=0.7, grime=0.25)
 	m["glass"] = node_material("glass", (0.04, 0.04, 0.045), metallic=0.0, rough=0.12,
 		emission=(1.0, 0.62, 0.28, 1), strength=1.1, grime=0.1, bump=0)
 	m["lamp"] = node_material("lamp", (1, 0.9, 0.7), metallic=0, rough=0.3,
@@ -280,7 +280,7 @@ def build_wagon(m):
 
 	# end walls with a door and a small window
 	for s in (-1, 1):
-		y = s * (half + 0.005)
+		y = s * (half + 0.07)  # proud of the end rib
 		box(f"doorframe{s}", (0.7, 0.03, 1.0), (0, y, BODY_Z0 + 0.52), m["dark"], root, bevel=0.01)
 		box(f"door{s}", (0.58, 0.05, 0.92), (0, y, BODY_Z0 + 0.5), m["stripe"], root, bevel=0.012)
 		box(f"doorwin{s}", (0.36, 0.06, 0.26), (0, y, BODY_Z0 + 0.78), m["glass"], root, bevel=0.005)
@@ -455,11 +455,19 @@ def render_frames(args):
 	apply_mode(args.mode, m, root, scene)
 
 	if args.mode == "icon":
-		# a low, nearly side-on view so the icon fills its slot like vanilla's
-		setup_camera(scene, size_px=256, px_per_tile=256 / 7.0, tilt=math.radians(62))
+		# a close three-quarter perspective so the icon is chunky like vanilla's
+		cam = setup_camera(scene, size_px=256, px_per_tile=256 / 7.0, tilt=math.radians(55))
+		cam.data.type = "PERSP"
+		cam.data.lens = 50
+		cam.location = (0, -11 * math.sin(math.radians(55)), 11 * math.cos(math.radians(55)) + 1.0)
+		# show the paint in the wagon's default blue, as the game would
+		for node in m["stripe"].node_tree.nodes:
+			if node.bl_idname == "ShaderNodeMix" and node.blend_type == "MIX":
+				node.inputs[6].default_value = (0.04, 0.12, 0.22, 1)
+				node.inputs[7].default_value = (0.08, 0.24, 0.45, 1)
 		scene.render.resolution_x = 256
 		scene.render.resolution_y = 256
-		turn.rotation_euler = (0, 0, -math.radians(68))
+		turn.rotation_euler = (0, 0, -math.radians(52))
 		scene.render.filepath = f"{args.out}/icon.png"
 		bpy.ops.render.render(write_still=True)
 		return

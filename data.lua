@@ -344,7 +344,7 @@ crew_wagon.pictures = {
 	rotated = {
 		layers = {
 			crew_wagon_layer("crew-wagon", {width = 460, height = 398, shift = {0, -0.625}}),
-			crew_wagon_layer("crew-wagon-mask", {width = 368, height = 335, shift = {0, -0.9609375}}, {
+			crew_wagon_layer("crew-wagon-mask", {width = 372, height = 339, shift = {0, -0.9296875}}, {
 				flags = {"mask"},
 				apply_runtime_tint = true,
 				tint_as_overlay = true

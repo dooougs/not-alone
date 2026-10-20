@@ -40,7 +40,7 @@ def prepare(layer, im):
 		im.putalpha(alpha)
 	elif layer == "mask":
 		# a soft, desaturated overlay like the vanilla masks
-		alpha = im.getchannel("A").point(lambda a: a * 0.55)
+		alpha = im.getchannel("A").point(lambda a: a * 0.8)
 		gray = im.convert("L")
 		im = Image.merge("RGBA", (gray, gray, gray, alpha))
 	return im
