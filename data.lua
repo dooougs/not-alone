@@ -343,13 +343,13 @@ end
 crew_wagon.pictures = {
 	rotated = {
 		layers = {
-			crew_wagon_layer("crew-wagon", {width = 460, height = 404, shift = {0, -0.578125}}),
-			crew_wagon_layer("crew-wagon-mask", {width = 368, height = 332, shift = {0, -0.984375}}, {
+			crew_wagon_layer("crew-wagon", {width = 460, height = 398, shift = {0, -0.625}}),
+			crew_wagon_layer("crew-wagon-mask", {width = 368, height = 335, shift = {0, -0.9609375}}, {
 				flags = {"mask"},
 				apply_runtime_tint = true,
 				tint_as_overlay = true
 			}),
-			crew_wagon_layer("crew-wagon-shadow", {width = 468, height = 367, shift = {0.34375, -0.1171875}},
+			crew_wagon_layer("crew-wagon-shadow", {width = 462, height = 368, shift = {0.390625, -0.140625}},
 				{draw_as_shadow = true})
 		}
 	}

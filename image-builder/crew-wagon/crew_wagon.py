@@ -31,7 +31,7 @@ GROUND_STRETCH = 1.12            # keeps track length close to vanilla on screen
 
 BODY_LEN = 5.5
 BODY_HALF_W = 0.95
-BODY_Z0 = 0.62
+BODY_Z0 = 0.8
 BODY_Z1 = 1.72
 ROOF_Z = 1.95
 BAYS = 5
@@ -154,11 +154,11 @@ def node_material(name, base, metallic=0.6, rough=0.5, emission=None, strength=0
 def make_materials():
 	m = {}
 	m["body"] = node_material("body", (0.13, 0.12, 0.11), metallic=0.7, rough=0.5, ribs=1.6, bump=0.35, grime=0.6)
-	m["panel"] = node_material("panel", (0.19, 0.18, 0.165), metallic=0.75, rough=0.45, grime=0.55)
+	m["panel"] = node_material("panel", (0.19, 0.18, 0.165), metallic=0.6, rough=0.55, grime=0.55)
 	m["rib"] = node_material("rib", (0.36, 0.35, 0.32), metallic=0.85, rough=0.32, grime=0.45)
 	m["chassis"] = node_material("chassis", (0.15, 0.085, 0.045), metallic=0.5, rough=0.65, grime=0.55)
 	m["dark"] = node_material("dark", (0.05, 0.048, 0.045), metallic=0.5, rough=0.55, grime=0.2, bump=0.1)
-	m["stripe"] = node_material("stripe", (0.26, 0.26, 0.25), metallic=0.5, rough=0.4, grime=0.25)
+	m["stripe"] = node_material("stripe", (0.24, 0.24, 0.23), metallic=0.15, rough=0.7, grime=0.25)
 	m["glass"] = node_material("glass", (0.04, 0.04, 0.045), metallic=0.0, rough=0.12,
 		emission=(1.0, 0.62, 0.28, 1), strength=1.1, grime=0.1, bump=0)
 	m["lamp"] = node_material("lamp", (1, 0.9, 0.7), metallic=0, rough=0.3,
@@ -250,28 +250,29 @@ def build_wagon(m):
 	half = BODY_LEN / 2
 
 	# chassis: rust brown frame like the vanilla wagons, with end beams
-	box("frame", (1.5, BODY_LEN + 0.5, 0.22), (0, 0, 0.5), m["chassis"], root)
+	# the engine draws bogies at +-2 tiles, so the frame stays clear of them
+	box("frame", (1.3, 2.4, 0.22), (0, 0, 0.7), m["chassis"], root)
 	for s in (-1, 1):
-		box(f"sill{s}", (0.12, BODY_LEN - 0.3, 0.16), (s * 0.78, 0, 0.56), m["chassis"], root)
-		box(f"endbeam{s}", (1.7, 0.22, 0.3), (0, s * (half + 0.3), 0.5), m["chassis"], root)
+		box(f"sill{s}", (0.12, BODY_LEN - 0.3, 0.14), (s * 0.7, 0, 0.74), m["chassis"], root)
+		box(f"endbeam{s}", (1.7, 0.22, 0.26), (0, s * (half + 0.3), 0.62), m["chassis"], root)
 		# buffers and coupler
 		for x in (-0.55, 0.55):
-			cylinder(f"buf{s}{x}", 0.07, 0.3, (x, s * (half + 0.55), 0.5), (math.pi / 2, 0, 0), m["dark"], root)
-			cylinder(f"bufhead{s}{x}", 0.13, 0.05, (x, s * (half + 0.7), 0.5), (math.pi / 2, 0, 0), m["rib"], root)
-		box(f"coupler{s}", (0.18, 0.4, 0.14), (0, s * (half + 0.55), 0.48), m["dark"], root)
+			cylinder(f"buf{s}{x}", 0.07, 0.3, (x, s * (half + 0.55), 0.62), (math.pi / 2, 0, 0), m["dark"], root)
+			cylinder(f"bufhead{s}{x}", 0.13, 0.05, (x, s * (half + 0.7), 0.62), (math.pi / 2, 0, 0), m["rib"], root)
+		box(f"coupler{s}", (0.18, 0.4, 0.14), (0, s * (half + 0.55), 0.6), m["dark"], root)
 		# end platform with hand rails, so the crew has somewhere to stand
-		box(f"platform{s}", (1.55, 0.42, 0.06), (0, s * (half + 0.22), 0.64), m["panel"], root, bevel=0.01)
+		box(f"platform{s}", (1.55, 0.42, 0.06), (0, s * (half + 0.22), 0.77), m["panel"], root, bevel=0.01)
 		for x in (-0.72, 0.72):
-			cylinder(f"post{s}{x}", 0.025, 0.55, (x, s * (half + 0.4), 0.92), (0, 0, 0), m["rib"], root, verts=8)
-			cylinder(f"rail{s}{x}", 0.022, 0.42, (x, s * (half + 0.22), 1.18), (math.pi / 2, 0, 0), m["rib"], root, verts=8)
-		cylinder(f"rearrail{s}", 0.022, 1.44, (0, s * (half + 0.4), 1.18), (0, math.pi / 2, 0), m["rib"], root, verts=8)
+			cylinder(f"post{s}{x}", 0.025, 0.5, (x, s * (half + 0.4), 1.03), (0, 0, 0), m["rib"], root, verts=8)
+			cylinder(f"rail{s}{x}", 0.022, 0.42, (x, s * (half + 0.22), 1.27), (math.pi / 2, 0, 0), m["rib"], root, verts=8)
+		cylinder(f"rearrail{s}", 0.022, 1.44, (0, s * (half + 0.4), 1.27), (0, math.pi / 2, 0), m["rib"], root, verts=8)
 		# steps down from the platform
 		for x in (-0.68, 0.68):
-			box(f"step{s}{x}", (0.3, 0.2, 0.04), (x * 1.05, s * (half + 0.22), 0.4), m["dark"], root, bevel=0.005)
+			box(f"step{s}{x}", (0.3, 0.2, 0.04), (x * 1.05, s * (half + 0.22), 0.55), m["dark"], root, bevel=0.005)
 
 	# undercarriage tanks between the bogies
 	for y in (-0.7, 0.7):
-		cylinder(f"tank{y}", 0.2, 0.9, (0, y, 0.38), (math.pi / 2, 0, 0), m["dark"], root)
+		cylinder(f"tank{y}", 0.17, 0.9, (0, y, 0.55), (math.pi / 2, 0, 0), m["dark"], root)
 
 	# body shell
 	profile_prism("body", body_profile(), -half, half, m["body"], root)
@@ -281,7 +282,7 @@ def build_wagon(m):
 	for s in (-1, 1):
 		y = s * (half + 0.005)
 		box(f"doorframe{s}", (0.7, 0.03, 1.0), (0, y, BODY_Z0 + 0.52), m["dark"], root, bevel=0.01)
-		box(f"door{s}", (0.58, 0.05, 0.92), (0, y, BODY_Z0 + 0.5), m["panel"], root, bevel=0.012)
+		box(f"door{s}", (0.58, 0.05, 0.92), (0, y, BODY_Z0 + 0.5), m["stripe"], root, bevel=0.012)
 		box(f"doorwin{s}", (0.36, 0.06, 0.26), (0, y, BODY_Z0 + 0.78), m["glass"], root, bevel=0.005)
 		box(f"doorhandle{s}", (0.06, 0.08, 0.12), (0.21, y, BODY_Z0 + 0.45), m["rib"], root, bevel=0)
 		for x in (-0.62, 0.62):
@@ -313,9 +314,9 @@ def build_wagon(m):
 			box(f"mullion{i}{s}", (0.065, 0.05, 0.36), (x, y, wall_z - 0.12), m["rib"], root, bevel=0.005)
 			box(f"sill{i}{s}", (0.08, inner - 0.04, 0.04), (x, y, wall_z - 0.35), m["rib"], root, bevel=0.008)
 			box(f"stripe{i}{s}", (0.05, inner, 0.15), (x - s * 0.012, y, wall_z - 0.45), m["stripe"], root, bevel=0.006)
-			for r in range(3):
-				z = BODY_Z0 + 0.1 + r * 0.11
-				box(f"lowrib{i}{s}{r}", (0.05, inner - 0.1, 0.035), (x - s * (0.03 - r * 0.012), y, z), m["panel"], root, bevel=0.008)
+			low_top = wall_z - 0.53
+			box(f"lowpanel{i}{s}", (0.04, inner - 0.04, low_top - BODY_Z0), (x - s * 0.02, y, (low_top + BODY_Z0) / 2), m["stripe"], root, bevel=0.008)
+			box(f"lowrib{i}{s}", (0.05, inner, 0.04), (x - s * 0.02, y, BODY_Z0 + 0.03), m["rib"], root, bevel=0.008)
 
 		# roof panel per bay with longitudinal ribs, read from above like vanilla
 		top = ROOF_Z
@@ -362,7 +363,7 @@ def setup_scene(args):
 
 	# key light from the upper left like vanilla sprites, shadows fall to the right
 	sun = bpy.data.lights.new("sun", "SUN")
-	sun.energy = 6.5
+	sun.energy = 5.5
 	sun.angle = math.radians(4)
 	sun_obj = bpy.data.objects.new("sun", sun)
 	sun_obj.rotation_euler = (math.radians(32), math.radians(-22), math.radians(-35))
@@ -416,13 +417,21 @@ def holdout_material():
 def apply_mode(mode, m, root, scene):
 	parts = [o for o in bpy.data.objects if o.type == "MESH"]
 	if mode == "mask":
-		# only the tintable stripes show; everything else cuts them out
+		# only the tintable paint shows, flat and unlit so the tint is even at
+		# every angle; everything else cuts it out
 		hold = holdout_material()
+		paint = bpy.data.materials.new("paint")
+		paint.use_nodes = True
+		nt = paint.node_tree
+		for n in list(nt.nodes):
+			nt.nodes.remove(n)
+		out = nt.nodes.new("ShaderNodeOutputMaterial")
+		emit = nt.nodes.new("ShaderNodeEmission")
+		emit.inputs["Color"].default_value = (0.6, 0.6, 0.6, 1)
+		nt.links.new(emit.outputs[0], out.inputs["Surface"])
 		for o in parts:
-			if o.data.materials and o.data.materials[0] != m["stripe"]:
-				o.data.materials[0] = hold
-		for name in ("sun", "fill"):
-			scene.objects[name].data.energy *= 1.3
+			if o.data.materials:
+				o.data.materials[0] = paint if o.data.materials[0] == m["stripe"] else hold
 	elif mode == "shadow":
 		plane = bpy.data.meshes.new("ground")
 		bm = bmesh.new()
@@ -446,10 +455,11 @@ def render_frames(args):
 	apply_mode(args.mode, m, root, scene)
 
 	if args.mode == "icon":
-		setup_camera(scene, size_px=256, px_per_tile=256 / 7.2, tilt=math.radians(48))
+		# a low, nearly side-on view so the icon fills its slot like vanilla's
+		setup_camera(scene, size_px=256, px_per_tile=256 / 7.0, tilt=math.radians(62))
 		scene.render.resolution_x = 256
 		scene.render.resolution_y = 256
-		turn.rotation_euler = (0, 0, -math.radians(58))
+		turn.rotation_euler = (0, 0, -math.radians(68))
 		scene.render.filepath = f"{args.out}/icon.png"
 		bpy.ops.render.render(write_still=True)
 		return
