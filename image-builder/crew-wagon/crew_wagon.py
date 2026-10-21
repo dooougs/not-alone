@@ -219,12 +219,12 @@ def make_materials():
 	m = {}
 	m["body"] = node_material("body", (0.15, 0.14, 0.13), metallic=0.75, rough=0.42, ribs=9, bump=0.6, grime=0.6)
 	m["panel"] = node_material("panel", (0.2, 0.19, 0.175), metallic=0.7, rough=0.45, grime=0.55, ribs=11, bump=0.5)
-	m["rib"] = node_material("rib", (0.36, 0.35, 0.32), metallic=0.85, rough=0.32, grime=0.45)
+	m["rib"] = node_material("rib", (0.25, 0.24, 0.22), metallic=0.8, rough=0.4, grime=0.45)
 	m["chassis"] = node_material("chassis", (0.15, 0.085, 0.045), metallic=0.5, rough=0.65, grime=0.55)
 	m["dark"] = node_material("dark", (0.05, 0.048, 0.045), metallic=0.5, rough=0.55, grime=0.2, bump=0.1)
 	m["stripe"] = node_material("stripe", (0.11, 0.105, 0.1), metallic=0.3, rough=0.6, grime=0.35, ribs=11, bump=0.45)
 	m["glass"] = node_material("glass", (0.04, 0.04, 0.045), metallic=0.0, rough=0.12,
-		emission=(0.9, 0.5, 0.2, 1), strength=0.45, grime=0.1, bump=0)
+		emission=(0.75, 0.4, 0.15, 1), strength=0.28, grime=0.3, bump=0)
 	m["lamp"] = node_material("lamp", (1, 0.9, 0.7), metallic=0, rough=0.3,
 		emission=(1.0, 0.85, 0.55, 1), strength=14.0, grime=0, bump=0)
 	return m
@@ -373,8 +373,12 @@ def build_wagon(m):
 			x = s * (BODY_HALF_W + 0.005)
 			box(f"winframe{i}{s}", (0.05, inner - 0.08, 0.42), (x, y, wall_z - 0.12), m["dark"], root, bevel=0.012)
 			for k in (-1, 1):
+				wy = y + k * (inner / 4 - 0.01)
+				# glass set back in the frame, shaded by a lintel and split by a sash bar
 				box(f"win{i}{s}{k}", (0.06, inner / 2 - 0.12, 0.3),
-					(x, y + k * (inner / 4 - 0.01), wall_z - 0.12), m["glass"], root, bevel=0.006)
+					(x + s * 0.004, wy, wall_z - 0.12), m["glass"], root, bevel=0.006)
+				box(f"lintel{i}{s}{k}", (0.07, inner / 2 - 0.1, 0.06), (x + s * 0.012, wy, wall_z + 0.01), m["dark"], root, bevel=0.006)
+				box(f"sash{i}{s}{k}", (0.065, inner / 2 - 0.12, 0.025), (x + s * 0.01, wy, wall_z - 0.1), m["dark"], root, bevel=0)
 			box(f"mullion{i}{s}", (0.065, 0.05, 0.36), (x, y, wall_z - 0.12), m["rib"], root, bevel=0.005)
 			box(f"sill{i}{s}", (0.08, inner - 0.04, 0.04), (x, y, wall_z - 0.35), m["rib"], root, bevel=0.008)
 			box(f"stripe{i}{s}", (0.05, inner, 0.15), (x - s * 0.012, y, wall_z - 0.45), m["stripe"], root, bevel=0.006)
@@ -392,8 +396,16 @@ def build_wagon(m):
 	box("walkway", (0.42, BODY_LEN - 1.0, 0.07), (0, 0, ROOF_Z + 0.06), m["stripe"], root, bevel=0.015)
 	for i in range(1, BAYS):
 		y = -half + i * bay
-		cylinder(f"vent{i}", 0.1, 0.16, (0, y, ROOF_Z + 0.16), (0, 0, 0), m["rib"], root, verts=12)
-		cylinder(f"ventcap{i}", 0.15, 0.04, (0, y, ROOF_Z + 0.25), (0, 0, 0), m["dark"], root, verts=12)
+		if i % 2:
+			cylinder(f"vent{i}", 0.1, 0.16, (0, y, ROOF_Z + 0.16), (0, 0, 0), m["rib"], root, verts=12)
+			cylinder(f"ventcap{i}", 0.15, 0.04, (0, y, ROOF_Z + 0.25), (0, 0, 0), m["dark"], root, verts=12)
+		else:
+			# a boxy fan housing breaks up the row of domes
+			box(f"fan{i}", (0.3, 0.3, 0.1), (0, y, ROOF_Z + 0.14), m["rib"], root, bevel=0.015)
+			cylinder(f"fanblade{i}", 0.11, 0.02, (0, y, ROOF_Z + 0.2), (0, 0, 0), m["dark"], root, verts=12)
+	# pipes and a tool box along the walkway, offset so the bays differ
+	cylinder("roofpipe", 0.035, BODY_LEN * 0.45, (0.3, -0.6, ROOF_Z + 0.06), (math.pi / 2, 0, 0), m["chassis"], root, verts=8)
+	box("toolbox", (0.22, 0.42, 0.12), (-0.3, 0.9, ROOF_Z + 0.08), m["chassis"], root, bevel=0.015)
 	for s in (-1, 1):
 		box(f"hatch{s}", (0.5, 0.36, 0.08), (0, s * (half - 0.32), ROOF_Z + 0.06), m["rib"], root, bevel=0.015)
 		box(f"hatchwheel{s}", (0.16, 0.16, 0.03), (0, s * (half - 0.32), ROOF_Z + 0.11), m["dark"], root, bevel=0.01)

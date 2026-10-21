@@ -47,6 +47,8 @@ def prepare(layer, im, color=None):
 		rgb = rgba[..., :3]
 		lum = rgb @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
 		target = np.clip((lum - 68) * 1.5 + 84, 0, 255)
+		# then sink the mid-tones while leaving the highlights alone
+		target = target * (0.82 + 0.18 * np.minimum(target / 170, 1))
 		sat = rgb.max(-1) - rgb.min(-1)
 		cap = 1.45 - 0.35 * np.clip(sat / 60, 0, 1)  # keep the amber windows dim
 		gain = np.minimum(target / np.maximum(lum, 1), cap)[..., None]
@@ -65,8 +67,8 @@ def prepare(layer, im, color=None):
 			mean, std = lum[inside].mean(), max(lum[inside].std(), 1.0)
 		else:
 			mean, std = 128.0, 1.0
-		gray = np.clip(105 + 50 * (lum - mean) / std, 20, 220)
-		alpha = cover * np.clip(0.2 + 0.15 * gray / 105, 0.12, 0.5)
+		gray = np.clip(85 + 50 * (lum - mean) / std, 20, 200)
+		alpha = cover * np.clip(0.28 + 0.2 * gray / 85, 0.15, 0.62)
 		g = Image.fromarray(gray.astype(np.uint8))
 		im = Image.merge("RGBA", (g, g, g, Image.fromarray((alpha * 255).astype(np.uint8))))
 	return im
