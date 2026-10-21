@@ -13,6 +13,7 @@ for data.lua.
 import os
 import sys
 
+import numpy as np
 from PIL import Image
 
 DIRECTIONS = 128
@@ -32,25 +33,36 @@ def union_bbox(frames):
 	return (max(0, box[0] - PAD), max(0, box[1] - PAD), min(FRAME_PX, box[2] + PAD), min(FRAME_PX, box[3] + PAD))
 
 
-def prepare(layer, im):
+def prepare(layer, im, color=None):
 	if layer == "shadow":
 		# vanilla shadows are pure black with the darkness in alpha
 		alpha = im.getchannel("A").point(lambda a: 0 if a < 16 else a)
 		im = Image.new("RGBA", im.size, (0, 0, 0, 0))
 		im.putalpha(alpha)
 	elif layer == "mask":
-		# a soft, desaturated overlay like the vanilla masks
-		alpha = im.getchannel("A").point(lambda a: a * 0.9)
-		# Factorio overlays the tint onto the mask itself, so mid grey gives
-		# the train colour at full strength; lighter would wash it out
-		gray = im.convert("L").point(lambda v: int(v * 0.54))
-		im = Image.merge("RGBA", (gray, gray, gray, alpha))
+		# Match the vanilla wagon masks: mid grey carrying the paint's grime and
+		# shading (mean ~105, spread ~50) at low opacity (mean alpha ~90), so
+		# the train colour reads as weathered paint rather than a flat fill.
+		cover = np.asarray(im.getchannel("A"), dtype=np.float32) / 255
+		lum = np.asarray(color.convert("L"), dtype=np.float32)
+		inside = cover > 0.5
+		if inside.any():
+			mean, std = lum[inside].mean(), max(lum[inside].std(), 1.0)
+		else:
+			mean, std = 128.0, 1.0
+		gray = np.clip(105 + 50 * (lum - mean) / std, 20, 220)
+		alpha = cover * np.clip(0.2 + 0.15 * gray / 105, 0.12, 0.5)
+		g = Image.fromarray(gray.astype(np.uint8))
+		im = Image.merge("RGBA", (g, g, g, Image.fromarray((alpha * 255).astype(np.uint8))))
 	return im
 
 
 def pack(src, dst, layer, name):
-	frames = [prepare(layer, Image.open(os.path.join(src, layer, f"{i:03d}.png")).convert("RGBA"))
-		for i in range(DIRECTIONS)]
+	frames = []
+	for i in range(DIRECTIONS):
+		im = Image.open(os.path.join(src, layer, f"{i:03d}.png")).convert("RGBA")
+		color = Image.open(os.path.join(src, "color", f"{i:03d}.png")).convert("RGBA") if layer == "mask" else None
+		frames.append(prepare(layer, im, color))
 	x0, y0, x1, y1 = union_bbox(frames)
 	w, h = x1 - x0, y1 - y0
 	per_file = COLUMNS * ROWS_PER_FILE

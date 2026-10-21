@@ -158,9 +158,9 @@ def make_materials():
 	m["rib"] = node_material("rib", (0.36, 0.35, 0.32), metallic=0.85, rough=0.32, grime=0.45)
 	m["chassis"] = node_material("chassis", (0.15, 0.085, 0.045), metallic=0.5, rough=0.65, grime=0.55)
 	m["dark"] = node_material("dark", (0.05, 0.048, 0.045), metallic=0.5, rough=0.55, grime=0.2, bump=0.1)
-	m["stripe"] = node_material("stripe", (0.15, 0.15, 0.145), metallic=0.15, rough=0.7, grime=0.25)
+	m["stripe"] = node_material("stripe", (0.11, 0.105, 0.1), metallic=0.15, rough=0.7, grime=0.25)
 	m["glass"] = node_material("glass", (0.04, 0.04, 0.045), metallic=0.0, rough=0.12,
-		emission=(1.0, 0.62, 0.28, 1), strength=1.1, grime=0.1, bump=0)
+		emission=(0.9, 0.5, 0.2, 1), strength=0.45, grime=0.1, bump=0)
 	m["lamp"] = node_material("lamp", (1, 0.9, 0.7), metallic=0, rough=0.3,
 		emission=(1.0, 0.85, 0.55, 1), strength=14.0, grime=0, bump=0)
 	return m
@@ -363,7 +363,7 @@ def setup_scene(args):
 
 	# key light from the upper left like vanilla sprites, shadows fall to the right
 	sun = bpy.data.lights.new("sun", "SUN")
-	sun.energy = 5.5
+	sun.energy = 5.0
 	sun.angle = math.radians(4)
 	sun_obj = bpy.data.objects.new("sun", sun)
 	sun_obj.rotation_euler = (math.radians(32), math.radians(-22), math.radians(-35))
@@ -463,8 +463,8 @@ def render_frames(args):
 		# show the paint in the wagon's default blue, as the game would
 		for node in m["stripe"].node_tree.nodes:
 			if node.bl_idname == "ShaderNodeMix" and node.blend_type == "MIX":
-				node.inputs[6].default_value = (0.04, 0.12, 0.22, 1)
-				node.inputs[7].default_value = (0.08, 0.24, 0.45, 1)
+				node.inputs[6].default_value = (0.05, 0.07, 0.09, 1)
+				node.inputs[7].default_value = (0.1, 0.15, 0.2, 1)
 		scene.render.resolution_x = 256
 		scene.render.resolution_y = 256
 		turn.rotation_euler = (0, 0, -math.radians(24))

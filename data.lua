@@ -314,7 +314,7 @@ crew_wagon.localised_name = {"entity-name.not-alone-crew-wagon"}
 crew_wagon.factoriopedia_description = {"factoriopedia-description.not-alone-crew-wagon"}
 crew_wagon.minable = {mining_time = 0.5, result = "not-alone-crew-wagon"}
 crew_wagon.inventory_size = 10
-crew_wagon.color = {r = 0.2, g = 0.55, b = 0.85, a = 0.5}
+crew_wagon.color = {r = 0.27, g = 0.4, b = 0.52, a = 0.5}
 
 -- Rendered in Blender by image-builder/crew-wagon; same sheet layout as the
 -- vanilla wagons: 128 directions over half a turn, 4 files of 4x8 frames.
@@ -349,7 +349,7 @@ crew_wagon.pictures = {
 				apply_runtime_tint = true,
 				tint_as_overlay = true
 			}),
-			crew_wagon_layer("crew-wagon-shadow", {width = 462, height = 368, shift = {0.390625, -0.140625}},
+			crew_wagon_layer("crew-wagon-shadow", {width = 463, height = 368, shift = {0.3828125, -0.140625}},
 				{draw_as_shadow = true})
 		}
 	}
