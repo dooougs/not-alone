@@ -109,15 +109,79 @@ def node_material(name, base, metallic=0.6, rough=0.5, emission=None, strength=0
 	edge = nodes.new("ShaderNodeValToRGB")
 	edge.color_ramp.elements[0].position = 0.55
 	edge.color_ramp.elements[1].position = 0.7
-	edge.color_ramp.elements[1].color = (0.35, 0.35, 0.35, 1)
+	edge.color_ramp.elements[1].color = (0.6, 0.6, 0.6, 1)
 	links.new(geo.outputs["Pointiness"], edge.inputs["Fac"])
 	wear = nodes.new("ShaderNodeMix")
 	wear.data_type = "RGBA"
 	wear.blend_type = "SCREEN"
 	links.new(edge.outputs["Color"], wear.inputs["Factor"])
 	links.new(speck.outputs[2], wear.inputs[6])
-	wear.inputs[7].default_value = (0.32, 0.3, 0.27, 1)
-	links.new(wear.outputs[2], bsdf.inputs["Base Color"])
+	wear.inputs[7].default_value = (0.5, 0.47, 0.42, 1)
+	color = wear.outputs[2]
+
+	def multiply(color, factor_socket=None, value=None):
+		mul = nodes.new("ShaderNodeMix")
+		mul.data_type = "RGBA"
+		mul.blend_type = "MULTIPLY"
+		mul.inputs["Factor"].default_value = 1.0
+		links.new(color, mul.inputs[6])
+		if factor_socket is not None:
+			links.new(factor_socket, mul.inputs[7])
+		return mul.outputs[2]
+
+	# vanilla sprites are heavily weathered: soot packed into crevices...
+	ao = nodes.new("ShaderNodeAmbientOcclusion")
+	ao.inputs["Distance"].default_value = 0.18
+	ao.samples = 8
+	ao_ramp = nodes.new("ShaderNodeValToRGB")
+	ao_ramp.color_ramp.elements[0].position = 0.25
+	ao_ramp.color_ramp.elements[0].color = (0.08, 0.07, 0.06, 1)
+	ao_ramp.color_ramp.elements[1].position = 0.9
+	links.new(ao.outputs["AO"], ao_ramp.inputs["Fac"])
+	color = multiply(color, ao_ramp.outputs["Color"])
+
+	# ...dirt running down the sides in streaks...
+	stretch = nodes.new("ShaderNodeMapping")
+	stretch.inputs["Scale"].default_value = (14, 14, 1.2)
+	links.new(coord.outputs["Object"], stretch.inputs["Vector"])
+	streak = nodes.new("ShaderNodeTexNoise")
+	streak.inputs["Scale"].default_value = 3.0
+	streak.inputs["Detail"].default_value = 4
+	links.new(stretch.outputs["Vector"], streak.inputs["Vector"])
+	streak_ramp = nodes.new("ShaderNodeValToRGB")
+	streak_ramp.color_ramp.elements[0].position = 0.4
+	streak_ramp.color_ramp.elements[0].color = (0.45, 0.42, 0.38, 1)
+	streak_ramp.color_ramp.elements[1].position = 0.65
+	links.new(streak.outputs["Fac"], streak_ramp.inputs["Fac"])
+	color = multiply(color, streak_ramp.outputs["Color"])
+
+	# ...grime thickest low down, near the track...
+	sep = nodes.new("ShaderNodeSeparateXYZ")
+	links.new(coord.outputs["Object"], sep.inputs["Vector"])
+	low = nodes.new("ShaderNodeValToRGB")
+	low.color_ramp.elements[0].position = 0.35
+	low.color_ramp.elements[0].color = (0.35, 0.27, 0.2, 1)
+	low.color_ramp.elements[1].position = 0.6
+	low_map = nodes.new("ShaderNodeMapRange")
+	low_map.inputs["From Min"].default_value = 0.4
+	low_map.inputs["From Max"].default_value = 2.0
+	links.new(sep.outputs["Z"], low_map.inputs["Value"])
+	links.new(low_map.outputs["Result"], low.inputs["Fac"])
+	color = multiply(color, low.outputs["Color"])
+
+	# ...and pixel-scale grit so surfaces never read as flat colour
+	grain = nodes.new("ShaderNodeTexNoise")
+	grain.inputs["Scale"].default_value = 28
+	grain.inputs["Detail"].default_value = 2
+	links.new(coord.outputs["Object"], grain.inputs["Vector"])
+	grain_ramp = nodes.new("ShaderNodeValToRGB")
+	grain_ramp.color_ramp.elements[0].position = 0.3
+	grain_ramp.color_ramp.elements[0].color = (0.55, 0.55, 0.55, 1)
+	grain_ramp.color_ramp.elements[1].position = 0.7
+	grain_ramp.color_ramp.elements[1].color = (1.3, 1.3, 1.3, 1)
+	links.new(grain.outputs["Fac"], grain_ramp.inputs["Fac"])
+	color = multiply(color, grain_ramp.outputs["Color"])
+	links.new(color, bsdf.inputs["Base Color"])
 
 	rmap = nodes.new("ShaderNodeMapRange")
 	rmap.inputs["To Min"].default_value = rough - 0.15
@@ -153,12 +217,12 @@ def node_material(name, base, metallic=0.6, rough=0.5, emission=None, strength=0
 
 def make_materials():
 	m = {}
-	m["body"] = node_material("body", (0.13, 0.12, 0.11), metallic=0.7, rough=0.5, ribs=1.6, bump=0.35, grime=0.6)
-	m["panel"] = node_material("panel", (0.19, 0.18, 0.165), metallic=0.6, rough=0.55, grime=0.55)
+	m["body"] = node_material("body", (0.15, 0.14, 0.13), metallic=0.75, rough=0.42, ribs=9, bump=0.6, grime=0.6)
+	m["panel"] = node_material("panel", (0.2, 0.19, 0.175), metallic=0.7, rough=0.45, grime=0.55, ribs=11, bump=0.5)
 	m["rib"] = node_material("rib", (0.36, 0.35, 0.32), metallic=0.85, rough=0.32, grime=0.45)
 	m["chassis"] = node_material("chassis", (0.15, 0.085, 0.045), metallic=0.5, rough=0.65, grime=0.55)
 	m["dark"] = node_material("dark", (0.05, 0.048, 0.045), metallic=0.5, rough=0.55, grime=0.2, bump=0.1)
-	m["stripe"] = node_material("stripe", (0.11, 0.105, 0.1), metallic=0.15, rough=0.7, grime=0.25)
+	m["stripe"] = node_material("stripe", (0.11, 0.105, 0.1), metallic=0.3, rough=0.6, grime=0.35, ribs=11, bump=0.45)
 	m["glass"] = node_material("glass", (0.04, 0.04, 0.045), metallic=0.0, rough=0.12,
 		emission=(0.9, 0.5, 0.2, 1), strength=0.45, grime=0.1, bump=0)
 	m["lamp"] = node_material("lamp", (1, 0.9, 0.7), metallic=0, rough=0.3,
@@ -363,7 +427,7 @@ def setup_scene(args):
 
 	# key light from the upper left like vanilla sprites, shadows fall to the right
 	sun = bpy.data.lights.new("sun", "SUN")
-	sun.energy = 5.0
+	sun.energy = 8.0
 	sun.angle = math.radians(4)
 	sun_obj = bpy.data.objects.new("sun", sun)
 	sun_obj.rotation_euler = (math.radians(32), math.radians(-22), math.radians(-35))

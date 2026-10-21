@@ -39,6 +39,21 @@ def prepare(layer, im, color=None):
 		alpha = im.getchannel("A").point(lambda a: 0 if a < 16 else a)
 		im = Image.new("RGBA", im.size, (0, 0, 0, 0))
 		im.putalpha(alpha)
+	elif layer == "color":
+		# Cycles renders flatter than vanilla's sprites; stretch the tones to
+		# vanilla's contrast (luminance mean ~84, spread ~50) without pushing
+		# saturation or the window glow up with it.
+		rgba = np.asarray(im, dtype=np.float32)
+		rgb = rgba[..., :3]
+		lum = rgb @ np.array([0.299, 0.587, 0.114], dtype=np.float32)
+		target = np.clip((lum - 68) * 1.5 + 84, 0, 255)
+		sat = rgb.max(-1) - rgb.min(-1)
+		cap = 1.45 - 0.35 * np.clip(sat / 60, 0, 1)  # keep the amber windows dim
+		gain = np.minimum(target / np.maximum(lum, 1), cap)[..., None]
+		rgb = rgb * gain
+		rgb = rgb * 0.85 + (lum * gain[..., 0])[..., None] * 0.15
+		rgba[..., :3] = np.clip(rgb, 0, 255)
+		im = Image.fromarray(rgba.astype(np.uint8))
 	elif layer == "mask":
 		# Match the vanilla wagon masks: mid grey carrying the paint's grime and
 		# shading (mean ~105, spread ~50) at low opacity (mean alpha ~90), so
