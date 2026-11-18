@@ -45,7 +45,7 @@ function auto_deploy_from_base(base)
     if inventory.get_item_count(item_name) > 0
       and assign_job(job, base.surface, base.force, position_table(base.position)) then
       local team_mates = storage.not_alone_team_mates[player.index] or {}
-      local record = create_team_mate(player, kind, #team_mates + 1, base.position)
+      local record = create_team_mate(player, kind, #team_mates + 1, base.position, base.surface)
       if record and inventory.remove({name = item_name, count = 1}) == 1 then
         job.entity = nil
         job.kind = nil
