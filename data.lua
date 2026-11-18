@@ -22,6 +22,21 @@ for _, recipe_name in pairs(logistic_chest_recipe_names) do
 	})
 end
 
+-- Rendered entity sprites are cropped to the model, so their size and the
+-- shift that lines them up with the entity's tiles come from the render
+-- (image-builder/blender writes prototypes/entity_sprites.lua).
+local entity_sprites = require("prototypes/entity_sprites")
+local function entity_sprite(name)
+	local info = entity_sprites[name]
+	return {
+		filename = "__not-alone__/graphics/entity/" .. name .. ".png",
+		width = info.width,
+		height = info.height,
+		scale = info.scale,
+		shift = {info.shift[1], info.shift[2]}
+	}
+end
+
 local logistics_hub = table.deepcopy(data.raw.roboport.roboport)
 logistics_hub.name = "not-alone-logistics-hub"
 logistics_hub.localised_name = {"entity-name.not-alone-logistics-hub"}
@@ -41,13 +56,7 @@ logistics_hub.robot_slots_count = 0
 logistics_hub.material_slots_count = 8
 logistics_hub.construction_radius = 0
 
-local habitat_picture = {
-	filename = "__not-alone__/graphics/entity/habitat.png",
-	width = 256,
-	height = 256,
-	scale = 0.5,
-	shift = {0, -0.3}
-}
+local habitat_picture = entity_sprite("habitat")
 logistics_hub.factoriopedia_description = {"factoriopedia-description.not-alone-logistics-hub"}
 logistics_hub.base = habitat_picture
 logistics_hub.base_animation = nil
@@ -84,8 +93,7 @@ iron_habitat.localised_name = {"entity-name.not-alone-iron-habitat"}
 iron_habitat.icon = "__not-alone__/graphics/icons/iron-habitat.png"
 iron_habitat.minable = {mining_time = 0.1, result = "not-alone-iron-habitat"}
 iron_habitat.factoriopedia_description = {"factoriopedia-description.not-alone-iron-habitat"}
-iron_habitat.base = table.deepcopy(habitat_picture)
-iron_habitat.base.filename = "__not-alone__/graphics/entity/iron-habitat.png"
+iron_habitat.base = entity_sprite("iron-habitat")
 
 local iron_habitat_item = table.deepcopy(logistics_hub_item)
 iron_habitat_item.name = "not-alone-iron-habitat"
@@ -180,13 +188,7 @@ outpost.robot_slots_count = 0
 outpost.material_slots_count = 4
 outpost.construction_radius = 0
 
-local outpost_picture = {
-	filename = "__not-alone__/graphics/entity/outpost.png",
-	width = 256,
-	height = 256,
-	scale = 0.5,
-	shift = {0, -0.3}
-}
+local outpost_picture = entity_sprite("outpost")
 outpost.factoriopedia_description = {"factoriopedia-description.not-alone-outpost"}
 outpost.base = outpost_picture
 outpost.base_animation = nil
@@ -222,13 +224,7 @@ cloner.icon_size = 64
 cloner.crafting_categories = {"not-alone-cloning"}
 
 
-local cloner_picture = {
-	filename = "__not-alone__/graphics/entity/cloner.png",
-	width = 256,
-	height = 256,
-	scale = 0.5,
-	shift = {0, -0.3}
-}
+local cloner_picture = entity_sprite("cloner")
 cloner.factoriopedia_description = {"factoriopedia-description.not-alone-cloner"}
 cloner.graphics_set = {
 	animation = {

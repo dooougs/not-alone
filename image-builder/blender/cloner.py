@@ -8,7 +8,8 @@ plaques, control cabinets with green readouts, and coolant runs.
 Run with Blender:   blender -b -P image-builder/blender/cloner.py
 or with the bpy module:   python image-builder/blender/cloner.py
 
-Writes graphics/entity/cloner.png (256x256, scale 0.5, shift {0, -0.3}) and
+Writes graphics/entity/cloner.png (cropped to the model; its size and shift go to
+  image-builder/blender/sprites/*.json and prototypes/entity_sprites.lua) and
 graphics/icons/cloner.png (64x64).
 """
 
@@ -314,7 +315,7 @@ def main():
     obj.location = VAT_C + Vector((0, -0.6, DECK_Z + 0.6))
     scene.collection.objects.link(obj)
     k.render_entity(scene, "cloner", entity_path=k.entity_path("cloner"),
-                    icon_paths=[(k.icon_path("cloner"), 64)])
+                    icon_paths=[(k.icon_path("cloner"), 64)], footprint=3)
 
 
 main()

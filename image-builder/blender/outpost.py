@@ -8,7 +8,8 @@ and a generator on the east side.
 Run with Blender:   blender -b -P image-builder/blender/outpost.py
 or with the bpy module:   python image-builder/blender/outpost.py
 
-Writes graphics/entity/outpost.png (256x256, scale 0.5, shift {0, -0.3}) and
+Writes graphics/entity/outpost.png (cropped to the model; its size and shift go to
+  image-builder/blender/sprites/*.json and prototypes/entity_sprites.lua) and
 graphics/icons/outpost.png (64x64).
 """
 
@@ -25,13 +26,13 @@ import factorio_kit as k  # noqa: E402
 
 PAD_R = 1.5
 PAD_H = 0.12
-DRUM_R = 1.2
+DRUM_R = 1.15
 DRUM_H = 0.72
 DOME_BASE = PAD_H + DRUM_H
 DOME_H = 0.68
 DOOR_ANGLE = -90
 BANNER_ANGLE = -38
-MODEL_SCALE = 0.9
+MODEL_SCALE = 1.2
 
 
 def dome_point(r_frac, angle, lift=0.0):
@@ -354,7 +355,7 @@ def main():
     k.scale_model(MODEL_SCALE)
     k.setup_lights(scene)
     k.render_entity(scene, "outpost", entity_path=k.entity_path("outpost"),
-                    icon_paths=[(k.icon_path("outpost"), 64)])
+                    icon_paths=[(k.icon_path("outpost"), 64)], footprint=4)
 
 
 main()

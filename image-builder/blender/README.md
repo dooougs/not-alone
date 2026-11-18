@@ -2,7 +2,7 @@
 
 Every entity sprite and icon in `graphics/` is rendered from a script in this
 folder. Each script builds its model, saves a `.blend` beside itself for
-anyone who wants to open it, and writes the PNGs at the size and path the
+anyone who wants to open it, and writes the PNGs to the paths the
 prototypes in `data.lua` already use.
 
 | Script | Writes |
@@ -30,7 +30,7 @@ needs the Python version that `bpy` release targets):
     python image-builder/blender/render_all.py cloner.py
 
 Environment variables: `FA_SAMPLES` (default 128) and `FA_SUPERSAMPLE`
-(default 4) trade quality for speed, so `FA_SAMPLES=24 FA_SUPERSAMPLE=2` is a
+(default 3) trade quality for speed, so `FA_SAMPLES=24 FA_SUPERSAMPLE=2` is a
 quick preview. Add `--no-render` to only build and save the `.blend`. A full
 render takes about 5 minutes per model on 4 CPU cores.
 
@@ -39,9 +39,15 @@ render takes about 5 minutes per model on 4 CPU cores.
 * **Camera.** Orthographic, looking north, pitched 41.4° from straight down.
   That foreshortens ground depth to 0.75 and height to 0.66, which is what
   the vanilla assembler, furnace and chest in `image-builder/assets` show.
-  1 Blender unit is 1 tile. `render_entity()` takes the sprite's
-  `width`/`scale`/`shift` from the prototype and frames the camera so the
-  model's footprint lands on the entity's tiles in game.
+  1 Blender unit is 1 tile. With `footprint` set, the camera pins the
+  model's south edge to the south edge of its tiles, as vanilla buildings
+  stand, so a 4x4 model should be built about 3.6 tiles across to fill its
+  square edge to edge like a roboport does.
+* **Framing.** Each sprite is rendered in a 7-tile frame around the entity,
+  then cropped to the model and its shadow. The crop's size and shift are
+  written to `image-builder/blender/sprites/<name>.json` and to the generated
+  `prototypes/entity_sprites.lua`, which `data.lua` reads. Re-rendering a
+  bigger or smaller model never needs a hand edit to the prototypes.
 * **Light.** A warm key sun from the upper left casts shadows to the lower
   right, with a cool sky fill and a weak bounce. AgX tone mapping keeps the
   palette muted.

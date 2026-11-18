@@ -4,7 +4,7 @@ Date: 2026-11-18
   Features:
     - Added the Iron Habitat, built from 10 iron plate, so starts without wood such as Vulcanus can still place a Habitat. It works exactly like the wooden Habitat.
   Graphics:
-    - Rebuilt the Habitat, Iron Habitat, Outpost and Cloner sprites and icons, and the command tool shortcut icons, as Blender models rendered in Factorio's style: the vanilla camera angle, light from the upper left, baked ground shadows and weathered materials. Sprites are filtered cleanly at vanilla's 64 px per tile, and item icons carry vanilla-style mipmaps so they stay sharp in inventory slots.
+    - Rebuilt the Habitat, Iron Habitat, Outpost and Cloner sprites and icons, and the command tool shortcut icons, as Blender models rendered in Factorio's style: the vanilla camera angle, light from the upper left, baked ground shadows and weathered materials. Sprites are filtered cleanly at vanilla's 64 px per tile, and item icons carry vanilla-style mipmaps so they stay sharp in inventory slots. The Habitats and the Outpost now fill their 4x4 tiles the way vanilla buildings do.
   Bugfixes:
     - The placed Outpost showed the Habitat's icon. It now uses its own.
 ---------------------------------------------------------------------------------------------------

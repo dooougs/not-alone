@@ -29,7 +29,7 @@ ROOF_PROFILE = [(EAVE_RADIUS, 0.07), (1.31, 0.16), (1.16, 0.27), (0.96, 0.36),
                 (ROOF_TOP_RADIUS + 0.06, 0.44)]
 ROOF_TOP_Z = ROOF_BASE_Z + ROOF_PROFILE[-1][1]
 ENTRANCE_ANGLE = -108
-MODEL_SCALE = 0.86
+MODEL_SCALE = 1.05
 
 
 def roof_z(radius):
@@ -284,12 +284,12 @@ def build_entrance(m, style):
                   m["post"], rotation=k.facing(angle + (j - 1.5) * 0.6),
                   bevel=0.006)
         for s in range(steps):
-            r = DRUM_RADIUS + 0.58 + s * 0.15
+            r = DRUM_RADIUS + 0.5 + s * 0.12
             zz = z0 * (1 - (s + 1) / (steps + 1))
-            k.box((0.15, 0.6, zz + 0.01), k.polar(r, angle, (zz + 0.01) / 2),
+            k.box((0.12, 0.6, zz + 0.01), k.polar(r, angle, (zz + 0.01) / 2),
                   m["frame"], rotation=k.facing(angle), bevel=0.008)
             for j in range(2):
-                k.box((0.072, 0.62, 0.03), k.polar(r - 0.038 + 0.076 * j, angle,
+                k.box((0.058, 0.62, 0.03), k.polar(r - 0.03 + 0.06 * j, angle,
                                                    zz + 0.025),
                       m["post"], rotation=k.facing(angle + (j - 0.5) * 1.2),
                       bevel=0.006)
@@ -297,10 +297,10 @@ def build_entrance(m, style):
         k.box((0.42, 0.66, 0.06), k.polar(DRUM_RADIUS + 0.3, angle, z0 - 0.01),
               m["steel_dark"], rotation=k.facing(angle), bevel=0.01)
     for s in range(steps):
-        r = DRUM_RADIUS + 0.58 + s * 0.15
+        r = DRUM_RADIUS + 0.5 + s * 0.12
         zz = z0 * (1 - (s + 1) / (steps + 1))
         if style != "wood":
-            k.box((0.17, 0.62, zz + 0.04), k.polar(r, angle, (zz + 0.04) / 2),
+            k.box((0.13, 0.62, zz + 0.04), k.polar(r, angle, (zz + 0.04) / 2),
                   m["steel_dark"], rotation=k.facing(angle), bevel=0.01)
         k.box((0.035, 0.6, 0.015), k.polar(r + 0.07, angle, zz + 0.045),
               m["yellow"], rotation=k.facing(angle), bevel=0)
@@ -309,7 +309,7 @@ def build_entrance(m, style):
     for sgn in (-1, 1):
         off = side * 0.32 * sgn
         top = Vector(k.polar(DRUM_RADIUS + 0.48, angle, z0)) + off
-        bottom = Vector(k.polar(DRUM_RADIUS + 1.02, angle, 0.02)) + off
+        bottom = Vector(k.polar(DRUM_RADIUS + 0.86, angle, 0.02)) + off
         k.tube_between(top, bottom, 0.025, m["frame"], 6)
         rt, rb = top + Vector((0, 0, 0.32)), bottom + Vector((0, 0, 0.3))
         k.tube_between(rt, rb, 0.02, m["yellow"], 8)

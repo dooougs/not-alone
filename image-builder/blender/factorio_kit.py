@@ -37,7 +37,7 @@ ROOT = os.path.abspath(os.path.join(HERE, "..", ".."))
 GRAPHICS = os.path.join(ROOT, "graphics")
 
 SAMPLES = int(os.environ.get("FA_SAMPLES", "128"))
-SUPERSAMPLE = int(os.environ.get("FA_SUPERSAMPLE", "4"))  # render at 4x, then downscale
+SUPERSAMPLE = int(os.environ.get("FA_SUPERSAMPLE", "3"))  # render at 3x, then downscale
 PITCH = math.radians(float(os.environ.get("FA_PITCH", "41.4")))
 
 # Direction the key light comes *from*: upper left, a little behind.
@@ -687,9 +687,15 @@ def look_rotation(direction):
     return Vector(direction).to_track_quat("-Z", "Y").to_euler()
 
 
-def setup_camera(scene, tiles_w, tiles_h, shift):
+def setup_camera(scene, tiles_w, tiles_h, shift, footprint=0.0):
     """Camera matching a Factorio sprite of tiles_w x tiles_h tiles (after
-    scale) drawn with the given shift (tiles, +y is down on screen)."""
+    scale) drawn with the given shift (tiles, +y is down on screen).
+
+    With footprint (the entity's size in tiles) the model's south edge is
+    pinned to the south edge of its tiles, the way vanilla buildings stand:
+    the foreshortened top face then sits inside the footprint and the front
+    wall fills the rest, instead of the whole model floating mid-square.
+    """
     cam_data = bpy.data.cameras.new("camera")
     cam_data.type = "ORTHO"
     cam_data.sensor_fit = "HORIZONTAL"
@@ -701,7 +707,8 @@ def setup_camera(scene, tiles_w, tiles_h, shift):
     pitch = PITCH
     # Point on the ground under the frame centre: shift.y tiles up the screen
     # is shift.y / cos(pitch) tiles north on the foreshortened ground.
-    target = Vector((shift[0], -shift[1] / math.cos(pitch), 0.0))
+    half = footprint / 2.0
+    target = Vector((shift[0], (half - shift[1]) / math.cos(pitch) - half, 0.0))
     view = Vector((0, math.sin(pitch), -math.cos(pitch)))
     cam.location = target - view * 30
     cam.rotation_euler = look_rotation(view)
@@ -828,18 +835,30 @@ def _icon_from(img, size, mipmaps=1):
     return strip
 
 
-def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=256,
-                  scale=0.5, shift=(0.0, -0.3), keep_blend=True,
-                  catcher=None, icon_only=False, icon_mipmaps=4):
+def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=None,
+                  scale=0.5, shift=(0.0, 0.0), keep_blend=True,
+                  catcher=None, icon_only=False, icon_mipmaps=4, footprint=0.0,
+                  frame_tiles=7.0):
     """Render the sprite (shadow baked in) and any icons.
 
-    size_px/scale/shift are the values in the prototype's sprite definition,
-    so the output lines up with the entity's footprint in game.
-    icon_paths is a list of (path, size) tuples; each is written with
-    icon_mipmaps levels (vanilla item icons use 64 px with 4).
+    The model is rendered in a frame_tiles-wide square centred on the entity,
+    then the sprite is cropped to everything drawn (model and shadow) with a
+    small margin. The crop's size and the shift that puts it back over the
+    entity are written to image-builder/blender/sprites/<file>.json and to
+    prototypes/entity_sprites.lua, which data.lua reads, so the sprite always
+    lines up with the entity's tiles whatever the model's size.
+
+    size_px forces the old fixed square frame instead (used by icon-only
+    models). icon_paths is a list of (path, size) tuples; each is written
+    with icon_mipmaps levels (vanilla item icons use 64 px with 4).
     """
-    tiles = size_px * scale / 32.0
-    setup_camera(scene, tiles, tiles, shift)
+    px_per_tile = 32.0 / scale
+    if size_px:
+        tiles = size_px * scale / 32.0
+    else:
+        tiles = frame_tiles
+        size_px = int(round(frame_tiles * px_per_tile))
+    setup_camera(scene, tiles, tiles, shift, footprint)
     if catcher is None:
         catcher = add_shadow_catcher()
     if keep_blend:
@@ -849,25 +868,65 @@ def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=256,
         return
     tmp = os.path.join(HERE, "_raw_" + name + ".png")
     w = size_px * SUPERSAMPLE
-    h = w
     # Pass 1: the model alone (also the source of the icons).
     catcher.hide_render = True
-    _render(scene, tmp, w, h)
+    _render(scene, tmp, w, w)
     model = _unstretch(tmp, w, w)
     for path, size in icon_paths:
         _icon_from(model, size, icon_mipmaps).save(path, optimize=True)
         print("wrote", path)
     catcher.hide_render = False
     if entity_path and not icon_only:
-        # Pass 2: with the ground shadow. Shadow that would be cut off by the
-        # frame edge is faded out so it never ends in a hard line.
-        _render(scene, tmp, w, h)
+        # Pass 2: with the ground shadow.
+        _render(scene, tmp, w, w)
         full = _unstretch(tmp, w, w)
-        img = _fade_shadow_edges(full, model, int(w * 0.05))
-        _resize(img, (size_px, size_px)).save(entity_path, optimize=True)
-        print("wrote", entity_path)
+        img = _fade_shadow_edges(full, model, int(w * 0.03))
+        img = _resize(img, (size_px, size_px))
+        left, top, right, bottom = img.getchannel("A").point(
+            lambda a: 255 if a > 2 else 0).getbbox()
+        pad = 4
+        left, top = max(0, left - pad), max(0, top - pad)
+        right, bottom = min(size_px, right + pad), min(size_px, bottom + pad)
+        # even sizes keep the centre on whole pixels
+        right += (right - left) % 2
+        bottom += (bottom - top) % 2
+        img = img.crop((left, top, right, bottom))
+        img.save(entity_path, optimize=True)
+        cx = (left + right) / 2.0 - size_px / 2.0
+        cy = (top + bottom) / 2.0 - size_px / 2.0
+        info = {"width": right - left, "height": bottom - top, "scale": scale,
+                "shift": [round(shift[0] + cx / px_per_tile, 4),
+                          round(shift[1] + cy / px_per_tile, 4)]}
+        _write_sprite_info(entity_path, info)
+        print("wrote", entity_path, info)
     if os.path.exists(tmp):
         os.remove(tmp)
+
+
+def _write_sprite_info(entity_path, info):
+    """Record a sprite's size and shift, and regenerate the Lua table."""
+    import glob
+    import json
+    info_dir = os.path.join(HERE, "sprites")
+    os.makedirs(info_dir, exist_ok=True)
+    base = os.path.splitext(os.path.basename(entity_path))[0]
+    with open(os.path.join(info_dir, base + ".json"), "w") as f:
+        json.dump(info, f, indent=1)
+    lines = ["-- Generated by image-builder/blender/factorio_kit.py. Do not edit:",
+             "-- re-render the model instead. Sizes and shifts of the rendered",
+             "-- entity sprites, so each one lines up with its entity's tiles.",
+             "return {"]
+    for path in sorted(glob.glob(os.path.join(info_dir, "*.json"))):
+        key = os.path.splitext(os.path.basename(path))[0]
+        with open(path) as f:
+            d = json.load(f)
+        lines.append('\t["%s"] = {width = %d, height = %d, scale = %s, '
+                     'shift = {%s, %s}},' % (key, d["width"], d["height"],
+                                             d["scale"], d["shift"][0],
+                                             d["shift"][1]))
+    lines.append("}")
+    with open(os.path.join(ROOT, "prototypes", "entity_sprites.lua"), "w") as f:
+        f.write("\n".join(lines) + "\n")
 
 
 def _fade_shadow_edges(full, model, border):
@@ -880,7 +939,9 @@ def _fade_shadow_edges(full, model, border):
     xs = np.minimum(np.arange(ww), ww - 1 - np.arange(ww)) / border
     fade = np.clip(np.minimum(ys[:, None], xs[None, :]), 0, 1)
     fade = fade * fade * (3 - 2 * fade)
-    shadow_a = f[..., 3] * fade
+    # Drop the faint sky-occlusion haze the catcher leaves across the whole
+    # ground, so the sprite can be cropped to the real shadow.
+    shadow_a = np.clip((f[..., 3] - 0.06) / 0.94, 0, 1) * fade
     a = np.maximum(m[..., 3], shadow_a)
     # Where the model is see-through (glass, antialiased edges) keep the
     # composited colour from the full pass; pure shadow is black.
