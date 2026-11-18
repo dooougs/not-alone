@@ -166,7 +166,7 @@ end
 local outpost = table.deepcopy(data.raw.roboport.roboport)
 outpost.name = "not-alone-outpost"
 outpost.localised_name = {"entity-name.not-alone-outpost"}
-outpost.icon = "__not-alone__/graphics/icons/habitat.png"
+outpost.icon = "__not-alone__/graphics/icons/outpost.png"
 outpost.icon_size = 64
 outpost.minable = {mining_time = 0.1, result = "not-alone-outpost"}
 outpost.fast_replaceable_group = nil
