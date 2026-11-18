@@ -51,6 +51,8 @@ render takes about 5 minutes per model on 4 CPU cores.
 * **Materials.** `weathered()` gives metal and paint grime in crevices
   (ambient occlusion), worn bright edges (bevel normal against the true
   normal), mottling and rust patches. `wood()` gives grain with per-plank
-  tint. `palette()` is the shared set every model uses.
+  tint. Wooden surfaces are modelled board by board with `board()` and
+  `arc_board()`, with real gaps, butt joints and slight warp, so the
+  Habitat's roof, clapboard walls, door and steps are individual planks. `palette()` is the shared set every model uses.
 * **Icons.** Rendered from the same angle without the ground shadow, cropped
   tight and sharpened.

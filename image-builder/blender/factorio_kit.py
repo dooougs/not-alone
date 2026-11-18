@@ -475,6 +475,74 @@ def torus(major, minor, location, mat, rotation=(0, 0, 0), major_seg=48,
     return assign(obj, mat)
 
 
+def board(sections, mat, bevel=0.005, name="board"):
+    """A single plank lofted through a list of cross-sections.
+
+    Each section is four world-space corners (outer-left, outer-right,
+    inner-right, inner-left). The plank's local Z axis runs from the first
+    section to the last, which is the direction wood() lays its grain, so
+    every board gets grain along its length and its own random tint.
+    """
+    secs = [[Vector(c) for c in sec] for sec in sections]
+    start = sum(secs[0], Vector()) / 4
+    end = sum(secs[-1], Vector()) / 4
+    zax = (end - start).normalized()
+    across = (secs[0][1] - secs[0][0])
+    xax = (across - zax * across.dot(zax)).normalized()
+    yax = zax.cross(xax)
+    centre = sum((sum(sec, Vector()) / 4 for sec in secs), Vector()) / len(secs)
+    frame = Matrix((xax, yax, zax)).transposed().to_4x4()
+    frame.translation = centre
+    inv = frame.inverted()
+    bm = bmesh.new()
+    rings = [[bm.verts.new(inv @ c) for c in sec] for sec in secs]
+    for a, b in zip(rings, rings[1:]):
+        for i in range(4):
+            j = (i + 1) % 4
+            bm.faces.new((a[i], a[j], b[j], b[i]))
+    bm.faces.new(list(reversed(rings[0])))
+    bm.faces.new(rings[-1])
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    mesh = bpy.data.meshes.new(name)
+    bm.to_mesh(mesh)
+    bm.free()
+    obj = bpy.data.objects.new(name, mesh)
+    obj.matrix_world = frame
+    bpy.context.collection.objects.link(obj)
+    if bevel:
+        mod = obj.modifiers.new("bevel", "BEVEL")
+        mod.width = bevel
+        mod.segments = 1
+        mod.limit_method = "ANGLE"
+    shade_smooth(obj, 30)
+    return assign(obj, mat)
+
+
+def arc_board(radius, thickness, z0, height, a0, a1, mat, steps=6, rng=None,
+              warp=0.0):
+    """A horizontal plank bent around a drum, from angle a0 to a1 (degrees).
+
+    rng adds a little bow, cup and thickness variation so boards don't line
+    up perfectly.
+    """
+    secs = []
+    t = thickness
+    dz0 = dz1 = dr = 0.0
+    if rng is not None:
+        dz0, dz1 = rng.uniform(-warp, warp), rng.uniform(-warp, warp)
+        dr = rng.uniform(-0.004, 0.006)
+        t = thickness * rng.uniform(0.8, 1.15)
+    for i in range(steps + 1):
+        f = i / steps
+        a = a0 + (a1 - a0) * f
+        bow = dr * math.sin(math.pi * f)
+        zb = z0 + dz0 * (1 - f) + dz1 * f
+        ro, ri = radius + t + bow, radius + bow
+        secs.append([polar(ro, a, zb + height), polar(ro, a, zb),
+                     polar(ri, a, zb), polar(ri, a, zb + height)])
+    return board(secs, mat)
+
+
 def lathe(profile, mat, segments=64, location=(0, 0, 0), smooth_angle=35,
           cap_top=True, cap_bottom=True, name="lathe"):
     """Surface of revolution from a list of (radius, z) points, bottom up."""

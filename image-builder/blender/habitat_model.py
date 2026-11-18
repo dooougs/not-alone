@@ -12,6 +12,7 @@ leaves the sprite frame spanning screen y -2.3..1.7 tiles around the centre.
 """
 
 import math
+import random
 
 import bpy
 from mathutils import Vector
@@ -92,15 +93,23 @@ def build_drum(m, style):
     k.cylinder(DRUM_RADIUS - 0.03, DRUM_HEIGHT, (0, 0, z0 + DRUM_HEIGHT / 2),
                m["wall_alt"], vertices=64)
     if style == "wood":
-        planks = 60
-        width = 2 * math.pi * DRUM_RADIUS / planks * 0.92
-        for i in range(planks):
-            angle = 360 * (i + 0.5) / planks
-            depth = 0.05 + 0.012 * ((i * 7) % 3)
-            k.box((depth, width, DRUM_HEIGHT - 0.04 - 0.02 * (i % 2)),
-                  k.polar(DRUM_RADIUS, angle, z0 + DRUM_HEIGHT / 2),
-                  m["wall"] if i % 4 else m["wall_alt"],
-                  rotation=k.facing(angle), bevel=0.008)
+        # Horizontal clapboards, each its own bent plank, with staggered
+        # butt joints, small gaps and a little warp.
+        rng = random.Random(11)
+        rows = 11
+        pitch = DRUM_HEIGHT / rows
+        for row in range(rows):
+            a = rng.uniform(0, 40)
+            end = a + 360
+            while a < end - 1:
+                length = min(rng.uniform(38, 70), end - a)
+                if end - a - length < 15:
+                    length = end - a
+                mat = m["wall"] if rng.random() > 0.22 else m["wall_alt"]
+                k.arc_board(DRUM_RADIUS - 0.01, 0.035, z0 + row * pitch + 0.006,
+                            pitch - 0.014, a + 0.35, a + length - 0.35, mat,
+                            steps=max(3, int(length / 8)), rng=rng, warp=0.006)
+                a += length
         bands = (0.1, DRUM_HEIGHT * 0.52, DRUM_HEIGHT - 0.08)
     else:
         panels = 20
@@ -129,16 +138,27 @@ def build_drum(m, style):
 def build_roof(m, style):
     rings = [(EAVE_RADIUS, ROOF_BASE_Z - 0.03)] + [
         (r, ROOF_BASE_Z + z) for r, z in ROOF_PROFILE]
-    k.lathe(rings, m["roof"], segments=96, name="roof")
-    # eave fascia
-    k.cylinder(EAVE_RADIUS + 0.015, 0.11, (0, 0, ROOF_BASE_Z + 0.025),
-               m["band"] if style == "iron" else m["post"], vertices=96)
+    if style == "wood":
+        # dark underlay that shows through the gaps between boards
+        k.lathe(rings, m["black"], segments=96, name="roof_underlay")
+        build_roof_boards(m)
+        rng = random.Random(5)
+        # eave fascia: short curved boards
+        a = 0.0
+        while a < 359:
+            length = min(rng.uniform(30, 50), 360 - a)
+            k.arc_board(EAVE_RADIUS - 0.02, 0.035, ROOF_BASE_Z - 0.03, 0.11,
+                        a + 0.3, a + length - 0.3, m["post"],
+                        steps=max(3, int(length / 8)), rng=rng, warp=0.004)
+            a += length
+    else:
+        k.lathe(rings, m["roof"], segments=96, name="roof")
+        k.cylinder(EAVE_RADIUS + 0.015, 0.11, (0, 0, ROOF_BASE_Z + 0.025),
+                   m["band"], vertices=96)
+        k.torus(1.15, 0.014, (0, 0, roof_z(1.15) + 0.004), m["frame"],
+                major_seg=96, minor_seg=6)
     k.ring_of_rivets(EAVE_RADIUS + 0.03, ROOF_BASE_Z + 0.025, 44, m["rivet"],
                      size=0.016)
-    # board/plate seams: concentric grooves
-    for r in ((1.16, 0.86) if style == "wood" else (1.15,)):
-        k.torus(r, 0.014, (0, 0, roof_z(r) + 0.004), m["frame"], major_seg=96,
-                minor_seg=6)
     beams = 8
     radii = [EAVE_RADIUS + 0.03, 1.31, 1.16, 0.96, ROOF_TOP_RADIUS + 0.08]
     for i in range(beams):
@@ -149,16 +169,55 @@ def build_roof(m, style):
             k.beam_between(a, b, 0.14, 0.05, m["frame"])
         for p in pts[1:-1]:
             k.sphere(0.022, p + Vector((0, 0, 0.03)), m["rivet"])
-    # thin radial seams between beams (board joints / plate laps)
-    if style == "wood":
-        angles = [45.0 * j for j in range(8)]
-    else:
-        angles = [45.0 * j for j in range(8)]
+    # thin radial plate laps between beams (iron only; wood has real boards)
+    angles = [45.0 * j for j in range(8)] if style == "iron" else []
     for angle in angles:
         pts = [Vector(k.polar(r, angle, roof_z(min(r, EAVE_RADIUS)) + 0.004))
                for r in radii[1:]]
         for a, b in zip(pts, pts[1:]):
             k.tube_between(a, b, 0.011, m["frame"], vertices=6)
+
+
+def build_roof_boards(m):
+    """Radial roof boards between the beams, tapered towards the skylight.
+
+    Every board is a separate plank following the dome profile, with gaps,
+    random thickness and lift, and some split by a butt joint part way up.
+    """
+    rng = random.Random(7)
+    thickness = 0.03
+    r_out, r_in = EAVE_RADIUS + 0.01, ROOF_TOP_RADIUS + 0.02
+    per_sector = 8
+    for sector in range(8):
+        a_start = 45 * sector + 22.5 + 3.2   # clear of the beam
+        span = 45 - 6.4
+        for b in range(per_sector):
+            a0 = a_start + span * b / per_sector + 0.35
+            a1 = a_start + span * (b + 1) / per_sector - 0.35
+            mat = m["roof"] if rng.random() > 0.2 else m["wall_alt"]
+            # optional butt joint
+            cuts = [r_out]
+            if rng.random() < 0.55:
+                cuts.append(rng.uniform(0.95, 1.2))
+            cuts.append(r_in)
+            for ra, rb in zip(cuts, cuts[1:]):
+                lift = rng.uniform(0.0, 0.008)
+                t = thickness * rng.uniform(0.8, 1.2)
+                tilt = rng.uniform(-0.004, 0.004)
+                steps = 7
+                secs = []
+                for i in range(steps + 1):
+                    f = i / steps
+                    r = ra + (rb - ra) * f
+                    if i == 0 and ra != r_out:
+                        r = ra - 0.006
+                    if i == steps and rb != r_in:
+                        r = rb + 0.006
+                    z = roof_z(min(r, EAVE_RADIUS)) + lift
+                    za, zb = z + tilt, z - tilt
+                    secs.append([k.polar(r, a0, za + t), k.polar(r, a1, zb + t),
+                                 k.polar(r, a1, zb), k.polar(r, a0, za)])
+                k.board(secs, mat, bevel=0.004, name="roof_board")
 
 
 def build_skylight(m):
@@ -195,22 +254,54 @@ def build_entrance(m, style):
     z0 = PLINTH_HEIGHT
     k.box((0.09, 0.52, 0.74), k.polar(door_r, angle, z0 + 0.37), m["frame"],
           rotation=k.facing(angle), bevel=0.02)
-    k.box((0.05, 0.4, 0.64), k.polar(door_r + 0.045, angle, z0 + 0.33),
-          m["door"], rotation=k.facing(angle), bevel=0.015)
+    if style == "wood":
+        side = Vector(k.polar(1, angle + 90, 0))
+        for j in range(4):
+            k.box((0.05, 0.092, 0.64 - 0.01 * (j % 2)),
+                  Vector(k.polar(door_r + 0.045, angle, z0 + 0.33))
+                  + side * (-0.15 + 0.1 * j), m["door"],
+                  rotation=k.facing(angle), bevel=0.008)
+        for zz in (0.12, 0.5):
+            k.box((0.03, 0.38, 0.06), k.polar(door_r + 0.08, angle, z0 + zz),
+                  m["post"], rotation=k.facing(angle), bevel=0.008)
+    else:
+        k.box((0.05, 0.4, 0.64), k.polar(door_r + 0.045, angle, z0 + 0.33),
+              m["door"], rotation=k.facing(angle), bevel=0.015)
     k.box((0.03, 0.26, 0.12), k.polar(door_r + 0.075, angle, z0 + 0.5),
           m["window"], rotation=k.facing(angle), bevel=0.005)
     k.box((0.06, 0.16, 0.05), k.polar(door_r + 0.08, angle, z0 + 0.79),
           m["lamp"], rotation=k.facing(angle), bevel=0.01)
     # landing and stairs
-    k.box((0.42, 0.66, 0.06), k.polar(DRUM_RADIUS + 0.3, angle, z0 - 0.01),
-          m["steel_dark"], rotation=k.facing(angle), bevel=0.01)
     steps = 3
+    if style == "wood":
+        # plank decking on the landing and two boards per tread, on a frame
+        side = Vector(k.polar(1, angle + 90, 0))
+        k.box((0.42, 0.66, 0.04), k.polar(DRUM_RADIUS + 0.3, angle, z0 - 0.03),
+              m["frame"], rotation=k.facing(angle), bevel=0.008)
+        for j in range(4):
+            k.box((0.095, 0.66, 0.03),
+                  k.polar(DRUM_RADIUS + 0.14 + 0.105 * j, angle, z0 + 0.005),
+                  m["post"], rotation=k.facing(angle + (j - 1.5) * 0.6),
+                  bevel=0.006)
+        for s in range(steps):
+            r = DRUM_RADIUS + 0.58 + s * 0.15
+            zz = z0 * (1 - (s + 1) / (steps + 1))
+            k.box((0.15, 0.6, zz + 0.01), k.polar(r, angle, (zz + 0.01) / 2),
+                  m["frame"], rotation=k.facing(angle), bevel=0.008)
+            for j in range(2):
+                k.box((0.072, 0.62, 0.03), k.polar(r - 0.038 + 0.076 * j, angle,
+                                                   zz + 0.025),
+                      m["post"], rotation=k.facing(angle + (j - 0.5) * 1.2),
+                      bevel=0.006)
+    else:
+        k.box((0.42, 0.66, 0.06), k.polar(DRUM_RADIUS + 0.3, angle, z0 - 0.01),
+              m["steel_dark"], rotation=k.facing(angle), bevel=0.01)
     for s in range(steps):
         r = DRUM_RADIUS + 0.58 + s * 0.15
         zz = z0 * (1 - (s + 1) / (steps + 1))
-        k.box((0.17, 0.62, zz + 0.04), k.polar(r, angle, (zz + 0.04) / 2),
-              m["steel_dark"] if style == "iron" else m["post"],
-              rotation=k.facing(angle), bevel=0.01)
+        if style != "wood":
+            k.box((0.17, 0.62, zz + 0.04), k.polar(r, angle, (zz + 0.04) / 2),
+                  m["steel_dark"], rotation=k.facing(angle), bevel=0.01)
         k.box((0.035, 0.6, 0.015), k.polar(r + 0.07, angle, zz + 0.045),
               m["yellow"], rotation=k.facing(angle), bevel=0)
     a = math.radians(angle)
