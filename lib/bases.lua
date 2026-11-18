@@ -1,5 +1,6 @@
 BASE_TYPE_BY_ENTITY_NAME = {
   [LOGISTICS_HUB_NAME] = "habitat",
+  [IRON_HABITAT_NAME] = "habitat",
   [OUTPOST_NAME] = "outpost"
 }
 

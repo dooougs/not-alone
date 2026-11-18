@@ -75,6 +75,37 @@ local logistics_hub_recipe = {
 	}
 }
 
+-- Iron Habitat: the same base built from iron plate, so starts without trees
+-- (such as Vulcanus) can still place a Habitat. Copied from the wooden one so
+-- the two always behave identically; only the name, recipe and art differ.
+local iron_habitat = table.deepcopy(logistics_hub)
+iron_habitat.name = "not-alone-iron-habitat"
+iron_habitat.localised_name = {"entity-name.not-alone-iron-habitat"}
+iron_habitat.icon = "__not-alone__/graphics/icons/iron-habitat.png"
+iron_habitat.minable = {mining_time = 0.1, result = "not-alone-iron-habitat"}
+iron_habitat.factoriopedia_description = {"factoriopedia-description.not-alone-iron-habitat"}
+iron_habitat.base = table.deepcopy(habitat_picture)
+iron_habitat.base.filename = "__not-alone__/graphics/entity/iron-habitat.png"
+
+local iron_habitat_item = table.deepcopy(logistics_hub_item)
+iron_habitat_item.name = "not-alone-iron-habitat"
+iron_habitat_item.localised_name = {"item-name.not-alone-iron-habitat"}
+iron_habitat_item.icon = "__not-alone__/graphics/icons/iron-habitat.png"
+iron_habitat_item.place_result = "not-alone-iron-habitat"
+iron_habitat_item.order = "c[signal]-a[not-alone-logistics-hub]-b[iron]"
+
+local iron_habitat_recipe = {
+	type = "recipe",
+	name = "not-alone-iron-habitat",
+	enabled = true,
+	ingredients = {
+		{type = "item", name = "iron-plate", amount = 10}
+	},
+	results = {
+		{type = "item", name = "not-alone-iron-habitat", amount = 1}
+	}
+}
+
 local building_logistics_requester = table.deepcopy(data.raw["logistic-container"]["requester-chest"])
 building_logistics_requester.name = "not-alone-building-logistics-requester"
 building_logistics_requester.localised_name = {"entity-name.not-alone-building-logistics-requester"}
@@ -310,6 +341,9 @@ data:extend({
   logistics_hub,
   logistics_hub_item,
   logistics_hub_recipe,
+  iron_habitat,
+  iron_habitat_item,
+  iron_habitat_recipe,
 	building_logistics_requester,
   table.unpack(building_requester_variants),
   outpost,

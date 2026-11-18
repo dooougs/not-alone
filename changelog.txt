@@ -1,4 +1,9 @@
 ---------------------------------------------------------------------------------------------------
+Version: 0.1.28
+Date: 2026-11-18
+  Features:
+    - Added the Iron Habitat, built from 10 iron plate, so starts without wood such as Vulcanus can still place a Habitat. It works exactly like the wooden Habitat.
+---------------------------------------------------------------------------------------------------
 Version: 0.1.27
 Date: 2026-10-03
   Features:

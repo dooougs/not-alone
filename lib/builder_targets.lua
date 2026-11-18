@@ -273,7 +273,7 @@ function find_builder_deconstruction_target(record, surface, force, position)
   local nearest_distance
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
-      local habitat_cell = cell.owner.name == LOGISTICS_HUB_NAME
+      local habitat_cell = get_base_type(cell.owner) == "habitat"
       local search_radius = habitat_cell and cell.logistic_radius or cell.construction_radius
       local targets = surface.find_entities_filtered({
         position = cell.owner.position,
@@ -326,7 +326,7 @@ function find_builder_repair_target(record, surface, force, position)
   local nearest_distance
   for _, cell in pairs(network.cells) do
     if cell.valid and cell.owner.valid then
-      local habitat_cell = cell.owner.name == LOGISTICS_HUB_NAME
+      local habitat_cell = get_base_type(cell.owner) == "habitat"
       local search_radius = habitat_cell and cell.logistic_radius or cell.construction_radius
       for _, target in pairs(surface.find_entities_filtered({
         position = cell.owner.position,
