@@ -60,7 +60,7 @@ def reset_scene():
     scene.render.resolution_percentage = 100
     scene.render.image_settings.file_format = "PNG"
     scene.render.image_settings.color_mode = "RGBA"
-    scene.render.image_settings.color_depth = "16"
+    scene.render.image_settings.color_depth = "8"
     try:
         scene.view_settings.view_transform = "AgX"
         scene.view_settings.look = "AgX - Medium High Contrast"
@@ -776,10 +776,23 @@ def _unstretch(path, out_w, out_h):
     raw = Image.open(path)
     if raw.mode not in ("RGBA",):
         raw = raw.convert("RGBA")
-    return raw.resize((out_w, out_h), Image.LANCZOS)
+    if raw.size == (out_w, out_h):
+        return raw
+    return _resize(raw, (out_w, out_h))
 
 
-def _icon_from(img, size, margin=0.02):
+def _resize(img, size):
+    """Downscale with premultiplied alpha.
+
+    Resizing straight alpha lets the black of fully transparent pixels bleed
+    into edges, which gives a dark, jagged fringe in game. Premultiplying
+    first keeps edges clean, the way vanilla sprites are filtered.
+    """
+    from PIL import Image
+    return img.convert("RGBa").resize(size, Image.LANCZOS).convert("RGBA")
+
+
+def _icon_crop(img, margin=0.02):
     from PIL import Image
     alpha = img.getchannel("A").point(lambda a: 255 if a > 24 else 0)
     left, top, right, bottom = alpha.getbbox()
@@ -789,27 +802,41 @@ def _icon_from(img, size, margin=0.02):
             int(cx + side / 2), int(cy + side / 2))
     canvas = Image.new("RGBA", (int(side) + 2, int(side) + 2), (0, 0, 0, 0))
     canvas.alpha_composite(img, (-box_[0], -box_[1]))
-    icon = canvas.resize((size, size), Image.LANCZOS)
-    return _sharpen(icon)
+    return canvas
 
 
-def _sharpen(img, amount=60):
-    from PIL import ImageFilter
-    rgb = img.convert("RGB").filter(
-        ImageFilter.UnsharpMask(radius=1.0, percent=amount, threshold=1))
-    out = rgb.convert("RGBA")
-    out.putalpha(img.getchannel("A"))
-    return out
+def _icon_from(img, size, mipmaps=1):
+    """Square icon cropped to the model.
+
+    With mipmaps > 1 the file holds the vanilla mipmap strip: size, size/2,
+    size/4 ... side by side from the top-left with no padding (a 64 px icon
+    with 4 levels is 120x64, like base/graphics/icons). Factorio infers the
+    level count from the file, and each level is filtered from the full
+    render rather than from the level above, so small icons stay crisp.
+    """
+    from PIL import Image
+    crop = _icon_crop(img)
+    levels = [_resize(crop, (size >> i, size >> i)) for i in range(mipmaps)]
+    if mipmaps == 1:
+        return levels[0]
+    width = sum(l.width for l in levels)
+    strip = Image.new("RGBA", (width, size), (0, 0, 0, 0))
+    x = 0
+    for l in levels:
+        strip.paste(l, (x, 0))
+        x += l.width
+    return strip
 
 
 def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=256,
                   scale=0.5, shift=(0.0, -0.3), keep_blend=True,
-                  catcher=None, icon_only=False):
+                  catcher=None, icon_only=False, icon_mipmaps=4):
     """Render the sprite (shadow baked in) and any icons.
 
     size_px/scale/shift are the values in the prototype's sprite definition,
     so the output lines up with the entity's footprint in game.
-    icon_paths is a list of (path, size) tuples.
+    icon_paths is a list of (path, size) tuples; each is written with
+    icon_mipmaps levels (vanilla item icons use 64 px with 4).
     """
     tiles = size_px * scale / 32.0
     setup_camera(scene, tiles, tiles, shift)
@@ -828,7 +855,7 @@ def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=256,
     _render(scene, tmp, w, h)
     model = _unstretch(tmp, w, w)
     for path, size in icon_paths:
-        _icon_from(model, size).save(path, optimize=True)
+        _icon_from(model, size, icon_mipmaps).save(path, optimize=True)
         print("wrote", path)
     catcher.hide_render = False
     if entity_path and not icon_only:
@@ -837,8 +864,7 @@ def render_entity(scene, name, entity_path=None, icon_paths=(), size_px=256,
         _render(scene, tmp, w, h)
         full = _unstretch(tmp, w, w)
         img = _fade_shadow_edges(full, model, int(w * 0.05))
-        img = img.resize((size_px, size_px), resample=_lanczos())
-        _sharpen(img, 35).save(entity_path, optimize=True)
+        _resize(img, (size_px, size_px)).save(entity_path, optimize=True)
         print("wrote", entity_path)
     if os.path.exists(tmp):
         os.remove(tmp)
@@ -863,11 +889,6 @@ def _fade_shadow_edges(full, model, border):
     out[..., 3] = a
     return Image.fromarray((np.clip(out, 0, 1) * 255 + 0.5).astype(np.uint8),
                            "RGBA")
-
-
-def _lanczos():
-    from PIL import Image
-    return Image.LANCZOS
 
 
 def entity_path(name):

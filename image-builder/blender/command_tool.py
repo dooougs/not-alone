@@ -69,7 +69,8 @@ def main():
     k.render_entity(scene, "command_tool", entity_path=None,
                     icon_paths=[(k.icon_path("command-tool-shortcut-56"), 56),
                                 (k.icon_path("command-tool-shortcut-24"), 24)],
-                    size_px=128, scale=0.5, shift=(0, -0.35), catcher=catcher)
+                    size_px=128, scale=0.5, shift=(0, -0.35), catcher=catcher,
+                    icon_mipmaps=1)
 
 
 main()

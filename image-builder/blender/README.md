@@ -54,5 +54,12 @@ render takes about 5 minutes per model on 4 CPU cores.
   tint. Wooden surfaces are modelled board by board with `board()` and
   `arc_board()`, with real gaps, butt joints and slight warp, so the
   Habitat's roof, clapboard walls, door and steps are individual planks. `palette()` is the shared set every model uses.
-* **Icons.** Rendered from the same angle without the ground shadow, cropped
-  tight and sharpened.
+* **Resolution and filtering.** Sprites are 64 px per tile at `scale = 0.5`,
+  the same density as vanilla's high-res sprites. Each is rendered at 4x and
+  downscaled with premultiplied alpha, so edges blend smoothly instead of
+  picking up a dark jagged fringe. Nothing is sharpened afterwards.
+* **Icons.** Rendered from the same angle without the ground shadow and
+  cropped tight. Item icons are 64 px with 4 mipmap levels in one 120x64 file
+  (64, 32, 16, 8), laid out like `base/graphics/icons`. Factorio reads the
+  level count from the file, so `icon_size = 64` stays as it is. Shortcut
+  icons stay single images at 56 and 24 px.
