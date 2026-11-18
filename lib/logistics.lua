@@ -355,68 +355,6 @@ function find_available_fuel(target, network)
   return best_name
 end
 
--- Smelting inputs by furnace prototype: item name -> amount per craft.
--- Prototypes never change at runtime, so this is cached per Lua state.
-furnace_input_cache = {}
-
-function get_furnace_inputs(target)
-  local cached = furnace_input_cache[target.name]
-  if cached then
-    return cached
-  end
-  local inputs = {}
-  local categories = target.prototype.crafting_categories or {}
-  for _, recipe in pairs(prototypes.recipe) do
-    local ingredients = recipe.ingredients or {}
-    if categories[recipe.category] and #ingredients == 1
-      and ingredients[1].type == "item" then
-      inputs[ingredients[1].name] = ingredients[1].amount or 1
-    end
-  end
-  furnace_input_cache[target.name] = inputs
-  return inputs
-end
-
--- An empty furnace has no recipe (it is picked from whatever is inserted),
--- so it would never request ore; offer it a smeltable item the network has
--- or a Miner is carrying, preferring what it smelted last.
-function find_furnace_input(target, network)
-  local inputs = get_furnace_inputs(target)
-  local ok, previous = pcall(function()
-    return target.previous_recipe
-  end)
-  local previous_recipe = ok and previous and (previous.name or previous)
-  if type(previous_recipe) == "string" then
-    previous_recipe = prototypes.recipe[previous_recipe]
-  end
-  local previous_ingredient = previous_recipe and previous_recipe.valid ~= false
-    and previous_recipe.ingredients and previous_recipe.ingredients[1]
-  local candidates = {}
-  for _, item in pairs(network.get_contents()) do
-    candidates[item.name] = true
-  end
-  for _, team_mates in pairs(storage.not_alone_team_mates or {}) do
-    for _, record in pairs(team_mates) do
-      local info = record.kind == "miner" and record.mining_resource_info
-      if info and (record.carried_count or 0) > 0 and record.entity.valid
-        and record.entity.force == target.force then
-        candidates[info.item_name] = true
-      end
-    end
-  end
-  if previous_ingredient and inputs[previous_ingredient.name]
-    and candidates[previous_ingredient.name] then
-    return previous_ingredient.name
-  end
-  local best
-  for item_name in pairs(candidates) do
-    if inputs[item_name] and (not best or item_name < best) then
-      best = item_name
-    end
-  end
-  return best
-end
-
 function inventory_kind_for_item(target, item_name)
   local burner = target.burner
   if burner and burner.inventory and item_is_fuel_for(item_name, burner) then
@@ -430,8 +368,6 @@ function inventory_kind_for_item(target, item_name)
           return "input"
         end
       end
-    elseif target.type == "furnace" and get_furnace_inputs(target)[item_name] then
-      return "input"
     end
   end
   if target.type == "lab" then
@@ -463,15 +399,6 @@ function get_building_requests(target, network)
             }
           end
         end
-      end
-    elseif not recipe and target.type == "furnace" and inventory and inventory.is_empty() then
-      local input_name = find_furnace_input(target, network)
-      if input_name then
-        requests[#requests + 1] = {
-          item_name = input_name,
-          count = math.max(math.ceil(get_furnace_inputs(target)[input_name]), INGREDIENT_REQUEST_COUNT),
-          inventory_kind = "input"
-        }
       end
     end
   end
