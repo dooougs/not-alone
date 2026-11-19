@@ -1,12 +1,20 @@
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.28
-Date: 2026-11-18
+Date: 2026-11-19
   Features:
     - Added the Iron Habitat, built from 10 iron plate, so starts without wood such as Vulcanus can still place a Habitat. It works exactly like the wooden Habitat.
   Graphics:
     - Rebuilt the Habitat, Iron Habitat, Outpost and Cloner sprites and icons, and the command tool shortcut icons, as Blender models rendered in Factorio's style: the vanilla camera angle, light from the upper left, baked ground shadows and weathered materials. Sprites are filtered cleanly at vanilla's 64 px per tile, and item icons carry vanilla-style mipmaps so they stay sharp in inventory slots. The Habitats and the Outpost now fill their 4x4 tiles the way vanilla buildings do.
   Bugfixes:
-    - The placed Outpost showed the Habitat's icon. It now uses its own.
+    - Team mates deployed from a Habitat or Outpost now spawn on that base's planet, not the player's.
+    - Fixed a crash when picking up a team mate carrying cargo with the command tool.
+    - Ore marked for Miners is no longer cleared when the mod updates.
+    - Team mates keep working while their player has no character, so Soldiers fight on when the player dies.
+    - Fluid resources such as crude oil can no longer be marked for Miners.
+    - Picking up a team mate with the command tool now searches the right surface.
+    - Moving items into a base from the GUI keeps their quality.
+    - The placed Outpost now shows its own icon instead of the Habitat's.
+
 ---------------------------------------------------------------------------------------------------
 Version: 0.1.27
 Date: 2026-10-03
