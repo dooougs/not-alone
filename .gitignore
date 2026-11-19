@@ -8,3 +8,7 @@ image-builder/.edge-profile/
 
 # Blender autosave backups.
 *.blend1
+
+# Blender render scratch files and Python caches.
+image-builder/blender/_raw_*.png
+__pycache__/
