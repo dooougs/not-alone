@@ -488,7 +488,17 @@ end
 function notalone.on_gui_text_changed(event)
   local element = event.element
   if element and element.valid then
-    update_team_mate_request(game.get_player(event.player_index), element)
+    local player = game.get_player(event.player_index)
+    if not on_crew_wagon_gui_changed(player, element) then
+      update_team_mate_request(player, element)
+    end
+  end
+end
+
+function notalone.on_gui_checked_state_changed(event)
+  local element = event.element
+  if element and element.valid then
+    on_crew_wagon_gui_changed(game.get_player(event.player_index), element)
   end
 end
 
@@ -554,6 +564,15 @@ take_outpost_soldier = function(player, outpost)
 end
 
 function notalone.on_gui_opened(event)
+  if event.gui_type == defines.gui_type.entity
+    and event.entity and event.entity.valid
+    and event.entity.name == CREW_WAGON_NAME then
+    local player = game.get_player(event.player_index)
+    if player then
+      open_crew_wagon_gui(player, event.entity)
+    end
+    return
+  end
   -- Roboport-derived buildings open as an entity GUI, not the logistics screen.
   if event.gui_type == defines.gui_type.entity
     and is_team_mate_request_entity(event.entity) then
@@ -589,6 +608,7 @@ function notalone.on_gui_closed(event)
   if player then
     destroy_team_mate_panel(player)
     destroy_team_mate_request_gui(player)
+    destroy_crew_wagon_gui(player)
   end
 end
 
