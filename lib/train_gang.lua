@@ -101,12 +101,12 @@ end
 
 local function deploy_team_mate_from(source, inventory, kind, position)
   local player = find_any_player_for_force(source.force)
-  if not player or not player.valid or player.surface ~= source.surface then
+  if not player or not player.valid then
     return nil
   end
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   local team_mates = storage.not_alone_team_mates[player.index] or {}
-  local record = create_team_mate(player, kind, #team_mates + 1, position)
+  local record = create_team_mate(player, kind, #team_mates + 1, position, source.surface)
   if not record then
     return nil
   end

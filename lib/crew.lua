@@ -61,17 +61,20 @@ function restore_docked_team_mate(base, record)
   return false
 end
 
-function create_team_mate(player, kind, index, spawn_center)
+-- surface defaults to the player's, but deploys from a base must pass the
+-- base's surface: the player may be on another planet or a platform.
+function create_team_mate(player, kind, index, spawn_center, surface)
   -- Units do not collide with each other, so find_non_colliding_position
   -- returns the same spot for every spawn; ring offsets keep them apart
   -- because perfectly co-located units cannot be separated by the engine.
+  surface = surface or player.surface
   local center = spawn_center or player.position
   local angle = index * 2.39996
   local ring_center = {
     x = center.x + math.cos(angle) * 3,
     y = center.y + math.sin(angle) * 3
   }
-  local spawn_position = player.surface.find_non_colliding_position(
+  local spawn_position = surface.find_non_colliding_position(
     TEAM_MATE_NAME,
     ring_center,
     8,
@@ -85,7 +88,7 @@ function create_team_mate(player, kind, index, spawn_center)
   if kind == "soldier" then
     entity_name = "not-alone-team-mate-handgun"
   end
-  local character = player.surface.create_entity({
+  local character = surface.create_entity({
     name = entity_name or TEAM_MATE_NAME,
     position = spawn_position,
     force = player.force,

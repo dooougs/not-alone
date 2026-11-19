@@ -7,8 +7,9 @@ Soldiers defend, turning a handful of survivors into a working part of the facto
 
 Crash-landed ships are scattered across the map, with one guaranteed near the spawn. Each wreck holds
 a few stranded team mates as items. Craft a **Habitat** (5 wood), place it, and put team mate items
-in it. Every player also gets the **Soldier command tool**, which can be recreated from the shortcut
-bar.
+in it. On starts without trees, such as Vulcanus, craft an **Iron Habitat** (10 iron plate) instead;
+it works exactly the same. Every player also gets the **Soldier command tool**, which can be recreated
+from the shortcut bar.
 
 Team mates are native Factorio units that use the engine's pathfinder. Each one has a small radar
 footprint that keeps the area around it charted, and a map marker.

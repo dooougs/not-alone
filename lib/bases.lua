@@ -1,5 +1,6 @@
-BASE_TYPE_BY_ENTITY_NAME = {
+﻿BASE_TYPE_BY_ENTITY_NAME = {
   [LOGISTICS_HUB_NAME] = "habitat",
+  [IRON_HABITAT_NAME] = "habitat",
   [OUTPOST_NAME] = "outpost"
 }
 
@@ -203,7 +204,7 @@ local function deploy_soldier_toward_base(habitat, base)
   end
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   local team_mates = storage.not_alone_team_mates[player.index] or {}
-  local record = create_team_mate(player, "soldier", #team_mates + 1, habitat.position)
+  local record = create_team_mate(player, "soldier", #team_mates + 1, habitat.position, habitat.surface)
   if not record then
     return false
   end

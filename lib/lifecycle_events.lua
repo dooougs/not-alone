@@ -406,11 +406,23 @@ function notalone.on_configuration_changed()
   storage.not_alone_building_requester_ticks = nil
   storage.not_alone_team_mates = storage.not_alone_team_mates or {}
   storage.not_alone_selected_team_mates = {}
-  storage.not_alone_marked_resources = {}
+  storage.not_alone_marked_resources = storage.not_alone_marked_resources or {}
+  redraw_marked_resources()
   storage.not_alone_carrier_requests = {}
   migrate_car_minimum_distance()
   reset_stale_vehicle_travel()
   repair_manual_loops()
+  -- rendering.clear above removed the route lines of team mates under orders.
+  for player_index, team_mates in pairs(storage.not_alone_team_mates) do
+    for _, record in pairs(team_mates) do
+      record.route_render_ids = {}
+      if record.entity and record.entity.valid
+        and not record.route_rendering_suppressed
+        and game.get_player(player_index) then
+        refresh_route_renderings(record, player_index)
+      end
+    end
+  end
   for _, surface in pairs(game.surfaces) do
     spawn_initial_crash_ships(surface)
   end
@@ -504,8 +516,9 @@ local function collect_team_mate(player, team_mates, record)
   for _, inventory_name in ipairs({"builder_cargo", "vehicle_inventory", "vehicle_fuel_inventory", "vehicle_ammo_inventory"}) do
     local inventory = record[inventory_name]
     if inventory and inventory.valid then
-      for item, count in pairs(inventory.get_contents()) do
-        local stack = {name = item, count = count}
+      -- get_contents() is an array of {name, count, quality} in 2.x.
+      for _, item in pairs(inventory.get_contents()) do
+        local stack = {name = item.name, count = item.count, quality = item.quality}
         local removed = inventory.remove(stack)
         stack.count = removed
         give_or_spill(stack)
@@ -548,7 +561,7 @@ function collect_reverse_clicked_team_mate(event)
     x = (event.area.left_top.x + event.area.right_bottom.x) / 2,
     y = (event.area.left_top.y + event.area.right_bottom.y) / 2
   }
-  local targets = player.surface.find_entities_filtered({
+  local targets = event.surface.find_entities_filtered({
     type = "unit",
     position = click_position,
     radius = 1
@@ -684,17 +697,19 @@ function notalone.on_deconstructed_area(event)
   })) do
     if deconstruction_planner_accepts(event.stack, resource.name) then
       if not event.alt then
-        mark_resource_for_mining(resource)
-        changed_count = changed_count + 1
+        if get_resource_info(resource.name) then
+          mark_resource_for_mining(resource)
+          changed_count = changed_count + 1
+        end
       elseif is_resource_marked(resource) then
         unmark_resource_for_mining(resource)
         changed_count = changed_count + 1
       end
     end
   end
-    if changed_count > 0 then
-      local player = game.get_player(event.player_index)
-      player.print({
+  if changed_count > 0 then
+    local player = game.get_player(event.player_index)
+    player.print({
       event.alt and "not-alone.resources-unmarked" or "not-alone.resources-marked",
       changed_count
     })

@@ -153,7 +153,9 @@ function notalone.on_update(event)
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
-    if player and player.character and player.character.valid then
+    -- Team mates keep working while their player is dead, in remote view or
+    -- off-planet; requiring a character froze the whole crew (Soldiers too).
+    if player and player.valid then
       local active_team_mates = {}
       for _, record in pairs(team_mates) do
         if update_team_mate(record, player) then
@@ -523,6 +525,7 @@ function notalone.register()
   script.on_event(defines.events.on_entity_died, notalone.on_entity_died)
   local base_filters = {
     {filter = "name", name = LOGISTICS_HUB_NAME},
+    {filter = "name", name = IRON_HABITAT_NAME},
     {filter = "name", name = OUTPOST_NAME},
     {filter = "name", name = CREW_WAGON_NAME}
   }
