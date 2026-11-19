@@ -5,3 +5,6 @@ image-builder/.edge-profile/
 
 # Generated Factorio Mod Portal release archives.
 *.zip
+
+# Blender autosave backups.
+*.blend1

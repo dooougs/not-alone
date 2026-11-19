@@ -514,6 +514,7 @@ function notalone.register()
   script.on_event(defines.events.on_entity_died, notalone.on_entity_died)
   local base_filters = {
     {filter = "name", name = LOGISTICS_HUB_NAME},
+    {filter = "name", name = IRON_HABITAT_NAME},
     {filter = "name", name = OUTPOST_NAME}
   }
   script.on_event(defines.events.on_player_mined_entity, notalone.on_base_removed, base_filters)
