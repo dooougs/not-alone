@@ -443,7 +443,7 @@ function notalone.on_gui_click(event)
     local stack = main and main[tonumber(slot_index)]
     if inventory and stack and stack.valid_for_read
       and allowed_request_item(entity, stack.name) then
-      local inserted = inventory.insert({name = stack.name, count = stack.count})
+      local inserted = inventory.insert({name = stack.name, count = stack.count, quality = stack.quality})
       if inserted > 0 then
         stack.count = stack.count - inserted
       end
@@ -463,7 +463,7 @@ function notalone.on_gui_click(event)
   local cursor = player.cursor_stack
   if cursor and cursor.valid_for_read then
     if allowed_request_item(entity, cursor.name) then
-      local inserted = inventory.insert({name = cursor.name, count = cursor.count})
+      local inserted = inventory.insert({name = cursor.name, count = cursor.count, quality = cursor.quality})
       if inserted > 0 then
         cursor.count = cursor.count - inserted
       end

@@ -1,4 +1,4 @@
--- Functional area extracted from not-alone.lua.
+﻿-- Functional area extracted from not-alone.lua.
 
 function notalone.on_reverse_selected_area(event)
   if collect_reverse_clicked_team_mate(event) then
@@ -147,7 +147,9 @@ function notalone.on_update(event)
 
   for player_index, team_mates in pairs(storage.not_alone_team_mates or {}) do
     local player = game.get_player(player_index)
-    if player and player.character and player.character.valid then
+    -- Team mates keep working while their player is dead, in remote view or
+    -- off-planet; requiring a character froze the whole crew (Soldiers too).
+    if player and player.valid then
       local active_team_mates = {}
       for _, record in pairs(team_mates) do
         if update_team_mate(record, player) then

@@ -36,7 +36,10 @@ function find_requesting_consumer(record, mining_role)
 end
 
 function get_mining_interval(player)
-  local mining_speed_modifier = player.character_mining_speed_modifier
+  -- The character modifier is only readable while the player has a body.
+  local character = player.character
+  local mining_speed_modifier = player.force.manual_mining_speed_modifier
+    + (character and character.valid and character.character_mining_speed_modifier or 0)
   local effective_mining_speed = NORMAL_CHARACTER_MINING_SPEED * (1 + mining_speed_modifier)
   return math.max(1, math.ceil(RESOURCE_MINING_TIME * 60 / effective_mining_speed))
 end

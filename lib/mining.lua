@@ -4,10 +4,15 @@ function get_resource_info(resource_name)
   local resource_prototype = prototypes.entity[resource_name]
   local mineable = resource_prototype and resource_prototype.mineable_properties
   local product = mineable and mineable.products and mineable.products[1]
-  if not product then
+  -- Fluid resources (crude oil, lithium brine, fluorine vents) have no item
+  -- to carry and would crash the insert at delivery time.
+  if not product or product.type == "fluid" then
     return nil
   end
   local item_prototype = prototypes.item[product.name]
+  if not item_prototype then
+    return nil
+  end
   return {
     item_name = product.name,
     particle_name = resource_name .. "-particle",
@@ -36,6 +41,18 @@ function resource_mark_key(resource)
   return math.floor(position.x) .. "," .. math.floor(position.y)
 end
 
+local function draw_mark_rendering(resource)
+  return rendering.draw_rectangle({
+    color = MARK_COLOR,
+    filled = false,
+    width = 2,
+    left_top = {resource.position.x - 0.4, resource.position.y - 0.4},
+    right_bottom = {resource.position.x + 0.4, resource.position.y + 0.4},
+    surface = resource.surface,
+    draw_on_ground = true
+  }).id
+end
+
 function mark_resource_for_mining(resource)
   local marks = get_marked_resources(resource.surface.index)
   local key = resource_mark_key(resource)
@@ -45,16 +62,22 @@ function mark_resource_for_mining(resource)
   marks[key] = {
     entity = resource,
     position = position_table(resource.position),
-    render_id = rendering.draw_rectangle({
-      color = MARK_COLOR,
-      filled = false,
-      width = 2,
-      left_top = {resource.position.x - 0.4, resource.position.y - 0.4},
-      right_bottom = {resource.position.x + 0.4, resource.position.y + 0.4},
-      surface = resource.surface,
-      draw_on_ground = true
-    }).id
+    render_id = draw_mark_rendering(resource)
   }
+end
+
+-- Configuration changes clear every rendering; marks themselves are player
+-- orders and must survive mod updates, so only their outlines are redrawn.
+function redraw_marked_resources()
+  for _, marks in pairs(storage.not_alone_marked_resources or {}) do
+    for key, mark in pairs(marks) do
+      if mark.entity and mark.entity.valid and mark.entity.amount > 0 then
+        mark.render_id = draw_mark_rendering(mark.entity)
+      else
+        marks[key] = nil
+      end
+    end
+  end
 end
 
 function unmark_resource_for_mining(resource)
